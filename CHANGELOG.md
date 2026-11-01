@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.4
+
+- Discover an Egg count MQTT measurement sensor alongside Occupant using the
+  offline OpenCV detector. Report zero for known/unknown hens without inspecting
+  eggs; count visible eggs only when no hen is detected.
+- Share non-retained state, availability, expiry and rediscovery between both
+  sensors; include egg counts in stored observations and transfer status.
+- Expose minimum/maximum egg area settings for private deployment calibration.
+  Generic defaults require checks against reviewed positive and negative images.
+- Keep full image frames visible in offline reports and tolerate straw notches,
+  touching eggs and mostly visible clipped eggs while rejecting textured regions.
+
 ## 0.1.3
 
 - Derive recognition background exclusions from reviewed empty-nest references,

@@ -64,8 +64,9 @@ straw/walls, and missed hens can produce wrong estimates. Review the overlays;
 zero means no candidates detected, not proof that the nest is empty. Synthetic
 tests verify mechanics, not real-world accuracy. Compare with manually reviewed
 counts and include genuinely egg-free and hen-present frames before deployment.
-Do not sum counts across frames: the same egg appears repeatedly. This does not
-yet detect laying events, identify the laying hen, or change MQTT sensors.
+Do not sum counts across frames: the same egg appears repeatedly. The offline
+tool does not publish MQTT; the HA app uses the same detector for its Egg count
+sensor. Neither detects laying events or identifies the laying hen.
 
 ## Validation status
 
@@ -308,7 +309,7 @@ version is cleaned at the next startup. Keep originals on this machine too.
 2. Keep a stable `device_id` and choose `device_name`. The default ID
    `munai_ha_nest` differs from the legacy cron device to avoid discovery conflicts.
    Enable `mqtt_enabled`, save and restart. The HA MQTT integration should discover
-   the device and its **Occupant** sensor, initially unavailable.
+   the device and its **Occupant** and **Egg count** sensors, initially unavailable.
 3. Set `camera_url` (masked password field) to your credential-bearing RTSP URL.
    The app never reads the developer `.env` or logs the URL.
 4. During a supervised pilot, enable `capture_enabled`, save and restart. Start
@@ -326,16 +327,32 @@ Discovery and availability are retained; **observations are not retained**, so
 HA restarts do not replay old identities as fresh. HA's birth message triggers
 rediscovery; the next successful capture supplies a fresh observation.
 
+From version **0.1.4**, Egg count shares Occupant's observation, availability and
+expiry. It estimates the current visible eggs only when Occupant is `empty`.
+Known and unknown hens both produce **0**, without running egg detection; this
+does not assert that no eggs are hidden beneath a hen. Detection failures fail
+the observation rather than publishing a fabricated zero. Counting works even
+with `store_captures` disabled and never changes capture categories or references.
+
+Configure `egg_min_area` and `egg_max_area` in HA using measurements from reviewed
+egg-free and egg-containing images. They correspond to offline `--min-area` and
+`--max-area`; `texture_threshold` is shared with presence detection. Defaults are
+generic starting points, not deployment calibration. The count is a measurement,
+**not a cumulative total**. Results JSON and transfer status's `last_observation`
+also include `egg_count`. The legacy Pi/cron publisher remains unchanged.
+
 The broker must permit publishing to:
 
 ```text
 homeassistant/sensor/<device_id>/occupant/config
+homeassistant/sensor/<device_id>/egg_count/config
 munai/<device_id>/state
 munai/<device_id>/availability
 ```
 
-and subscribing to `homeassistant/status`. Additional sensors, including egg
-count, are deferred. Eggs are ignored when identifying occupants.
+and subscribing to `homeassistant/status`. The non-retained state JSON contains
+both `occupant` and integer `egg_count`. Eggs remain ignored when identifying
+occupants; egg counting does not influence hen identity.
 
 One Python scheduling loop runs serial rounds, uses monotonic deadlines, skips
 missed rounds instead of catching up, and waits interruptibly on shutdown.

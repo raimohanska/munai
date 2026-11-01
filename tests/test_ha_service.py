@@ -43,6 +43,13 @@ def synthetic_empty():
 
 
 class OptionsTests(unittest.TestCase):
+    def test_egg_area_validation(self):
+        self.assertEqual(validate({'egg_min_area': 700, 'egg_max_area': 2800})['egg_min_area'], 700)
+        for options in ({'egg_min_area': True}, {'egg_min_area': 0}, {'egg_max_area': float('nan')},
+                        {'egg_min_area': 3000, 'egg_max_area': 2000}):
+            with self.assertRaises(AppError):
+                validate(options)
+
     def test_safe_defaults_and_no_implicit_profile_read(self):
         options = validate({})
         self.assertFalse(options['capture_enabled'])
@@ -128,6 +135,35 @@ class StorageFixture(unittest.TestCase):
 
 
 class StorageTests(StorageFixture):
+    def test_predict_counts_eggs_only_without_a_hen(self):
+        from recognize_chickens import References
+        path = self.root / NAME
+        path.write_bytes(synthetic_empty())
+        references = References(np.zeros((360, 640), bool))
+        self.options.update({'egg_min_area': 700, 'egg_max_area': 2800})
+        with patch('ha_service.runtime.identify') as identify, patch('ha_service.runtime.detect_eggs') as detect:
+            for label, count in (('hen_a', 0), ('unknown', 0), ('no_chicken', 2)):
+                identify.return_value = {'label': label}
+                detect.reset_mock()
+                detect.return_value = [{}, {}]
+                prediction = self.runtime.predict(path, references)
+                self.assertEqual(prediction['egg_count'], count)
+                if label == 'no_chicken':
+                    self.assertEqual(detect.call_args.args[1:], (8, 700, 2800))
+                else:
+                    detect.assert_not_called()
+
+    def test_egg_detection_failure_does_not_become_zero(self):
+        from recognize_chickens import References
+        path = self.root / NAME
+        path.write_bytes(synthetic_empty())
+        references = References(np.zeros((360, 640), bool))
+        with patch('ha_service.runtime.identify', return_value={'label': 'no_chicken'}), \
+                patch('ha_service.runtime.detect_eggs', side_effect=ValueError('synthetic-private-detail')):
+            with self.assertRaises(AppError) as caught:
+                self.runtime.predict(path, references)
+        self.assertNotIn('synthetic-private-detail', str(caught.exception))
+
     def test_predict_refuses_uncalibrated_references(self):
         self.upload()
         self.upload('hen_b/' + NAME, synthetic_jpeg(200))
@@ -351,6 +387,13 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         self.assertIn('availability_topic', config)
         self.assertEqual(config['device']['identifiers'], ['munai_ha_nest'])
         self.assertNotIn('device_class', config)
+        eggs = discovery(validate({}), 'egg_count')
+        self.assertEqual(eggs['name'], 'Egg count')
+        self.assertEqual(eggs['unique_id'], 'munai_ha_nest_egg_count')
+        self.assertEqual(eggs['value_template'], '{{ value_json.egg_count }}')
+        self.assertEqual(eggs['state_class'], 'measurement')
+        for key in ('device', 'expire_after', 'availability_topic', 'state_topic'):
+            self.assertEqual(config[key], eggs[key])
 
     def test_new_states_not_retained_and_availability_retained(self):
         mqtt = MQTT.__new__(MQTT)
@@ -358,9 +401,32 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         sent = []
         mqtt.send = lambda *args: sent.append(args)
         mqtt.publish({'label': 'hen_a'})
-        self.assertEqual(json.loads(sent[0][1]), {'occupant': 'Hen_a'})
+        self.assertEqual(json.loads(sent[0][1]), {'occupant': 'Hen_a', 'egg_count': 0})
         self.assertFalse(sent[0][2])
         self.assertEqual(sent[1][1:], ('online', True))
+
+    def test_egg_states_and_occupied_nest_zero(self):
+        publisher = MQTT.__new__(MQTT)
+        publisher.base = 'munai/synthetic'
+        publisher.send = Mock()
+        for prediction, eggs in (({'label': 'no_chicken', 'egg_count': 2}, 2),
+                                 ({'label': 'no_chicken', 'egg_count': 0}, 0),
+                                 ({'label': 'unknown', 'egg_count': 3}, 0),
+                                 ({'label': 'hen_a', 'egg_count': 3}, 0)):
+            publisher.send.reset_mock()
+            publisher.publish(prediction)
+            state = publisher.send.call_args_list[0].args
+            self.assertEqual(json.loads(state[1])['egg_count'], eggs)
+            self.assertFalse(state[2])
+        for value in (None, -1, True, 1.5):
+            publisher.send.reset_mock()
+            with self.assertRaises(AppError):
+                publisher.publish({'label': 'no_chicken', 'egg_count': value})
+            publisher.send.assert_not_called()
+        publisher.send.reset_mock()
+        with self.assertRaises(AppError):
+            publisher.publish({'label': 'no_chicken'})
+        publisher.send.assert_not_called()
 
     def test_reconnect_and_ha_birth_rediscover_without_replaying_state(self):
         options = validate({})
@@ -369,17 +435,22 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         publisher.base = 'munai/synthetic'
         publisher.discovery_topic = 'homeassistant/sensor/synthetic/occupant/config'
         publisher.config = discovery(options)
+        publisher.egg_discovery_topic = 'homeassistant/sensor/synthetic/egg_count/config'
+        publisher.egg_config = discovery(options, 'egg_count')
         client = Mock()
         publisher.on_connect(client, None, None, 0, None)
         self.assertTrue(publisher.connected.is_set())
-        self.assertEqual(client.publish.call_count, 2)
+        self.assertEqual(client.publish.call_count, 3)
         self.assertEqual(client.publish.call_args_list[0].args[0], publisher.discovery_topic)
-        self.assertEqual(client.publish.call_args_list[1].args, ('munai/synthetic/availability', 'offline'))
+        self.assertEqual(client.publish.call_args_list[1].args[0], publisher.egg_discovery_topic)
+        self.assertEqual(json.loads(client.publish.call_args_list[1].args[1]), publisher.egg_config)
+        self.assertEqual(client.publish.call_args_list[2].args, ('munai/synthetic/availability', 'offline'))
         self.assertTrue(client.publish.call_args_list[1].kwargs['retain'])
         client.subscribe.assert_called_once_with('homeassistant/status', qos=1)
         message = Mock(topic='homeassistant/status', payload=b'online')
         publisher.on_message(client, None, message)
-        self.assertEqual(client.publish.call_count, 3)
+        self.assertEqual(client.publish.call_count, 5)
+        self.assertTrue(all(call.kwargs['retain'] for call in client.publish.call_args_list))
         self.assertTrue(all(call.args[0] != publisher.base + '/state' for call in client.publish.call_args_list))
         publisher.on_disconnect(client, None, None, 0, None)
         self.assertFalse(publisher.connected.is_set())

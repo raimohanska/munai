@@ -45,11 +45,14 @@ def validate(raw):
     ranges = {'capture_interval': (30, 86400), 'capture_timeout': (1, 60),
               'expire_after': (60, 172800), 'mqtt_port': (1, 65535),
               'retention_days': (1, 365), 'capture_storage_mb': (16, 4096),
-              'minimum_free_mb': (64, 4096), 'chicken_area': (100, 100000),
+               'minimum_free_mb': (64, 4096), 'chicken_area': (100, 100000),
+               'egg_min_area': (100, 10000), 'egg_max_area': (100, 10000),
                'texture_threshold': (1, 100)}
     for key, (low, high) in ranges.items():
         if type(options[key]) is not int or not low <= options[key] <= high:
             raise AppError('Invalid numeric option: ' + key + '.')
+    if options['egg_min_area'] > options['egg_max_area']:
+        raise AppError('egg_min_area must not exceed egg_max_area.')
     for key, low in (('max_distance', 0.01), ('min_margin', 0)):
         value = options[key]
         if type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= 10:

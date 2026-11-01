@@ -1,8 +1,9 @@
 # Munai
 
-Home Assistant app that recognizes the current nest occupant and creates an
-MQTT **Occupant** sensor. Experimental [offline egg counting](DOCS.md#offline-egg-counting)
-is available; egg counts are not yet published to HA.
+Home Assistant app that recognizes the current nest occupant and creates MQTT
+**Occupant** and **Egg count** sensors. Egg count estimates visible eggs when no
+hen is detected and reports **0 when a hen is present**, including unknown hens.
+[Offline egg counting](DOCS.md#offline-egg-counting) is available for calibration.
 
 **Already installed and paired?** Continue with [upload references](#3-upload-references),
 then [enable MQTT](#4-enable-mqtt) and [enable capture](#5-enable-capture).
@@ -15,7 +16,7 @@ repository directory. No separate CLI installation, venv, or wrapper is needed.
 1. In Home Assistant, open **Settings → Apps → Install app → ⋮ → Repositories**
    (older versions: **Add-ons → Add-on Store**).
 2. Add this public GitHub repository's URL and install **Munai**. It builds on HA.
-3. Use **version 0.1.3 or newer** for reference-based background calibration.
+3. Use **version 0.1.4 or newer** for MQTT egg counts.
 4. Leave **Protection mode enabled**. Keep `capture_enabled` and `mqtt_enabled`
    off until the steps below are complete.
 
@@ -100,8 +101,9 @@ In Munai's HA **Configuration**, set:
 Keep `device_id` stable. Save and restart Munai.
 
 **Check:** under **Settings → Devices & services → MQTT → Devices**, find your
-Munai device and its **Occupant** sensor. It is unavailable until a fresh capture
-is published. HA's MQTT integration must be configured and discovery enabled.
+Munai device and its **Occupant** and **Egg count** sensors. They are unavailable
+until a fresh capture is published. HA's MQTT integration must be configured and
+discovery enabled.
 
 ## 5. Enable capture
 
@@ -124,6 +126,13 @@ Save and restart. Allow one capture interval for the first observation.
 **Check:** Occupant shows an identity, `empty`, or `unknown`. Failed/stale
 observations become `unavailable`; expiry must exceed interval + timeout + 10.
 Logs show occupant changes, failures, and recovery—not a line for every frame.
+
+Before relying on Egg count, calibrate **Minimum egg area** (`egg_min_area`) and
+**Maximum egg area** (`egg_max_area`) using reviewed egg-free and egg-containing
+images. Areas use the 640×360 processing frame; generic defaults are not a camera
+calibration. Use offline `--min-area` / `--max-area` checks to select the HA values.
+The count is per frame, not cumulative; zero while occupied does not mean there
+are no hidden eggs. Both sensors become unavailable if observations go stale.
 
 Watch HA responsiveness. Once it works reliably, enable **Start on boot** on
 Munai's Info page. If it causes trouble, stop Munai before restoring the cron job.

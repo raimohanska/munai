@@ -7,7 +7,10 @@ import shutil
 import tempfile
 import time
 
+import cv2
+
 from capture import CaptureError, capture
+from count_eggs import detect_eggs
 from recognize_chickens import background_mask, identify, load_references, measure
 from data_layout import RESERVED, prediction_category
 
@@ -80,8 +83,22 @@ class Runtime:
         mask = getattr(references, 'background_mask', None)
         if mask is None:
             raise AppError('Upload reviewed empty-nest references before recognition.')
-        return identify(self.measurement(path, mask), references,
-                        self.options['max_distance'], self.options['min_margin'])
+        prediction = identify(self.measurement(path, mask), references,
+                              self.options['max_distance'], self.options['min_margin'])
+        # Known and unknown hens both suppress egg detection. Zero is the
+        # requested occupied-nest state, not evidence that no eggs are hidden.
+        prediction['egg_count'] = 0
+        if prediction['label'] == 'no_chicken':
+            try:
+                gray = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+                if gray is None:
+                    raise ValueError()
+                prediction['egg_count'] = len(detect_eggs(
+                    gray, self.options['texture_threshold'],
+                    self.options['egg_min_area'], self.options['egg_max_area']))
+            except Exception:
+                raise AppError('Egg detection failed; check the image and egg size settings.') from None
+        return prediction
 
     def status(self):
         with self.store.lock:
@@ -147,6 +164,7 @@ class Runtime:
                 raise AppError('Capture did not complete; check the camera and overlap lock.')
             prediction = predictions[0]
             observation = {'timestamp': stamp, 'occupant': occupant(prediction),
+                           'egg_count': prediction['egg_count'],
                            'distance': prediction['distance'], 'margin': prediction['margin']}
             atomic_json(self.store.root / 'results' / (stamp + '.json'), observation)
             self.last_observation = observation

@@ -5,7 +5,7 @@
     "capture_interval": {"name": "Capture interval (seconds)", "description": "One serial recognition round per interval; missed rounds are skipped."},
     "capture_timeout": {"name": "Camera timeout (seconds)"},
     "expire_after": {"name": "Observation expiry (seconds)", "description": "Must exceed capture interval + camera timeout + 10. Stale observations become unavailable."},
-    "mqtt_enabled": {"name": "Enable MQTT discovery and states", "description": "Enable before capture to discover the initially unavailable Occupant sensor."},
+    "mqtt_enabled": {"name": "Enable MQTT discovery and states", "description": "Enable before capture to discover the initially unavailable Occupant and Egg count sensors."},
     "mqtt_host": {"name": "MQTT broker host"},
     "mqtt_port": {"name": "MQTT broker port"},
     "mqtt_user": {"name": "MQTT username"},
@@ -24,6 +24,8 @@
     "minimum_free_mb": {"name": "Minimum free disk space (MiB)", "description": "New captures and uploads stop before consuming this reserve."},
     "chicken_area": {"name": "Minimum hen area", "description": "Presence heuristic in the 640×360 processing frame, not an identity feature."},
     "texture_threshold": {"name": "Foreground texture threshold"},
+    "egg_min_area": {"name": "Minimum egg area", "description": "Minimum candidate and fitted ellipse area in the 640×360 processing frame. Calibrate against reviewed egg-free and egg-containing images."},
+    "egg_max_area": {"name": "Maximum egg area", "description": "Maximum candidate and fitted ellipse area in the 640×360 processing frame. Must be at least the minimum egg area."},
     "max_distance": {"name": "Maximum identity distance", "description": "A larger distance produces unknown, not a forced identity. Scores are not probabilities."},
     "min_margin": {"name": "Minimum identity separation", "description": "Require this gap between the two nearest identities; ambiguous observations remain unknown."},
     "log_level": {"name": "Log level", "description": "Info logs changes and actionable failures; debug adds round timing, never credentials."}

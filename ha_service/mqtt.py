@@ -5,10 +5,10 @@ import threading
 from .options import AppError
 
 
-def discovery(options):
+def discovery(options, sensor='occupant'):
     device_id = options['device_id']
     base = 'munai/' + device_id
-    return {
+    config = {
         'name': 'Occupant', 'unique_id': device_id + '_occupant',
         'state_topic': base + '/state', 'value_template': '{{ value_json.occupant }}',
         'availability_topic': base + '/availability', 'expire_after': options['expire_after'],
@@ -16,6 +16,13 @@ def discovery(options):
         'device': {'identifiers': [device_id], 'name': options['device_name'],
                    'manufacturer': 'Munai', 'model': 'Reference-based nest recognizer'},
     }
+    if sensor == 'egg_count':
+        config.update({'name': 'Egg count', 'unique_id': device_id + '_egg_count',
+                       'value_template': '{{ value_json.egg_count }}',
+                       'icon': 'mdi:egg', 'state_class': 'measurement'})
+    elif sensor != 'occupant':
+        raise ValueError('Unsupported sensor')
+    return config
 
 
 def occupant(prediction):
@@ -28,8 +35,10 @@ class MQTT:
         import paho.mqtt.client as mqtt
         self.mqtt = mqtt
         self.config = discovery(options)
+        self.egg_config = discovery(options, 'egg_count')
         self.base = 'munai/' + options['device_id']
         self.discovery_topic = 'homeassistant/sensor/' + options['device_id'] + '/occupant/config'
+        self.egg_discovery_topic = 'homeassistant/sensor/' + options['device_id'] + '/egg_count/config'
         self.connected = threading.Event()
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=options['device_id'])
         if options['mqtt_user']:
@@ -46,16 +55,20 @@ class MQTT:
     def on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:
             self.connected.set()
-            client.publish(self.discovery_topic, json.dumps(self.config), qos=1, retain=True)
+            self.announce(client)
             client.publish(self.base + '/availability', 'offline', qos=1, retain=True)
             client.subscribe('homeassistant/status', qos=1)
 
     def on_disconnect(self, client, userdata, flags, reason_code, properties):
         self.connected.clear()
 
+    def announce(self, client):
+        client.publish(self.discovery_topic, json.dumps(self.config), qos=1, retain=True)
+        client.publish(self.egg_discovery_topic, json.dumps(self.egg_config), qos=1, retain=True)
+
     def on_message(self, client, userdata, message):
         if message.topic == 'homeassistant/status' and message.payload == b'online':
-            client.publish(self.discovery_topic, json.dumps(self.config), qos=1, retain=True)
+            self.announce(client)
             # Never replay an old observation as if it were freshly captured.
 
     def start(self):
@@ -74,9 +87,12 @@ class MQTT:
             raise AppError('MQTT publish failed or timed out; check broker connectivity and permissions.') from None
 
     def publish(self, prediction):
+        eggs = prediction.get('egg_count') if prediction['label'] == 'no_chicken' else 0
+        if type(eggs) is not int or eggs < 0:
+            raise AppError('Invalid egg count; no observation published.')
         # Expiring state MUST NOT be retained. Availability alone is insufficient
         # to present an occupant after a restart or an extended capture failure.
-        self.send(self.base + '/state', json.dumps({'occupant': occupant(prediction)}), False)
+        self.send(self.base + '/state', json.dumps({'occupant': occupant(prediction), 'egg_count': eggs}), False)
         self.send(self.base + '/availability', 'online', True)
 
     def offline(self):
