@@ -1,0 +1,4 @@
+# Build context is this directory only, never the project or its captures/.env.
+*
+!Dockerfile
+!requirements.txt

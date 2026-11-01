@@ -1,0 +1,8 @@
+# Lightweight first stage: image processing, inspection, and notebooks.
+# Keep Python work in this container, not in the Pi capture environment.
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+Pillow==11.1.0
+matplotlib==3.9.4
+jupyterlab==4.3.5
+ipykernel==6.29.5
