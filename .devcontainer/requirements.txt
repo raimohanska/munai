@@ -6,3 +6,4 @@ Pillow==11.1.0
 matplotlib==3.9.4
 jupyterlab==4.3.5
 ipykernel==6.29.5
+paho-mqtt==1.5.1

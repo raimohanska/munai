@@ -52,8 +52,9 @@ def load_env(path):
     return values
 
 
-def configuration(path):
-    values = load_env(path)
+def configuration(path, values=None):
+    if values is None:
+        values = load_env(path)
     url = values.get('RTSP_URL', '')
     if not url.lower().startswith(('rtsp://', 'rtsps://')):
         raise CaptureError('RTSP_URL must specify an RTSP camera URL.')
@@ -182,7 +183,8 @@ def is_similar(temporary, output_dir, executable, deadline, pixel_threshold, min
         return False
 
 
-def capture(url, output_dir, executable, timeout, pixel_threshold, min_changed):
+def capture(url, output_dir, executable, timeout, pixel_threshold, min_changed,
+            on_capture=None, store=True):
     os.makedirs(output_dir, exist_ok=True)
     # Keep the lock file in place: unlinking a flock file can allow overlapping runs.
     with open(os.path.join(output_dir, '.capture.lock'), 'a') as lock:
@@ -226,7 +228,30 @@ def capture(url, output_dir, executable, timeout, pixel_threshold, min_changed):
                 image.seek(-2, os.SEEK_END)
                 if image.read(2) != b'\xff\xd9':
                     raise CaptureError('FFmpeg produced an incomplete JPEG image.')
-            if is_similar(temporary, output_dir, executable, deadline,
+            # Process every fresh frame, even if storage's similarity filter
+            # subsequently discards it. The callback must not modify the image.
+            # It may return relative directory components for categorized storage.
+            category = None
+            if on_capture is not None:
+                category = on_capture(temporary)
+            if not store:
+                print('Capture processed; persistent storage disabled.')
+                return
+            storage_dir = output_dir
+            if category is not None:
+                if (not isinstance(category, tuple) or not category
+                        or any(not isinstance(part, str) or not re.match(r'^[a-z0-9_-]+$', part)
+                               for part in category)):
+                    raise CaptureError('Invalid capture storage category.')
+                for part in category:
+                    storage_dir = os.path.join(storage_dir, part)
+                    if os.path.islink(storage_dir):
+                        raise CaptureError('Capture category directories must not be symlinks.')
+                    os.makedirs(storage_dir, exist_ok=True)
+                destination = os.path.join(storage_dir, os.path.basename(destination))
+            # Each category has its own baseline so an identity/category change
+            # is not discarded merely because the overall scene looks similar.
+            if is_similar(temporary, storage_dir, executable, deadline,
                           pixel_threshold, min_changed):
                 print('Capture skipped: image is essentially unchanged.')
                 return

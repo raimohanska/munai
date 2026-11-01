@@ -3,6 +3,151 @@
 Capture one RTSP frame per invocation and save a timestamped JPEG when it differs
 sufficiently from the last saved image.
 
+## Home Assistant MQTT chicken device
+
+`chicken_device.py` is the combined entry point: capture one fresh camera image,
+recognize the hen, optionally save the image, and update an MQTT sensor. Run it
+once per minute with cron, **instead of** running `capture.py` separately.
+It uses the same FFmpeg capture and reference-based recognizer, not a neural
+network. Reference images must remain available even when capture storage is off.
+
+### Minimal installation
+
+On Raspberry Pi OS / Debian, prefer OS-built OpenCV and NumPy packages rather
+than compiling or installing modern wheels on the old Pi:
+
+```bash
+sudo apt-get update
+sudo apt-get install ffmpeg python3-opencv python3-numpy python3-pip ca-certificates
+python3 -m pip install --user -r /home/pi/munai/requirements-device.txt
+```
+
+Adjust `/home/pi/munai` to your installation path. The only additional pip
+dependency is **paho-mqtt==1.5.1**, pinned for Python 3.5 compatibility. Do not
+upgrade to paho-mqtt 1.6+ on that Python. OpenCV 3.x/4.x and NumPy are used only
+for image processing; no Pillow, notebooks, Node.js, or ML runtime is needed.
+On an old Python 3.5 OS, use that distribution's compatible packages; verify
+`python3 -c 'import cv2, numpy, paho.mqtt.client'` succeeds. Legacy OS repositories
+may need maintenance; this is not a claim of hardware-tested Pi deployment.
+
+For container development, the existing image provides OpenCV/NumPy; install the
+new dependency with `/opt/venv/bin/python -m pip install -r requirements-device.txt`
+or rebuild the container.
+
+### Runtime configuration
+
+The program reads the local `.env` at runtime with the existing literal-value
+parser. Keep the camera settings from the capture configuration below and add:
+
+```dotenv
+MQTT_HOST=mqtt.example.invalid
+MQTT_PORT=1883
+MQTT_USER=YOUR_MQTT_USER
+MQTT_PASSWORD=YOUR_MQTT_PASSWORD
+MQTT_TLS=false
+```
+
+Use your actual broker settings locally, never in version control. Omit user and
+password for an anonymous broker. `MQTT_HOST` is a hostname/IP, not a URL.
+`MQTT_TLS` accepts `true` or `false`; TLS verifies the broker certificate using
+system CA trust. The default port is 1883 without TLS or 8883 with TLS. Without
+TLS, MQTT credentials and messages are unencrypted; use only on a trusted LAN.
+
+- With a nonempty `CAPTURE_DIR`, captures are saved using the existing timestamp,
+  atomic-write, and similarity-filtering behavior, now routed into category
+  folders (below). Relative paths are resolved against the `.env` directory.
+- **Omit `CAPTURE_DIR` entirely to disable persistent capture storage.** A temporary
+  JPEG is still needed for recognition and is removed after the round, including
+  on failure. Setting `CAPTURE_DIR=` is a configuration error, not the off switch.
+- Recognition runs on **every successful capture**, even if similarity filtering
+  decides not to store it. Position is not an identity feature; eggs are ignored.
+- This optional-storage behavior belongs to `chicken_device.py`. The standalone
+  legacy `capture.py` still defaults to storing in `captures/`.
+
+Saved images are categorized automatically, preserving UTC filenames:
+
+```text
+CAPTURE_DIR/
+  empty/YYYYMMDDTHHMMSS_ffffffZ.jpg
+  eggs/YYYYMMDDTHHMMSS_ffffffZ.jpg
+  chicken/
+    hen_a/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
+    hen_b/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
+    hen_c/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
+    unknown/YYYYMMDDTHHMMSS_ffffffZ.jpg
+```
+
+Chicken detection takes priority over eggs. Only frames without a detected hen
+are checked for egg candidates, using the existing lightweight shape/texture
+heuristics; this separates `empty` and `eggs` but is not a reliable egg count.
+Disagreement between the presence heuristics is conservatively categorized as an
+unknown chicken. Similarity filtering compares against the latest saved image
+**in the destination category**, so each category has its own baseline.
+
+Automatic named-chicken images go under `unreviewed/` rather than beside the
+confirmed reference JPEGs. Reference loading is nonrecursive and always excludes
+the reserved `unknown/` directory, preventing automatic predictions (including
+unknown hens) from silently becoming identity references. After visual review,
+move a correct named image up one level to promote it to a reference; for unknown
+images, move them into the appropriate confirmed named folder after identifying
+the hen. No existing images are reorganized automatically.
+
+### Run and discover
+
+Keep confirmed timestamped reference JPEGs in `captures/chicken/hen_a/`,
+`captures/chicken/hen_b/`, and `captures/chicken/hen_c/`. You can keep these in
+another directory with `--references /absolute/path/to/chicken`.
+
+```bash
+python3 /home/pi/munai/chicken_device.py
+```
+
+Enable the **MQTT integration** in Home Assistant and point it at the same broker,
+with discovery enabled (standard prefix `homeassistant`). No HA YAML sensor
+configuration is needed. The default MQTT device ID is `munai_nest`; set a stable,
+different `--device-id` for additional nests. The broker must allow this client
+to publish to `homeassistant/sensor/<device-id>/chicken/config` and
+`munai/<device-id>/state`.
+
+The discovered **Munai / Chicken** text sensor has these states:
+
+- `Hen_a`, `Hen_b`, or `Hen_c` when recognized.
+- An empty string when no chicken is detected (including images containing eggs).
+- `Unknown chicken` for a detected hen whose identity is ambiguous or unfamiliar,
+  rather than falsely reporting empty. This is a literal sensor value, distinct
+  from Home Assistant's built-in `unknown` state before receiving observations.
+- HA `unavailable` after 180 seconds without an update; configure
+  `--expire-after SECONDS` to exceed your scheduling interval.
+
+State messages are JSON, e.g. `{"chicken":"Hen_a"}` or `{"chicken":""}`;
+discovery extracts the name. Discovery is retained and republished each round;
+state messages use QoS 1 and are **not retained**, avoiding replay of a stale
+observation as fresh after an HA restart. After a restart, HA receives a fresh
+state on the next scheduled round. No persistent MQTT connection or daemon is
+needed. Failed captures publish no new state; old state expires. A broker failure
+returns nonzero but does not undo an already saved capture. Errors never print
+broker credentials, camera URLs, or raw external diagnostics.
+
+Example cron entry (replace the old capture-only entry):
+
+```cron
+* * * * * /usr/bin/python3 /home/pi/munai/chicken_device.py >> /home/pi/munai/chicken-device.log 2>&1
+```
+
+The runtime user needs write access to the project directory for a stable overlap
+lock, the capture directory when enabled, and system temporary storage. Keep
+`.chicken-device.lock` in place. Each capture is bounded by
+`CAPTURE_TIMEOUT_SECONDS`; MQTT connection and each acknowledged publication have
+a separate timeout (`--mqtt-timeout`, default 10 seconds). Concurrent combined
+runs skip rather than overlap. SIGKILL or power loss may leave temporary files.
+
+Offline checks (no configuration read, camera, or broker connection):
+
+```bash
+/opt/venv/bin/python chicken_device.py --help
+/opt/venv/bin/python -m unittest discover -s tests
+```
+
 ## Image experiments
 
 For offline image processing, open this folder in VS Code and select **Dev
@@ -15,8 +160,8 @@ connect your provider there if needed. Host credentials are not copied into the
 image. After changing container tooling, select **Dev Containers: Rebuild and
 Reopen in Container**.
 
-See [PLAN.md](PLAN.md) for the next-session handoff: first build a simple
-empty/chicken/egg pre-sorter, then consider pretrained detectors and training.
+See [PLAN.md](PLAN.md) for the original experiment plan. The current offline
+helpers use traditional image processing, without trained models.
 Run all experiment Python commands inside the container. Do not load `.env` for
 offline experiments. The workspace is mounted, so treat its secrets accordingly.
 
@@ -47,6 +192,65 @@ target returns a nonzero status without undoing completed moves.
 Review local selections before relying on them; calibration is not a held-out
 accuracy benchmark. This move-based workflow supersedes the earlier
 preserve-in-place proposal in `PLAN.md`.
+
+### Chicken recognizer (no trained model)
+
+Confirmed reference images belong in named folders, for example
+`captures/chicken/hen_a/`, `captures/chicken/hen_b/`, and
+`captures/chicken/hen_c/`. Only timestamped JPEGs directly inside each named
+folder are used as references. Folder names become identity labels.
+The reserved `unknown/` folder and nested `unreviewed/` folders are not references.
+
+```bash
+/opt/venv/bin/python recognize_chickens.py --output recognition/run-001
+/opt/venv/bin/python -m unittest discover -s tests
+```
+
+The recognizer scans the unsorted JPEGs directly in `captures/`. It never moves,
+copies, deletes, or modifies original captures and never accesses `.env` or the
+camera. Each run requires a new output directory to preserve previous reports:
+
+- `predictions.csv`: identity, nearest reference, distance, ambiguity margin,
+  foreground area/box, and measured features for every unsorted image.
+- `hen_a-candidates.jpg`, `hen_b-candidates.jpg`, etc.: annotated contact sheets
+  of strongest accepted matches, spaced at least ten minutes apart. Corresponding
+  `*-candidates.txt` files list original paths in sheet order. The default is up
+  to 24 previews per identity; use `--examples` to change it.
+- `references.json`: reference measurements, feature scales, and run settings.
+- `label-check.csv`: checks on labeled empty/egg images and identity references
+  with the image itself excluded. Identities with just one reference are marked
+  untested. Adjacent frames are correlated: these checks are **not** a held-out
+  accuracy benchmark.
+
+The appearance features use grayscale rather than colour. A large connected
+low-texture region indicates a hen; small foreground objects, including eggs,
+are ignored. The body mask is filled and eroded to reduce straw contamination.
+Measurements include brightness quartiles relative to visible background straw,
+the fraction of dark pixels, local texture quartiles, and edge density. These
+summarize appearance without embedding any real hen measurements or identities. Distances are compared with each identity's closest reference;
+there is no neural network, training, or fitted classifier.
+
+Identity comparisons deliberately ignore coordinates, nest zones, body box size,
+and orientation. Any hen can occupy any position;
+we do not require a reference for every hen/position combination or treat absent
+examples as evidence. Local masks may exclude camera text/walls only. The pooled
+appearance summaries reduce positional dependence, but are not a guarantee of
+pose invariance: different visible feathers, cropping, and uneven illumination
+can still change measurements and produce an `unknown` result.
+
+An identity is accepted only within `--max-distance` (default 1.25) and with a
+sufficient gap to the next identity (`--min-margin`, default 0.25). Otherwise it
+is `unknown`. Scores are heuristic distances, **not probabilities**. `no_chicken`
+means the foreground-area threshold was not reached, not a guarantee that the
+nest is empty. A detected hen always takes priority; eggs are not counted.
+`--chicken-area` and `--texture-threshold` have the same defaults as the sorter.
+
+Review candidate sheets before manually promoting images to confirmed folders.
+Do not blindly feed predictions back as labels. Partial hens, multiple hens,
+pose changes, lighting shifts, or a moved camera can defeat these heuristics.
+The code keeps Python 3.5-compatible syntax/APIs, but runs here in the container;
+deployment on the Pi still needs compatible OpenCV/NumPy packages and timing
+checks (the container's modern package versions do not support Python 3.5).
 
 ## Requirements
 

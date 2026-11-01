@@ -38,3 +38,17 @@ produced each egg.
 ## Testing
 
 - Do not write automated tests for camera capture functionality.
+
+## Chicken recognition
+
+- Use appearance, not nest position, to identify Hen_a, Hen_b, and Hen_c.
+  Reference images do not necessarily cover
+  every hen in every position. Never infer identity from that missing coverage.
+- Coordinates, nest zones, and body orientation must not be identity features.
+  Camera-specific masks may exclude text/walls, but must not assign identities.
+- Prefer position-independent brightness/texture summaries; changed poses can
+  still obscure markings, so retain an unknown outcome for ambiguous images.
+- Ignore eggs when a chicken is present.
+- Automatically saved identity predictions must not become reference images
+  without review. Keep them in named `unreviewed/` subdirectories; reserve
+  `chicken/unknown/` for unidentified hens and exclude it from reference loading.

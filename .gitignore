@@ -3,10 +3,12 @@
 !.env.example
 
 captures/
+recognition/
 *.log
 __pycache__/
 *.pyc
 .DS_Store
+.chicken-device.lock
 
 # Private deployment calibration and runtime data.
 camera-profile.json
