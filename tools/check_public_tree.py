@@ -18,6 +18,7 @@ def main():
         if (any(part in PRIVATE_DIRECTORIES for part in path.parts)
                 or path.suffix.lower() in PRIVATE_SUFFIXES
                 or path.name in {'camera-profile.json', 'profiles.json'}
+                or path.name.startswith('.munai-remote.json')
                 or (path.name.startswith('.env') and name != '.env.example')):
             # Do not echo potentially sensitive filenames.
             bad += 1

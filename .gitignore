@@ -34,3 +34,4 @@ references/
 *.pem
 *.key
 profiles.json
+.munai-remote.json*

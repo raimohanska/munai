@@ -1,7 +1,7 @@
 # Munai
 
 **Home Assistant app:** see [DOCS.md](DOCS.md) for installation, HA configuration,
-MQTT discovery, secure native reference uploads, backups, and current validation
+MQTT discovery, secure devcontainer reference uploads, backups, and current validation
 limits. Capture/MQTT start disabled. No deployment has been performed by the agent.
 
 The legacy Pi/cron tooling below remains available until the HA app is validated.

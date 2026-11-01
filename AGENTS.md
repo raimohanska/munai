@@ -31,6 +31,10 @@ produced each egg.
   output from external programs before reporting it.
 - Never commit `.env`. Use placeholder values only in documentation or an
   eventual `.env.example`.
+- The devcontainer transfer CLI stores its token in ignored `.munai-remote.json`
+  with owner-only permissions. Treat the actual credential file and its backups
+  like `.env`: never inspect, print, copy, or expose them through agent tools.
+  Synthetic credential files created by offline tests are permitted test fixtures.
 - Do not install a dotenv dependency that requires a newer Python version;
   prefer a small, explicitly documented standard-library parser.
 

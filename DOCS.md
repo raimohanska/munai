@@ -11,10 +11,10 @@ in usage; do not retire them until the HA pilot works.
 
 Offline tests exercise real local HTTPS, synthetic reference upload/download,
 authorization, pinning, rollback, persistence, retention, MQTT payloads, and CLI
-behavior with an in-memory credential store. They do not access real images,
-`.env`, cameras, brokers, HA, or native Keychain. CI builds both ARM64 and AMD64
+behavior with synthetic owner-only credential files. They do not access real
+credential files, `.env`, cameras, brokers, or HA. CI builds both ARM64 and AMD64
 images and smoke-tests them without networking. **A configured workflow is not
-evidence of a successful CI run.** Supervisor installation, native macOS Keychain,
+evidence of a successful CI run.** Supervisor installation,
 ARM64 performance, and Green CPU/RAM usage still need a supervised pilot.
 
 A local **x86_64/Python 3.10.18** synthetic benchmark (20 generated 1920×1080
@@ -52,23 +52,30 @@ Transfers bind HTTPS inside the container. Only expose the mapped port to your
 trusted LAN/VPN; **never forward it through your router**. There is no unauthenticated
 token-provisioning endpoint, HTTP downgrade, ingress token workaround, or HA token.
 
-## 2. Pair the native macOS CLI
+## 2. Pair from the devcontainer
 
-Run these commands in a **native macOS terminal**, from this checkout, not inside
-the devcontainer. Use Python 3.10+; the CLI does not need OpenCV or FFmpeg. The
-agent does not install anything on your host.
+Run directly in the **devcontainer terminal**, from this checkout. The transfer
+CLI uses Python's standard library: no separate venv, activation, pip install,
+Keychain, wrapper, OpenCV, or FFmpeg is needed.
 
 ```bash
-python3 -m venv ~/.venvs/munai-remote
-~/.venvs/munai-remote/bin/python -m pip install -r requirements-cli.txt
-~/.venvs/munai-remote/bin/python munai_remote.py remote pair https://homeassistant.local:8443 --fingerprint FINGERPRINT_FROM_HA_LOGS
+python munai_remote.py remote pair https://homeassistant.local:8443 --fingerprint FINGERPRINT_FROM_HA_LOGS
 ```
 
 Pairing checks the server certificate **before sending any HTTP headers**,
-generates a random 256-bit token, and saves it directly in macOS Keychain. Only
-the token's **SHA256 digest** is printed. The raw token is never printed, put in
-process arguments, or saved in the profile JSON. The profile contains only the
-address, public certificate fingerprint, and a Keychain account identifier.
+generates a random 256-bit token, and saves it in **`.munai-remote.json` beside
+the script**, together with the address and certificate fingerprint. This is an
+explicitly approved **plaintext local secret**, like `.env`, with owner-only
+permissions (`0600`). It is gitignored and excluded from the container image.
+Only the token's **SHA256 digest** is printed; the raw token never appears in
+arguments or logs. Do not paste, commit, share, or inspect the credential file
+with agent tools. Anyone with access as your user/root can read it; protect the
+machine and any backups accordingly. Permission checks reject symlinks and
+group/world-readable credential files.
+
+Use an HA address reachable from the container. If `homeassistant.local` does not
+resolve there, replace it with HA's LAN IP/DNS name; certificate pinning still
+checks the same fingerprint before transmitting any token.
 
 In HA's **Configuration** form, use the ordinary primary-client fields:
 
@@ -86,16 +93,16 @@ all authenticated transfers after restart.
 Save and restart the app. Then run:
 
 ```bash
-~/.venvs/munai-remote/bin/python munai_remote.py remote status
+python munai_remote.py remote status
 ```
 
-It should show zero references and capture/MQTT disabled. There is no plaintext
-token-file fallback. Keychain must be available and unlocked. Profile defaults
-are `green` and `~/.config/munai/profiles.json`; use global options **before** the
-command to select another profile or non-secret profile file:
+It should show the app's reference counts and operating modes. The default profile
+is `green`; use global options **before** the command to select another profile.
+`--config` selects a different **secret** credential JSON file: choose an ignored
+location such as `local-data/`, never `.env` or a tracked file.
 
 ```bash
-~/.venvs/munai-remote/bin/python munai_remote.py --profile second-nest remote status
+python munai_remote.py --profile second-nest remote status
 ```
 
 The public certificate and its private key persist under `/data/tls`. Trust uses
@@ -149,9 +156,9 @@ letter/digit, and contain at most 48 characters. Names `unknown`, `unreviewed`,
 inside identity folders qualify. Nested predictions never become references.
 
 ```bash
-~/.venvs/munai-remote/bin/python munai_remote.py push references --dry-run
-~/.venvs/munai-remote/bin/python munai_remote.py push references
-~/.venvs/munai-remote/bin/python munai_remote.py remote status
+python munai_remote.py push references --dry-run
+python munai_remote.py push references
+python munai_remote.py remote status
 ```
 
 The server validates each JPEG and checks it contains a measurable hen using
@@ -195,7 +202,7 @@ as `local-data/reviewed/<identity>/`, then run:
 
 This preserves source images, validates them, and activates local reference versions
 between locked updates. Different contents under an existing name require explicit
-`--overwrite`. Then run the native `push references` command. Never modify the
+`--overwrite`. Then run the `push references` command above. Never modify the
 immutable files under `versions/` directly, and never import predictions without
 review. A reference-only CLI backup/pull is a **flat import folder**; restore it
 using this importer, not by downloading into a live managed `references/` root.
@@ -322,9 +329,9 @@ destination contents fail without overwriting anything.
 Use an ignored `local-data/` destination for exports:
 
 ```bash
-~/.venvs/munai-remote/bin/python munai_remote.py pull references local-data/reviewed-backup
-~/.venvs/munai-remote/bin/python munai_remote.py pull captures local-data/captures --dry-run
-~/.venvs/munai-remote/bin/python munai_remote.py export local-data/export
+python munai_remote.py pull references local-data/reviewed-backup
+python munai_remote.py pull captures local-data/captures --dry-run
+python munai_remote.py export local-data/export
 ```
 
 Downloads verify checksums and activate atomically. Different existing local files
@@ -333,7 +340,7 @@ changes or capture retention may fail safely; rerun it. For a consistent full
 backup, disable capture and avoid uploads, or use HA's cold app backup.
 
 ```bash
-~/.venvs/munai-remote/bin/python munai_remote.py rollback --yes
+python munai_remote.py rollback --yes
 ```
 
 Rollback switches to the version before the **last uploaded file**, not necessarily
@@ -358,6 +365,10 @@ because this recognizer uses references, not trained models.
   client, remove its row from `transfer_tokens`. Save and restart
   the app. Then run `remote logout` locally. Logout alone does not revoke the
   server-side token. To rotate, revoke/logout and pair again.
+- If previously paired using the old native Keychain CLI, revoke that old digest
+  in HA and pair again from the container. The new CLI does not access or delete
+  host Keychain entries. `.munai-remote.json` persists across container rebuilds
+  in the workspace; it is not an HA backup or an image export.
 - If the new app causes trouble, stop it and restore the old cron schedule. Keep
   the legacy Pi references/configuration and ignored camera profile backed up.
 

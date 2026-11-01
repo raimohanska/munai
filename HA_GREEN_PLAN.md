@@ -55,9 +55,10 @@ Preserve the legacy Pi/Python 3.5 capture path; isolate modern add-on tooling.
    with individual files and manifests/checksums rather than archive uploads.
 5. **CLI.** Implement commands such as `remote login/status/logout`, `push`,
    `pull`, and export, with dry-run, checksums, explicit overwrite behavior, and
-   no deletion by default. Configure only non-secret addresses/profiles in files.
-   Retrieve tokens from an OS credential store; never use token command-line
-   arguments or logs. Local logout is distinct from server-side revocation.
+    no deletion by default. Per the later user decision, run the standard-library
+    CLI in the devcontainer and keep its token/address/fingerprint in ignored
+    `.munai-remote.json` with owner-only permissions. Never use token command-line
+    arguments or logs. Local logout is distinct from server-side revocation.
 6. **Package and document.** Add minimal add-on metadata, repository metadata,
    container build, and CI for versioned ARM64 images. Keep datasets, credentials,
    and models out of build contexts using explicit allowlists. Public metadata
@@ -75,12 +76,11 @@ Preserve the legacy Pi/Python 3.5 capture path; isolate modern add-on tooling.
   It currently has no Docker socket integration; nested image builds and a full
   Supervisor test environment need additional, explicitly approved tooling or CI.
   Do not silently mount the host Docker socket or enable privileged mode.
-- macOS Keychain is not directly available inside a Linux devcontainer. Design
-  a credential-store interface: native macOS CLI uses Keychain; container tests
-  use fake tokens and an in-memory store. Do not copy the host keychain or HA
-  credentials into the container. Real container-side access needs a separately
-  approved secret-injection approach; it is not required for offline development.
-- Native Keychain integration, ARM64 runtime behavior, ingress, Supervisor
+- The user explicitly replaced native Keychain/venv tooling with a devcontainer
+  CLI and a plaintext local credential file, analogous to .env. Protect that file
+  with mode 0600; never commit, inspect via agent tools, log, or package it. Tests
+  use synthetic temporary credentials. No host tooling or Keychain access is needed.
+- ARM64 runtime behavior, ingress, Supervisor
   permissions, and Green resource usage need validation outside ordinary unit
   tests. Clearly distinguish simulated tests from hardware validation.
 
@@ -118,7 +118,8 @@ works. Do not deploy as part of that milestone.
 - Use MQTT discovery for one stable device and an Occupant sensor. States are a
   configured identity, empty, unknown, or HA unavailable for stale observations.
   Egg count and other sensors remain later work.
-- Native macOS CLI uses Keychain; HA stores only random-token SHA256 digests.
+- The devcontainer CLI stores its token in ignored owner-only `.munai-remote.json`;
+  HA stores only random-token SHA256 digests. No wrapper or CLI dependencies.
   HTTPS terminates inside the app using a persistent generated certificate. Pair
   its exact public fingerprint from trusted HA logs before sending any token.
   No host SSL mount or HA/Supervisor API permission is needed.
@@ -139,5 +140,5 @@ works. Do not deploy as part of that milestone.
   of current images. Do not invoke HA retention to purge the local review dataset.
 
 See DOCS.md for executable setup instructions, security limits, and the distinction
-between local tests, configured CI, and pending Green/macOS validation. Developing
+between local tests, configured CI, and pending Green validation. Developing
 the app is not permission to publish, connect to hardware, or deploy it.

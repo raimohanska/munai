@@ -2,6 +2,9 @@
 
 ## 0.1.2
 
+- Simplify transfers: standard-library devcontainer CLI with an explicitly
+  approved gitignored owner-only token file. Remove native Keychain dependency,
+  separate CLI requirements, and the proposed automatic-venv wrapper.
 - Resume interrupted offline reviews from their existing manifest; skip completed
   relocations/results and pace the single worker to a default 10% CPU budget.
 - Fix HA configuration: replace the unusable required boundary list with numeric

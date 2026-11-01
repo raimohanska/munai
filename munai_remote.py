@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native macOS transfer CLI. No .env, camera, HA API, or OpenCV access."""
+"""Standard-library transfer CLI for the devcontainer. Never reads .env."""
 import argparse
 import hashlib
 import hmac
@@ -10,18 +10,19 @@ from pathlib import Path
 import re
 import secrets
 import ssl
+import stat
 import sys
 import tempfile
 from urllib.parse import quote, urlsplit
-import uuid
 
 from data_layout import RESERVED, STAMP, reference_directory
 
 MAX_BYTES = 8 * 1024 * 1024
+DEFAULT_CONFIG = Path(__file__).resolve().parent / '.munai-remote.json'
 
 
 class RemoteError(Exception):
-    """Safe, fixed text only; never include raw HTTP/TLS/keychain exceptions."""
+    """Safe, fixed text only; never include raw HTTP/TLS/filesystem exceptions."""
 
 
 def sha256(data):
@@ -45,38 +46,6 @@ def fingerprint(value):
     if not re.fullmatch(r'[a-f0-9]{64}', value):
         raise RemoteError('Copy the full SHA256 certificate fingerprint from the HA app log.')
     return value
-
-
-class Keychain:
-    def __init__(self):
-        if sys.platform != 'darwin':
-            raise RemoteError('Run this CLI natively on macOS; no container/plaintext credential fallback is provided.')
-        try:
-            from keyring.backends.macOS import Keyring
-            self.backend = Keyring()
-        except Exception:
-            raise RemoteError('Install requirements-cli.txt in a native Python virtual environment.') from None
-
-    def get(self, account):
-        try:
-            result = self.backend.get_password('munai-reference-transfer', account)
-            if not result:
-                raise ValueError()
-            return result
-        except Exception:
-            raise RemoteError('Cannot read the token from macOS Keychain; unlock Keychain or pair again.') from None
-
-    def set(self, account, token):
-        try:
-            self.backend.set_password('munai-reference-transfer', account, token)
-        except Exception:
-            raise RemoteError('Cannot save the token in macOS Keychain.') from None
-
-    def delete(self, account):
-        try:
-            self.backend.delete_password('munai-reference-transfer', account)
-        except Exception:
-            raise RemoteError('Cannot remove the token from macOS Keychain.') from None
 
 
 class Remote:
@@ -147,27 +116,51 @@ class Remote:
             connection.close()
 
 
+def check_credentials_file(path, info=None):
+    # Configuration/credentials are separate from the legacy camera .env.
+    if path.name.startswith('.env'):
+        raise RemoteError('Use a separate CLI credential JSON file, never .env.')
+    if info is None:
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            return
+    if not stat.S_ISREG(info.st_mode):
+        raise RemoteError('CLI credential file must be a regular file, not a symlink.')
+    if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+        raise RemoteError('CLI credential file must be owned by your user with mode 0600; fix its permissions before retrying.')
+    if info.st_size > 256 * 1024:
+        raise RemoteError('CLI credential file exceeds the size limit.')
+
+
 def load_profiles(path):
-    if path.is_symlink():
-        raise RemoteError('Profile file must not be a symlink.')
-    if not path.exists():
-        return {}
+    check_credentials_file(path)
     try:
-        data = json.loads(path.read_text())
+        descriptor = os.open(str(path), os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        raise RemoteError('Cannot open CLI credential file; check permissions and refuse symlinks.') from None
+    try:
+        with os.fdopen(descriptor, 'r') as handle:
+            check_credentials_file(path, os.fstat(handle.fileno()))
+            data = json.load(handle)
         if not isinstance(data, dict):
             raise ValueError()
         return data
+    except RemoteError:
+        raise
     except Exception:
-        raise RemoteError('Cannot read CLI profiles; restore the non-secret profile file or use --config.') from None
+        raise RemoteError('Cannot read CLI credential JSON; restore a private backup or pair using a new --config file.') from None
 
 
 def save_profiles(path, profiles):
-    if path.is_symlink():
-        raise RemoteError('Profile file must not be a symlink.')
+    check_credentials_file(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    descriptor, name = tempfile.mkstemp(prefix='.profiles-', dir=str(path.parent))
+    descriptor, name = tempfile.mkstemp(prefix='.munai-remote.json.pending-', dir=str(path.parent))
     try:
         with os.fdopen(descriptor, 'w') as handle:
+            os.fchmod(handle.fileno(), 0o600)
             json.dump(profiles, handle, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
@@ -290,10 +283,10 @@ def pull(remote, kind, root, dry_run=False, overwrite=False):
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument('--profile', default='green')
-    result.add_argument('--config', type=Path, default=Path.home() / '.config' / 'munai' / 'profiles.json')
+    result.add_argument('--config', type=Path, default=DEFAULT_CONFIG, help='Private credential JSON (default: .munai-remote.json beside this script)')
     sub = result.add_subparsers(dest='command', required=True)
     remote = sub.add_parser('remote').add_subparsers(dest='remote_command', required=True)
-    pair = remote.add_parser('pair', help='Verify the certificate, generate a token in Keychain, print only its hash')
+    pair = remote.add_parser('pair', help='Verify the certificate, save a local token with mode 0600, print only its hash')
     pair.add_argument('url')
     pair.add_argument('--fingerprint', required=True)
     remote.add_parser('status')
@@ -310,29 +303,23 @@ def parser():
     return result
 
 
-def main(argv=None, credentials=None):
+def main(argv=None):
     arguments = parser().parse_args(argv)
     os.umask(0o077)
     try:
         if not re.fullmatch(r'[a-zA-Z0-9_-]{1,48}', arguments.profile):
             raise RemoteError('Profile name must contain 1-48 letters, digits, underscores or hyphens.')
         profiles = load_profiles(arguments.config)
-        credentials = credentials or Keychain()
         if arguments.command == 'remote' and arguments.remote_command == 'pair':
             if arguments.profile in profiles:
                 raise RemoteError('Profile already exists; revoke the old digest in HA and log out locally before re-pairing.')
-            profile = {'url': arguments.url.rstrip('/'), 'fingerprint': fingerprint(arguments.fingerprint),
-                       'account': uuid.uuid4().hex}
+            profile = {'url': arguments.url.rstrip('/'), 'fingerprint': fingerprint(arguments.fingerprint)}
             Remote(profile).connect().close()
             token = secrets.token_urlsafe(32)
-            credentials.set(profile['account'], token)
+            profile['token'] = token
             profiles[arguments.profile] = profile
-            try:
-                save_profiles(arguments.config, profiles)
-            except Exception:
-                credentials.delete(profile['account'])
-                raise
-            print('Token stored in macOS Keychain. Paste this digest into Transfer token SHA256 (transfer_token_sha256) in HA Configuration:')
+            save_profiles(arguments.config, profiles)
+            print('Token saved to the local credential file (mode 0600). Paste this digest into Transfer token SHA256 (transfer_token_sha256) in HA Configuration:')
             print(sha256(token.encode('utf-8')))
             print('Set Transfer client permissions (transfer_token_scope) to write for uploads, save, restart, then run remote status.')
             return 0
@@ -340,12 +327,14 @@ def main(argv=None, credentials=None):
             raise RemoteError('No matching profile; run remote pair first.')
         profile = profiles[arguments.profile]
         if arguments.command == 'remote' and arguments.remote_command == 'logout':
-            credentials.delete(profile['account'])
             del profiles[arguments.profile]
             save_profiles(arguments.config, profiles)
             print('Local token removed. Revoke its digest in HA Configuration and restart to disable server access.')
             return 0
-        remote = Remote(profile, credentials.get(profile['account']))
+        token = profile.get('token')
+        if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{32,128}', token):
+            raise RemoteError('Profile has no valid local token; revoke the old digest in HA, log out locally and pair again.')
+        remote = Remote(profile, token)
         if arguments.command == 'remote':
             print(json.dumps(remote.request('GET', '/v1/status'), indent=2))
         elif arguments.command == 'push':
@@ -368,7 +357,7 @@ def main(argv=None, credentials=None):
     except KeyboardInterrupt:
         return 130
     except Exception:
-        print('Munai: operation failed; check local file permissions, Keychain and app status.', file=sys.stderr)
+        print('Munai: operation failed; check local credential/file permissions and app status.', file=sys.stderr)
         return 1
 
 

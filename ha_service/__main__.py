@@ -50,7 +50,7 @@ def main():
             LOG.info('HTTPS transfers ready on port 8443 (host port must be enabled in HA Network settings).')
             LOG.info('Transfer certificate SHA256 fingerprint: %s', fingerprint)
             if not options['transfer_tokens']:
-                LOG.info('Transfers locked: pair the native CLI and add its token digest in HA Configuration.')
+                LOG.info('Transfers locked: pair the devcontainer CLI and add its token digest in HA Configuration.')
         if publisher:
             publisher.start()
         LOG.info('Munai started. Capture %s; MQTT %s; persistent captures %s; interval %d seconds.',

@@ -501,32 +501,27 @@ class APITests(StorageFixture):
         unused, pin = tls_context(self.store.root)
         self.assertEqual(pin, self.profile['fingerprint'])
 
-    def test_pairing_stores_raw_token_only_in_credential_store(self):
-        class MemoryCredentials:
-            def __init__(self):
-                self.values = {}
-
-            def set(self, account, token):
-                self.values[account] = token
-
-            def get(self, account):
-                return self.values[account]
-
-            def delete(self, account):
-                del self.values[account]
-
-        credentials = MemoryCredentials()
+    def test_pairing_stores_token_in_private_file_without_printing_it(self):
         output = io.StringIO()
         config = self.root / 'profiles.json'
         args = ['--config', str(config), 'remote', 'pair', self.profile['url'],
                 '--fingerprint', self.profile['fingerprint']]
         with redirect_stdout(output):
-            self.assertEqual(main(args, credentials), 0)
-        token = next(iter(credentials.values.values()))
+            self.assertEqual(main(args), 0)
+        profiles = json.loads(config.read_text())  # Synthetic local HTTPS fixture only.
+        token = profiles['green']['token']
         self.assertNotIn(token, output.getvalue())
-        self.assertNotIn(token, config.read_text())
         self.assertIn(digest(token.encode()), output.getvalue())
         self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+        self.server.tokens = [{'name': 'synthetic-file-client', 'scope': 'write', 'sha256': digest(token.encode())}]
+        status_output = io.StringIO()
+        with redirect_stdout(status_output):
+            self.assertEqual(main(['--config', str(config), 'remote', 'status']), 0)
+        self.assertNotIn(token, status_output.getvalue())
+        self.assertIn('reference_count', status_output.getvalue())
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(main(['--config', str(config), 'remote', 'logout']), 0)
+        self.assertEqual(json.loads(config.read_text()), {})
 
 
 class CLISafetyTests(unittest.TestCase):

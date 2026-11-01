@@ -14,7 +14,7 @@
     "device_id": {"name": "Stable MQTT device ID", "description": "Keep this unchanged after discovery. Use a different ID from the legacy cron device."},
     "device_name": {"name": "Device display name"},
     "transfer_enabled": {"name": "Enable HTTPS reference transfers", "description": "Also map the host port under Network. LAN/VPN only; never use router port forwarding."},
-    "transfer_token_name": {"name": "Transfer client name", "description": "A descriptive name for the primary native CLI client."},
+    "transfer_token_name": {"name": "Transfer client name", "description": "A descriptive name for the primary CLI client."},
     "transfer_token_scope": {"name": "Transfer client permissions", "description": "Write permits reference uploads; read permits only status and downloads."},
     "transfer_token_sha256": {"name": "Transfer token SHA256 (optional)", "description": "Paste the digest printed by CLI pairing, not the certificate fingerprint. Leave empty to lock transfers; clear and restart to revoke."},
     "transfer_tokens": {"name": "Additional transfer clients (optional)", "description": "Usually leave empty. For multiple clients, add a text row per client: name|read-or-write|SHA256. No brackets or JSON."},
