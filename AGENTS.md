@@ -1,5 +1,11 @@
 # Project instructions
 
+## Workflow
+
+- Commit completed work when it is ready, after running applicable checks.
+- Include only files related to the task; do not commit unrelated user changes,
+  secrets, or generated captures. Do not push unless explicitly requested.
+
 ## Goal
 
 Collect timestamped images from an overhead LAN RTSP camera, then build a
