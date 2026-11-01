@@ -22,6 +22,7 @@ references/
 /tls/
 /reports/
 /service.lock
+/nest-state.json
 *.jpg
 *.jpeg
 *.png

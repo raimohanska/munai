@@ -20,6 +20,11 @@ def discovery(options, sensor='occupant'):
         config.update({'name': 'Egg count', 'unique_id': device_id + '_egg_count',
                        'value_template': '{{ value_json.egg_count }}',
                        'icon': 'mdi:egg', 'state_class': 'measurement'})
+    elif sensor == 'latest_event':
+        config.update({'name': 'Latest event', 'unique_id': device_id + '_latest_event',
+                       'state_topic': base + '/latest_event', 'icon': 'mdi:history'})
+        del config['value_template']
+        del config['expire_after']
     elif sensor != 'occupant':
         raise ValueError('Unsupported sensor')
     return config
@@ -36,9 +41,11 @@ class MQTT:
         self.mqtt = mqtt
         self.config = discovery(options)
         self.egg_config = discovery(options, 'egg_count')
+        self.event_config = discovery(options, 'latest_event')
         self.base = 'munai/' + options['device_id']
         self.discovery_topic = 'homeassistant/sensor/' + options['device_id'] + '/occupant/config'
         self.egg_discovery_topic = 'homeassistant/sensor/' + options['device_id'] + '/egg_count/config'
+        self.event_discovery_topic = 'homeassistant/sensor/' + options['device_id'] + '/latest_event/config'
         self.connected = threading.Event()
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=options['device_id'])
         if options['mqtt_user']:
@@ -65,6 +72,7 @@ class MQTT:
     def announce(self, client):
         client.publish(self.discovery_topic, json.dumps(self.config), qos=1, retain=True)
         client.publish(self.egg_discovery_topic, json.dumps(self.egg_config), qos=1, retain=True)
+        client.publish(self.event_discovery_topic, json.dumps(self.event_config), qos=1, retain=True)
 
     def on_message(self, client, userdata, message):
         if message.topic == 'homeassistant/status' and message.payload == b'online':
@@ -86,10 +94,13 @@ class MQTT:
         except Exception:
             raise AppError('MQTT publish failed or timed out; check broker connectivity and permissions.') from None
 
-    def publish(self, prediction):
+    def publish(self, prediction, latest_event=None):
         eggs = prediction.get('egg_count') if prediction['label'] == 'no_chicken' else 0
         if type(eggs) is not int or eggs < 0:
             raise AppError('Invalid egg count; no observation published.')
+        if latest_event is not None:
+            # Historical event, unlike live observations, survives reconnects.
+            self.send(self.base + '/latest_event', latest_event, True)
         # Expiring state MUST NOT be retained. Availability alone is insufficient
         # to present an occupant after a restart or an extended capture failure.
         self.send(self.base + '/state', json.dumps({'occupant': occupant(prediction), 'egg_count': eggs}), False)

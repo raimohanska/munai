@@ -1,3 +1,3 @@
 """Modern Home Assistant service; independent of the legacy cron entry point."""
 
-VERSION = '0.1.4'
+VERSION = '0.1.5'

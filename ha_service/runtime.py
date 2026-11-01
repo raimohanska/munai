@@ -16,7 +16,9 @@ from data_layout import RESERVED, prediction_category
 
 from . import VERSION
 from .mqtt import occupant
+from .nest import NestState
 from .options import AppError
+from .schedule import capture_paused
 from .storage import MAX_FILE_BYTES, atomic_json, image_valid, safe_path
 
 LOG = logging.getLogger('munai')
@@ -55,6 +57,8 @@ class Runtime:
         self.references = []
         self.last_observation = None
         self.last_occupant = None
+        # Prediction-only callers may omit storage; they never advance events.
+        self.nest = NestState(store.root) if store is not None else None
         self.events = EventLog()
 
     def measurement(self, path, mask=None):
@@ -112,7 +116,8 @@ class Runtime:
                     'reference_revision': self.store.revision, 'reference_count': len(references),
                     'identity_count': identities, 'empty_reference_count': empty_count,
                     'references_ready': identities >= 2 and empty_count > 0,
-                    'last_observation': self.last_observation}
+                    'last_observation': self.last_observation,
+                    'latest_event': self.nest.state['latest_event']}
 
     def _references(self):
         root = self.store.reference_root()
@@ -167,20 +172,28 @@ class Runtime:
                            'egg_count': prediction['egg_count'],
                            'distance': prediction['distance'], 'margin': prediction['margin']}
             atomic_json(self.store.root / 'results' / (stamp + '.json'), observation)
+            for event in self.nest.observe(prediction['label'], prediction['egg_count']):
+                LOG.info('Latest event: %s.', event)
             self.last_observation = observation
             if self.last_occupant != observation['occupant']:
                 LOG.info('Nest occupant: %s.', observation['occupant'])
                 self.last_occupant = observation['occupant']
             if self.publisher:
-                self.publisher.publish(prediction)
+                self.publisher.publish(prediction, self.nest.state['latest_event'] or 'No events yet')
 
     def run(self, stop):
         deadline = time.monotonic()
+        was_paused = None
         while not stop.is_set():
             started = time.monotonic()
+            previous_observation = self.last_observation
             try:
                 self.store.retain()
-                if self.options['capture_enabled']:
+                paused = capture_paused(self.options)
+                if self.options['capture_enabled'] and paused != was_paused:
+                    LOG.info('Scheduled camera capture %s.', 'paused for sleep time' if paused else 'active')
+                    was_paused = paused
+                if self.options['capture_enabled'] and not paused:
                     self.round()
                     self.events.recovered('round', 'Capture, recognition and publication recovered.')
                 if self.publisher and not self.publisher.connected.is_set():
@@ -192,6 +205,8 @@ class Runtime:
             except Exception:
                 self.events.failed('round', 'Round failed; check dependencies, reviewed references and storage permissions.')
             finally:
+                if self.last_observation is previous_observation:
+                    self.nest.reset_confirmation()
                 # Enforce the cap after this round too, not just before the next.
                 try:
                     self.store.retain()

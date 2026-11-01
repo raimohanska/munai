@@ -1,8 +1,9 @@
 # Munai
 
 Home Assistant app that recognizes the current nest occupant and creates MQTT
-**Occupant** and **Egg count** sensors. Egg count estimates visible eggs when no
-hen is detected and reports **0 when a hen is present**, including unknown hens.
+**Occupant**, **Egg count**, and **Latest event** sensors. Egg count estimates
+visible eggs when no hen is detected and reports **0 when a hen is present**,
+including unknown hens.
 [Offline egg counting](DOCS.md#offline-egg-counting) is available for calibration.
 
 **Already installed and paired?** Continue with [upload references](#3-upload-references),
@@ -101,9 +102,9 @@ In Munai's HA **Configuration**, set:
 Keep `device_id` stable. Save and restart Munai.
 
 **Check:** under **Settings → Devices & services → MQTT → Devices**, find your
-Munai device and its **Occupant** and **Egg count** sensors. They are unavailable
-until a fresh capture is published. HA's MQTT integration must be configured and
-discovery enabled.
+Munai device and its **Occupant**, **Egg count**, and **Latest event** sensors.
+They are unavailable until a fresh capture is published. HA's MQTT integration
+must be configured and discovery enabled.
 
 ## 5. Enable capture
 
@@ -132,7 +133,39 @@ Before relying on Egg count, calibrate **Minimum egg area** (`egg_min_area`) and
 images. Areas use the 640×360 processing frame; generic defaults are not a camera
 calibration. Use offline `--min-area` / `--max-area` checks to select the HA values.
 The count is per frame, not cumulative; zero while occupied does not mean there
-are no hidden eggs. Both sensors become unavailable if observations go stale.
+are no hidden eggs. Both live sensors become unavailable if observations go stale.
+
+### Stateful nest events (0.1.5+)
+
+**Latest event** holds messages such as `Hen_a arrived`, `Hen_a laid an Egg`,
+`Hen_a left`, and `2 eggs collected` (synthetic identity shown here).
+Arrivals, departures, and identity changes require **3 consecutive shots**.
+Unknown observations preserve a confirmed hen's identity. A direct hen swap
+reports the old hen leaving and the new hen arriving; the latest sensor shows
+the arrival. Hidden eggs are not attributed across that swap. An initially
+unknown visit can acquire a confirmed identity without losing its egg baseline.
+
+The last chicken-free egg count is frozen during a visit. A higher count on
+confirmed departure produces a laying event; otherwise, a leaving event. If no
+baseline exists yet, only a leaving event is reported. Collection requires **3
+consecutive chicken-free zero-egg shots**, reports the preceding positive count,
+and fires only once. Brief zero readings and occupied-nest zeros never clear the
+baseline. Partial collection is not announced.
+
+The event text is retained at `munai/<device_id>/latest_event`, separate from
+non-retained live state at `munai/<device_id>/state`. It does not expire between
+events, but follows device availability. The latest event is republished with
+each successful observation, including after reconnect; intermediate events
+during a broker outage are not an event history. Before any event, it reads
+`No events yet`.
+
+Private state lives in `/data/nest-state.json`, outside capture retention and
+transfer downloads. Writes use atomic replacement and file/directory fsync;
+state is saved before MQTT publication. Visits, baselines, and the latest event
+survive restarts, but confirmation streaks restart at zero (also after failed
+observations). Invalid, unsupported, or symlinked state stops startup rather
+than inventing events. Restore it from backup, or deliberately remove that exact
+file while Munai is stopped to reset tracking; the baseline starts unknown.
 
 Watch HA responsiveness. Once it works reliably, enable **Start on boot** on
 Munai's Info page. If it causes trouble, stop Munai before restoring the cron job.

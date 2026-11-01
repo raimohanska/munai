@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.1.5
+
+- Add a retained Latest event MQTT sensor for confirmed arrivals, departures,
+  laying events, and egg collection. Require three consecutive observations for
+  presence/identity changes and chicken-free zero counts for collection.
+- Preserve known identities through unknown frames; freeze the pre-visit egg
+  baseline and avoid egg attribution when hens swap without confirmed absence.
+- Atomically persist validated visit state and the latest event across restarts;
+  restart confirmation streaks and fail closed on corrupt/unsupported state.
 
 - Reject egg-pile chicken false positives using unclosed smooth-patch thickness
   together with plumage texture; share the presence check across recognition and
