@@ -39,6 +39,9 @@ def validate(raw):
     for key in ('capture_enabled', 'mqtt_enabled', 'mqtt_tls', 'transfer_enabled', 'store_captures'):
         if type(options[key]) is not bool:
             raise AppError('Enable/disable options must be booleans.')
+    for key in ('capture_pause_start', 'capture_pause_end'):
+        if not isinstance(options[key], str) or not re.fullmatch(r'([01][0-9]|2[0-3]):[0-5][0-9]', options[key]):
+            raise AppError('Capture pause times must use HH:MM (00:00 through 23:59).')
     for key in ('camera_url', 'mqtt_host', 'mqtt_user', 'mqtt_password', 'device_name'):
         if not isinstance(options[key], str) or len(options[key]) > 2048 or '\x00' in options[key]:
             raise AppError('Invalid text option; check camera and MQTT configuration.')

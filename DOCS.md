@@ -10,6 +10,21 @@ Docker's explicit allowlist excludes Git history, `.env`, references, and local
 camera calibration. The legacy Pi/cron entry points remain available unchanged
 in usage; do not retire them until the HA pilot works.
 
+## Overnight capture pause
+
+The HA capture loop skips camera capture and recognition from **23:00 inclusive
+to 05:00 exclusive** by default, using the service's local Home Assistant timezone
+(not the UTC timestamps used for filenames). Configure `capture_pause_start` and
+`capture_pause_end` as quoted `HH:MM` strings in the app options, then restart.
+Matching times disable the pause; daytime pause windows also work. Capture
+resumes on the next scheduled round after the window ends. A round already in
+progress may finish when the pause starts.
+
+MQTT connectivity, reference transfers, and storage retention remain running.
+No overnight observations are fabricated or replayed: live sensors expire
+normally until fresh morning observations arrive. Legacy Pi/cron commands are
+unchanged.
+
 ## Offline egg counting
 
 Run the experimental OpenCV counter in the devcontainer:

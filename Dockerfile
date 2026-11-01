@@ -2,7 +2,7 @@ FROM python:3.13.18-slim-bookworm
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       ffmpeg openssl ca-certificates libglib2.0-0 libgomp1 \
+       ffmpeg openssl ca-certificates tzdata libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements-app.txt ./
