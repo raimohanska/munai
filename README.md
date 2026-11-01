@@ -68,7 +68,7 @@ TLS, MQTT credentials and messages are unencrypted; use only on a trusted LAN.
 - Recognition runs on **every successful capture**, even if similarity filtering
   decides not to store it. Position is not an identity feature; eggs are ignored.
 - This optional-storage behavior belongs to `chicken_device.py`. The standalone
-  legacy `capture.py` still defaults to storing in `captures/`.
+   legacy `capture.py` still stores unclassified images in `captures/pending/`.
 
 Saved images are categorized automatically, preserving UTC filenames:
 
@@ -76,11 +76,10 @@ Saved images are categorized automatically, preserving UTC filenames:
 CAPTURE_DIR/
   empty/YYYYMMDDTHHMMSS_ffffffZ.jpg
   eggs/YYYYMMDDTHHMMSS_ffffffZ.jpg
-  chicken/
-    hen_a/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
-    hen_b/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
-    hen_c/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
-    unknown/YYYYMMDDTHHMMSS_ffffffZ.jpg
+  unknown/YYYYMMDDTHHMMSS_ffffffZ.jpg
+  hen_a/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
+  hen_b/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
+  hen_c/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
 ```
 
 Chicken detection takes priority over eggs. Only frames without a detected hen
@@ -94,15 +93,17 @@ Automatic named-chicken images go under `unreviewed/` rather than beside the
 confirmed reference JPEGs. Reference loading is nonrecursive and always excludes
 the reserved `unknown/` directory, preventing automatic predictions (including
 unknown hens) from silently becoming identity references. After visual review,
-move a correct named image up one level to promote it to a reference; for unknown
-images, move them into the appropriate confirmed named folder after identifying
-the hen. No existing images are reorganized automatically.
+copy selected images into an explicitly reviewed import folder and run
+`tools/import_references.py --apply` as documented in [DOCS.md](DOCS.md).
+Never edit managed reference versions directly. Existing local data can be
+reorganized using the explicit, dry-run-first layout migration in that guide.
 
 ### Run and discover
 
-Keep confirmed timestamped reference JPEGs in `captures/chicken/hen_a/`,
-`captures/chicken/hen_b/`, and `captures/chicken/hen_c/`. You can keep these in
-another directory with `--references /absolute/path/to/chicken`.
+Reviewed references live in `references/versions/<version>/<identity>/`, with
+`references/state.json` selecting the active version, exactly as on HA. The
+default `--references` is the managed `references/` root beside these scripts.
+An explicit flat reviewed import folder remains accepted for compatibility.
 
 ```bash
 python3 /home/pi/munai/chicken_device.py
@@ -179,11 +180,11 @@ offline experiments. The workspace is mounted, so treat its secrets accordingly.
 /opt/venv/bin/python sort_captures.py --move --target 20 --seed 7
 ```
 
-The offline helper randomly examines timestamped JPEGs directly in `captures/`
-and moves selected originals into `captures/empty/`, `captures/chicken/`, and
+The offline helper randomly examines timestamped JPEGs in `captures/pending/`
+and moves selected originals into `captures/empty/`, `captures/unknown/`, and
 `captures/eggs/`. Existing category images count toward the target; full categories
 are skipped. No images are copied, deleted, or overwritten. A CSV move manifest
-is saved in `captures/sort-*.csv`; an exclusive lock prevents concurrent sorters.
+is saved in `reports/sorting/sort-*.csv`; an exclusive lock prevents concurrent sorters.
 Moves use Linux's atomic no-replace rename (same filesystem required).
 
 Only OpenCV and NumPy are needed. Processing uses 640×360 grayscale local texture:
@@ -201,18 +202,17 @@ preserve-in-place proposal in `PLAN.md`.
 
 ### Chicken recognizer (no trained model)
 
-Confirmed reference images belong in named folders, for example
-`captures/chicken/hen_a/`, `captures/chicken/hen_b/`, and
-`captures/chicken/hen_c/`. Only timestamped JPEGs directly inside each named
-folder are used as references. Folder names become identity labels.
-The reserved `unknown/` folder and nested `unreviewed/` folders are not references.
+Confirmed references belong in the managed `references/` root, separate from
+all captures. Its active version has one folder per identity. Only timestamped
+JPEGs directly inside those identity folders are references. Folder names become
+identity labels; reserved categories and nested `unreviewed/` folders are excluded.
 
 ```bash
 /opt/venv/bin/python recognize_chickens.py --output recognition/run-001
 /opt/venv/bin/python -m unittest discover -s tests
 ```
 
-The recognizer scans the unsorted JPEGs directly in `captures/`. It never moves,
+The recognizer scans the unsorted JPEGs in `captures/pending/`. It never moves,
 copies, deletes, or modifies original captures and never accesses `.env` or the
 camera. Each run requires a new output directory to preserve previous reports:
 
@@ -319,7 +319,7 @@ file can be selected with `--env /absolute/path/to/config`.
 Images are stored as:
 
 ```text
-captures/20000101T120000_000000Z.jpg
+captures/pending/20000101T120000_000000Z.jpg
 ```
 
 The UTC timestamp records the start of the capture attempt, before connecting to

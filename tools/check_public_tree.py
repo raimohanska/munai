@@ -3,7 +3,8 @@ from pathlib import PurePosixPath
 import subprocess
 import sys
 
-PRIVATE_DIRECTORIES = {'captures', 'recognition', 'models', 'references', 'local-data'}
+PRIVATE_DIRECTORIES = {'captures', 'recognition', 'models', 'references', 'local-data',
+                       'results', 'scratch', 'tls', 'reports'}
 PRIVATE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.onnx', '.pt', '.pth', '.npz', '.pkl', '.joblib', '.pem', '.key'}
 
 

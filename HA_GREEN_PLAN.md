@@ -92,7 +92,7 @@ Preserve the legacy Pi/Python 3.5 capture path; isolate modern add-on tooling.
   Training and continuous video processing stay off the Green.
 - Preserve appearance-based identities and an unknown result. Ignore eggs when
   a hen is present. Named predictions remain in `unreviewed/`; never promote them
-  automatically. Exclude `chicken/unknown/` from reference loading.
+  automatically. Exclude reserved categories and nested predictions from references.
 - Test API authorization, malicious paths, upload limits, partial transfers,
   atomic activation/rollback, retention, redaction, and CLI behavior using local
   fixtures. Follow `AGENTS.md`: no automated camera-capture tests.
@@ -130,6 +130,13 @@ works. Do not deploy as part of that milestone.
   neither needed nor accepted. Back up private configuration/TLS identity via HA.
 - Logs show changes, actionable failures and recovery; identical failures are
   suppressed for 15 minutes. Never log secrets or raw external exceptions.
+- Use the same relative data layout locally and on HA. Reviewed references live
+  in `references/versions/<version>/<identity>/`, selected by `references/state.json`.
+  Captures use `empty/`, `unknown/`, and `<identity>/unreviewed/` directly below
+  `captures/`; standalone/offline tools also use `pending/` and optionally `eggs/`.
+  Migrate existing data explicitly without reading .env or contacting hardware.
+- Finish deployment preparation before running the requested local batch review
+  of current images. Do not invoke HA retention to purge the local review dataset.
 
 See DOCS.md for executable setup instructions, security limits, and the distinction
 between local tests, configured CI, and pending Green/macOS validation. Developing

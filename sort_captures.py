@@ -19,7 +19,7 @@ import numpy as np
 from camera_profile import exclude_camera_regions
 
 
-CATEGORIES = ('empty', 'chicken', 'eggs')
+CATEGORIES = ('empty', 'unknown', 'eggs')
 CAPTURE_NAME = re.compile(r'^\d{8}T\d{6}_\d{6}Z\.jpg$')
 
 
@@ -111,7 +111,10 @@ def main():
             if args.move:
                 folder.mkdir(exist_ok=True)
             counts[category] = len(capture_files(folder)) if folder.exists() else 0
-        files = capture_files(directory)
+        pending = directory / 'pending'
+        if pending.is_symlink():
+            raise ValueError('Pending image directory must not be a symlink')
+        files = capture_files(pending) if pending.is_dir() else []
         random.Random(args.seed).shuffle(files)
         scanned = 0
         started = time.monotonic()
@@ -119,7 +122,11 @@ def main():
         manifest = None
         try:
             if args.move:
-                manifest_path = directory / ('sort-%d-%d.csv' % (time.time() * 1000000, os.getpid()))
+                reports = directory.parent / 'reports' / 'sorting'
+                if reports.is_symlink() or reports.parent.is_symlink():
+                    raise ValueError('Report directories must not be symlinks')
+                reports.mkdir(parents=True, exist_ok=True)
+                manifest_path = reports / ('sort-%d-%d.csv' % (time.time() * 1000000, os.getpid()))
                 manifest = manifest_path.open('x', newline='')
                 writer = csv.writer(manifest)
                 writer.writerow(['source', 'destination', 'category', 'largest_blob', 'egg_boxes', 'seed', 'chicken_area', 'texture_threshold'])
@@ -128,6 +135,7 @@ def main():
                 if all(counts[c] >= args.target for c in CATEGORIES):
                     break
                 category, largest, eggs = classify(path, args.chicken_area, args.texture_threshold)
+                category = 'unknown' if category == 'chicken' else category
                 scanned += 1
                 if counts[category] >= args.target:
                     continue

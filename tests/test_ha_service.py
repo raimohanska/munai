@@ -63,7 +63,9 @@ class OptionsTests(unittest.TestCase):
         self.assertEqual(options['camera_profile']['excluded_rectangles'], [[10, 20, 30, 40]])
 
     def test_metadata_options_and_schema_agree(self):
+        from ha_service import VERSION
         config = json.loads((Path(__file__).resolve().parent.parent / 'config.json').read_text())
+        self.assertEqual(config['version'], VERSION)
         self.assertEqual(set(config['options']), set(config['schema']))
         self.assertIn('aarch64', config['arch'])
         self.assertNotIn('image', config)  # Build on the Green, like Paine.

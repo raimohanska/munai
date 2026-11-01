@@ -109,26 +109,38 @@ ignored local `camera-profile.json` uses rectangles as `[x1, y1, x2, y2]` arrays
 copy your private values into the corresponding HA form fields. No real camera
 calibration is included in this repository. Save and restart after option changes.
 
-Reference layout on this machine:
+The same relative layout is used on this machine (the checkout is the data root)
+and HA (the data root is `/data`):
 
 ```text
-captures/chicken/
-  hen_a/20000101T120000_000000Z.jpg
-  hen_b/20000101T120100_000000Z.jpg
-  hen_a/unreviewed/...                 # deliberately NOT uploaded
-  unknown/...                          # deliberately NOT uploaded
+<data-root>/
+  references/
+    state.json                         # active and previous version IDs
+    versions/<version>/
+      hen_a/20000101T120000_000000Z.jpg
+      hen_b/20000101T120100_000000Z.jpg
+    staging/
+  captures/
+    pending/                           # unclassified standalone/offline frames
+    empty/
+    eggs/                              # optional legacy/offline egg candidates
+    unknown/                           # detected hen, identity not known
+    hen_a/unreviewed/                   # named automatic predictions
+  results/
+  reports/                             # optional historical/offline reports
 ```
 
 These names and dates are synthetic examples. Your existing real identity folder
 names and UTC capture filenames are used at runtime without entering Git. Folder
 names must be lowercase letters, digits, underscores or hyphens, start with a
 letter/digit, and contain at most 48 characters. Names `unknown`, `unreviewed`,
-`empty`, `no_chicken` and `unavailable` are reserved. Only timestamped JPEGs directly
+`empty`, `eggs`, `pending`, `no_chicken`, `unavailable`, `versions`, `staging` and
+`state` are reserved. Only timestamped JPEGs directly
 inside identity folders qualify. Nested predictions never become references.
 
 ```bash
-~/.venvs/munai-remote/bin/python munai_remote.py push captures/chicken --dry-run
-~/.venvs/munai-remote/bin/python munai_remote.py push captures/chicken
+~/.venvs/munai-remote/bin/python munai_remote.py push references --dry-run
+~/.venvs/munai-remote/bin/python munai_remote.py push references
 ~/.venvs/munai-remote/bin/python munai_remote.py remote status
 ```
 
@@ -137,6 +149,46 @@ the configured masks/thresholds. It checks SHA256, rejects symlinks and unsafe
 paths, stages the change, and atomically activates it **between recognition
 rounds**. Readiness requires reviewed references for at least **two identities**.
 Include varied appearances/poses; missing nest positions are never identity evidence.
+
+`push references` resolves only the active local snapshot from `state.json`; it
+does not upload previous versions, staging files, or any captured predictions.
+A flat directory of explicitly reviewed identity folders can also be used as an
+import source, but is not the managed data layout.
+
+### Migrate existing local images before deployment
+
+In the devcontainer, preview the old layout migration, then explicitly apply it:
+
+```bash
+/tmp/opencode/munai-ha-venv/bin/python tools/migrate_layout.py
+/tmp/opencode/munai-ha-venv/bin/python tools/migrate_layout.py --apply
+```
+
+It imports reviewed images from the old named `captures/chicken/` folders into
+validated versioned references, moves raw root JPEGs into `captures/pending/`,
+flattens unknown/predicted captures, and preserves CSV manifests under
+`reports/legacy/`. Existing empty/egg captures are unchanged. It checks conflicts
+before moving anything, never overwrites differing files, verifies every reference
+before removing its original name, and can be rerun after interruption. It takes
+the local capture/device/service/sorter locks; stop those writers first. It never
+reads or changes `.env`, contacts a camera/broker/HA, or runs batch classification.
+Existing offline reports retain their historical paths; regenerate rather than
+editing them. Take a private data backup before a large manual reorganization.
+
+To add newly reviewed images later, put copies in an ignored staging folder such
+as `local-data/reviewed/<identity>/`, then run:
+
+```bash
+/tmp/opencode/munai-ha-venv/bin/python tools/import_references.py local-data/reviewed
+/tmp/opencode/munai-ha-venv/bin/python tools/import_references.py local-data/reviewed --apply
+```
+
+This preserves source images, validates them, and activates local reference versions
+between locked updates. Different contents under an existing name require explicit
+`--overwrite`. Then run the native `push references` command. Never modify the
+immutable files under `versions/` directly, and never import predictions without
+review. A reference-only CLI backup/pull is a **flat import folder**; restore it
+using this importer, not by downloading into a live managed `references/` root.
 
 Unchanged files are skipped. No files are deleted. Different contents under an
 existing name require `--overwrite`; inspect the conflict before using it. Each
@@ -200,8 +252,8 @@ is removed after the round. When enabled, images are saved atomically under:
 
 ```text
 /data/captures/empty/<timestamp>.jpg
-/data/captures/chicken/unknown/<timestamp>.jpg
-/data/captures/chicken/<identity>/unreviewed/<timestamp>.jpg
+/data/captures/unknown/<timestamp>.jpg
+/data/captures/<identity>/unreviewed/<timestamp>.jpg
 ```
 
 Results are small JSON files in `/data/results/`; they never contain camera/broker
@@ -211,6 +263,9 @@ combined `capture_storage_mb` cap (default **256 MiB**), `retention_days` (defau
 it never touches reviewed references. A minimum free-space reserve (default
 **128 MiB**) blocks new captures/uploads before the disk is exhausted. Temporary
 files or unmanaged external disk use can still exceed these application limits.
+These retention policies run in the HA service, not the local migration/import or
+offline review tools. Local originals are not purged as part of preparing a review.
+Hidden local locks/OS metadata are neither exported nor counted as image data.
 
 Use an ignored `local-data/` destination for exports:
 

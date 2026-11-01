@@ -59,5 +59,9 @@ produced each egg.
   still obscure markings, so retain an unknown outcome for ambiguous images.
 - Ignore eggs when a chicken is present.
 - Automatically saved identity predictions must not become reference images
-  without review. Keep them in named `unreviewed/` subdirectories; reserve
-  `chicken/unknown/` for unidentified hens and exclude it from reference loading.
+  without review. Use the same relative image layout locally and on HA:
+  `references/versions/<version>/<identity>/` for reviewed references,
+  `captures/<identity>/unreviewed/` for predicted identities, `captures/unknown/`
+  for unidentified hens, and `captures/empty/` for empty nests. Legacy unprocessed
+  frames go in `captures/pending/`; offline egg candidates may use `captures/eggs/`.
+  Exclude all reserved categories and nested predictions from reference loading.

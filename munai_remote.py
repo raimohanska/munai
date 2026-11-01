@@ -15,9 +15,9 @@ import tempfile
 from urllib.parse import quote, urlsplit
 import uuid
 
+from data_layout import RESERVED, STAMP, reference_directory
+
 MAX_BYTES = 8 * 1024 * 1024
-STAMP = r'\d{8}T\d{6}_\d{6}Z'
-RESERVED = {'unknown', 'unreviewed', 'empty', 'no_chicken', 'unavailable'}
 
 
 class RemoteError(Exception):
@@ -178,6 +178,10 @@ def save_profiles(path, profiles):
 
 
 def local_references(root):
+    try:
+        root = reference_directory(root)
+    except (ValueError, OSError):
+        raise RemoteError('Managed references are invalid or have no active version; inspect local status or finish migration.') from None
     if root.is_symlink() or not root.is_dir():
         raise RemoteError('Reference root must be a real directory, not a symlink.')
     items = []

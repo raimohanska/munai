@@ -17,6 +17,11 @@ local-data/
 # Real reference data, trained artifacts, keys, and native CLI state stay local.
 models/
 references/
+/results/
+/scratch/
+/tls/
+/reports/
+/service.lock
 *.jpg
 *.jpeg
 *.png

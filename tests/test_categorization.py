@@ -8,10 +8,10 @@ from chicken_device import categorize, DeviceError, storage_category
 class CategorizationTests(unittest.TestCase):
     def test_known_hens_are_not_automatically_reference_images(self):
         for name in ('hen_a', 'hen_b', 'hen_c'):
-            self.assertEqual(storage_category({'label': name}), ('chicken', name, 'unreviewed'))
+            self.assertEqual(storage_category({'label': name}), (name, 'unreviewed'))
 
     def test_unknown_has_separate_directory(self):
-        self.assertEqual(storage_category({'label': 'unknown'}), ('chicken', 'unknown'))
+        self.assertEqual(storage_category({'label': 'unknown'}), ('unknown',))
 
     def test_empty_and_eggs(self):
         for category in ('empty', 'eggs'):
@@ -27,7 +27,7 @@ class CategorizationTests(unittest.TestCase):
     @patch('chicken_device.classify')
     def test_hen_takes_priority_without_examining_eggs(self, classifier, identifier, measurement):
         prediction, category = categorize('offline.jpg', [])
-        self.assertEqual(category, ('chicken', 'hen_a', 'unreviewed'))
+        self.assertEqual(category, ('hen_a', 'unreviewed'))
         classifier.assert_not_called()
 
     @patch('chicken_device.measure', return_value={})
@@ -43,7 +43,7 @@ class CategorizationTests(unittest.TestCase):
     @patch('chicken_device.classify', return_value=('chicken', 5000, []))
     def test_disagreeing_presence_detectors_are_conservative(self, classifier, identifier, measurement):
         prediction, category = categorize('offline.jpg', [])
-        self.assertEqual(category, ('chicken', 'unknown'))
+        self.assertEqual(category, ('unknown',))
         self.assertEqual(prediction['label'], 'unknown')
 
     @patch('chicken_device.measure', return_value={})

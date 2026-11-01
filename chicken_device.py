@@ -18,6 +18,7 @@ import time
 from capture import CaptureError, SCRIPT_DIR, capture, configuration, load_env
 from recognize_chickens import identify, load_references, measure
 from sort_captures import classify
+from data_layout import prediction_category
 
 
 class DeviceError(Exception):
@@ -71,15 +72,14 @@ def state_payload(prediction):
 def storage_category(prediction, background_category=None):
     """Automatic identities stay below unreviewed/, never in reference inputs."""
     label = prediction['label']
-    if label == 'unknown':
-        return ('chicken', 'unknown')
     if label == 'no_chicken':
         if background_category not in ('empty', 'eggs'):
             raise DeviceError('Missing empty/egg storage category.')
         return (background_category,)
-    if not re.match(r'^[a-z0-9_-]+$', label):
-        raise DeviceError('Chicken reference folder names must use lowercase letters, digits, underscores, or hyphens.')
-    return ('chicken', label, 'unreviewed')
+    try:
+        return prediction_category(label)
+    except ValueError:
+        raise DeviceError('Invalid chicken reference folder name.')
 
 
 def categorize(path, references, detect_eggs=True):
@@ -207,7 +207,7 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--env', default=os.path.join(SCRIPT_DIR, '.env'))
-    parser.add_argument('--references', default=os.path.join(SCRIPT_DIR, 'captures', 'chicken'))
+    parser.add_argument('--references', default=os.path.join(SCRIPT_DIR, 'references'))
     parser.add_argument('--device-id', default='munai_nest', help='Stable unique MQTT device ID')
     parser.add_argument('--expire-after', type=int, default=180, help='HA stale-state timeout in seconds')
     parser.add_argument('--mqtt-timeout', type=float, default=10, help='Connection/publication timeout in seconds')

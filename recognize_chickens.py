@@ -17,6 +17,7 @@ import numpy as np
 
 from sort_captures import capture_files
 from camera_profile import exclude_camera_regions
+from data_layout import RESERVED, reference_directory
 
 
 FEATURES = ('brightness_25', 'brightness_50', 'brightness_75',
@@ -71,10 +72,11 @@ def measure(path, chicken_area=4500, texture_threshold=8, camera_profile=None):
 
 
 def load_references(directory, chicken_area=4500, texture_threshold=8, camera_profile=None):
+    directory = reference_directory(directory)
     references = []
     for folder in sorted(directory.iterdir()):
         if (not folder.is_dir() or folder.is_symlink() or folder.name.startswith('.')
-                or folder.name.lower() == 'unknown'):
+                or folder.name.lower() in RESERVED):
             continue
         for path in capture_files(folder):
             measurement = (measure(path, chicken_area, texture_threshold) if camera_profile is None
@@ -171,6 +173,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', nargs='?', default=str(Path(__file__).resolve().parent / 'captures'))
     parser.add_argument('--output', default='recognition', help='New report directory; must not exist')
+    parser.add_argument('--references', help='Managed reference root (default: references/ beside captures/)')
     parser.add_argument('--max-distance', type=float, default=1.25)
     parser.add_argument('--min-margin', type=float, default=0.25)
     parser.add_argument('--chicken-area', type=float, default=4500)
@@ -183,7 +186,8 @@ def main():
     directory = Path(args.directory).resolve()
     output = Path(args.output).resolve()
     cv2.setNumThreads(1)
-    references = load_references(directory / 'chicken', args.chicken_area, args.texture_threshold)
+    reference_root = Path(args.references).resolve() if args.references else directory.parent / 'references'
+    references = load_references(reference_root, args.chicken_area, args.texture_threshold)
     output.mkdir(parents=True, exist_ok=False)
     check_labels(directory, references, output, args)
     with (output / 'references.json').open('w') as handle:
@@ -196,7 +200,7 @@ def main():
     with (output / 'predictions.csv').open('w', newline='') as handle:
         writer = csv.writer(handle)
         writer.writerow(['path', 'label', 'nearest', 'distance', 'margin', 'reference', 'area', 'box'] + list(FEATURES))
-        for path in capture_files(directory):
+        for path in capture_files(directory / 'pending'):
             measurement = measure(path, args.chicken_area, args.texture_threshold)
             prediction = identify(measurement, references, args.max_distance, args.min_margin)
             counts[prediction['label']] = counts.get(prediction['label'], 0) + 1

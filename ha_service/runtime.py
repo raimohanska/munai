@@ -9,6 +9,7 @@ import time
 
 from capture import CaptureError, capture
 from recognize_chickens import identify, load_references, measure
+from data_layout import prediction_category
 
 from . import VERSION
 from .mqtt import occupant
@@ -106,9 +107,7 @@ class Runtime:
                                       self.options['max_distance'], self.options['min_margin'])
                 predictions.append(prediction)
                 if self.options['store_captures']:
-                    label = prediction['label']
-                    category = ('empty' if label == 'no_chicken' else 'chicken/unknown' if label == 'unknown'
-                                else 'chicken/' + label + '/unreviewed')
+                    category = '/'.join(prediction_category(prediction['label']))
                     destination = safe_path(self.store.root / 'captures', category + '/' + stamp + '.jpg')
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     descriptor, temporary = tempfile.mkstemp(prefix='.pending-', dir=str(destination.parent))

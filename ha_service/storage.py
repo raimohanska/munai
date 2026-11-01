@@ -15,16 +15,15 @@ import warnings
 
 from PIL import Image
 
+from data_layout import LABEL, RESERVED, STAMP
+
 from .options import AppError
 
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_REFERENCE_BYTES = 128 * 1024 * 1024
 MAX_REFERENCES = 500
 MAX_PIXELS = 16_000_000
-STAMP = r'\d{8}T\d{6}_\d{6}Z'
 VERSION_ID = re.compile(r'^[a-f0-9]{32}$')
-LABEL = re.compile(r'^[a-z0-9][a-z0-9_-]{0,47}$')
-RESERVED = {'unknown', 'unreviewed', 'empty', 'no_chicken', 'unavailable'}
 
 
 def digest(data):
@@ -155,6 +154,8 @@ class Store:
         items = []
         for path in sorted(root.rglob('*')):
             relative = path.relative_to(root).as_posix()
+            if self.private_metadata(path, relative):
+                continue
             checked = safe_path(root, relative)
             if checked.is_dir():
                 continue
@@ -171,6 +172,12 @@ class Store:
         return items
 
     @staticmethod
+    def private_metadata(path, relative):
+        if path.is_symlink():
+            raise AppError('Symlinks are not allowed in data storage.')
+        return any(part.startswith('.') for part in relative.split('/'))
+
+    @staticmethod
     def valid_file(kind, relative):
         parts = relative.split('/')
         if kind == 'references':
@@ -178,11 +185,9 @@ class Store:
                     and bool(re.fullmatch(STAMP + r'\.jpg', parts[1])))
         if kind == 'results':
             return bool(re.fullmatch(STAMP + r'\.json', relative))
-        return (bool(re.fullmatch(r'empty/' + STAMP + r'\.jpg', relative))
-                or bool(re.fullmatch(r'chicken/unknown/' + STAMP + r'\.jpg', relative))
-                or (len(parts) == 4 and parts[0] == 'chicken' and LABEL.fullmatch(parts[1])
-                    and parts[1] not in RESERVED and parts[2] == 'unreviewed'
-                    and bool(re.fullmatch(STAMP + r'\.jpg', parts[3]))))
+        return (bool(re.fullmatch(r'(?:empty|unknown|pending|eggs)/' + STAMP + r'\.jpg', relative))
+                or (len(parts) == 3 and LABEL.fullmatch(parts[0]) and parts[0] not in RESERVED
+                    and parts[1] == 'unreviewed' and bool(re.fullmatch(STAMP + r'\.jpg', parts[2]))))
 
     def read(self, kind, relative):
         if kind not in ('references', 'captures', 'results') or not self.valid_file(kind, relative):
@@ -277,6 +282,8 @@ class Store:
             for kind in ('captures', 'results'):
                 root = self.root / kind
                 for path in root.rglob('*'):
+                    if self.private_metadata(path, path.relative_to(root).as_posix()):
+                        continue
                     checked = safe_path(root, path.relative_to(root).as_posix())
                     if checked.is_file():
                         if not self.valid_file(kind, path.relative_to(root).as_posix()):

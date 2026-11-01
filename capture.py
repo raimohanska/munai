@@ -270,7 +270,7 @@ def main():
                         help='Configuration file (default: .env beside this script).')
     arguments = parser.parse_args()
     try:
-        capture(*configuration(os.path.abspath(arguments.env)))
+        capture(*configuration(os.path.abspath(arguments.env)), on_capture=lambda path: ('pending',))
     except CaptureError as error:
         print('Capture error: {0}'.format(error), file=sys.stderr)
         return 1
