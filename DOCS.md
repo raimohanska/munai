@@ -12,6 +12,10 @@ in usage; do not retire them until the HA pilot works.
 
 ## Overnight capture pause
 
+All HA service log messages include a local timestamp and UTC offset, for
+example `2000-01-01 19:00:00 +0200 INFO: Munai started.` The timezone matches
+the overnight schedule; capture filenames still use UTC.
+
 The HA capture loop skips camera capture and recognition from **23:00 inclusive
 to 05:00 exclusive** by default, using the service's local Home Assistant timezone
 (not the UTC timestamps used for filenames). Configure `capture_pause_start` and
