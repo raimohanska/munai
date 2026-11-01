@@ -10,6 +10,49 @@ Docker's explicit allowlist excludes Git history, `.env`, references, and local
 camera calibration. The legacy Pi/cron entry points remain available unchanged
 in usage; do not retire them until the HA pilot works.
 
+## Offline egg counting
+
+Run the experimental OpenCV counter in the devcontainer:
+
+```bash
+python count_eggs.py
+# Or choose a folder and a NEW report directory:
+python count_eggs.py captures/eggs --output reports/egg-review
+```
+
+It reads JPEG/PNG images directly inside `captures/eggs/`, including manually
+renamed files. It never moves or modifies originals, reads credentials, accesses
+the camera, or publishes to HA. Dependencies are the existing OpenCV and NumPy
+installation; the script's syntax supports Python 3.5 with compatible versions
+of those libraries (do not install the modern HA pins on the legacy Pi).
+
+The default output is a new, ignored `reports/eggs-<UTC timestamp>/` directory:
+
+- `counts.csv`: per-image status, visible-egg estimate, boxes in 640×360
+  coordinates, and detector thresholds. A hen-present frame has a blank count,
+  **not zero**.
+- `annotated/0000.jpg`, etc.: numbered detection overlays, matching CSV row order.
+- `sheet-001.jpg`, etc.: paginated contact sheets for visual review.
+
+Reviewed `empty/` images in the active reference version are required; use
+`--references PATH` for a different reference root. Their background mask is used
+only by the existing hen-presence heuristic. Egg detection itself does not use
+that mask: an egg visible in an empty reference must not be masked away.
+
+The counter finds locally smooth, convex, egg-sized regions and separates
+touching candidates using distance-transform peaks. `--texture-threshold`,
+`--min-area`, `--max-area`, and `--chicken-area` are experimental controls in the
+normalized image space. Defaults are generic starting points, not a validated
+camera calibration. Keep any deployment-specific measurements/settings private.
+
+**Limitations:** partial occlusion, border-clipped eggs, changing light, smooth
+straw/walls, and missed hens can produce wrong estimates. Review the overlays;
+zero means no candidates detected, not proof that the nest is empty. Synthetic
+tests verify mechanics, not real-world accuracy. Compare with manually reviewed
+counts and include genuinely egg-free and hen-present frames before deployment.
+Do not sum counts across frames: the same egg appears repeatedly. This does not
+yet detect laying events, identify the laying hen, or change MQTT sensors.
+
 ## Validation status
 
 Offline tests exercise real local HTTPS, synthetic reference upload/download,

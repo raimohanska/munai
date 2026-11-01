@@ -1,7 +1,8 @@
 # Munai
 
 Home Assistant app that recognizes the current nest occupant and creates an
-MQTT **Occupant** sensor. Egg counting is not implemented yet.
+MQTT **Occupant** sensor. Experimental [offline egg counting](DOCS.md#offline-egg-counting)
+is available; egg counts are not yet published to HA.
 
 **Already installed and paired?** Continue with [upload references](#3-upload-references),
 then [enable MQTT](#4-enable-mqtt) and [enable capture](#5-enable-capture).
