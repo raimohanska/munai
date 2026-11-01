@@ -283,8 +283,8 @@ After deployment preparation, use the same recognition pipeline without live
 capture, MQTT, HA, credentials, training, or retention:
 
 ```bash
-/tmp/opencode/munai-ha-venv/bin/python tools/review_images.py
-/tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --apply
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --cpu-percent 10
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --apply --cpu-percent 10
 ```
 
 The first command predicts without relocating images. `--apply` sorts all managed
@@ -301,6 +301,23 @@ reference self-check. `summary.json` marks a completed pass. Existing result JSO
 is backed up in that run's report before replacement. Predictions and correlated
 frames are **not** a held-out accuracy measurement and never become new references
 automatically. Do not run HA's retention loop against this local review dataset.
+
+One process/worker is used. CPU pacing defaults to 10% of one core on average,
+with sleeps between operations; short operations can still burst, so this is not
+an OS hard CPU quota. Low process priority and one OpenCV/BLAS worker keep the
+machine responsive. Run no other image-processing job concurrently.
+
+After interruption, resume the **existing** report instead of starting a second
+pass or treating reference review copies as new input:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --apply --cpu-percent 10 --resume reports/review-RUN_ID
+```
+
+Resume checks the saved reference version, recognition settings, allowed paths,
+and every checksum. It accepts originals already safely relocated, never repeats
+prediction, and skips rewriting identical results. Stale predictions or differing
+destination contents fail without overwriting anything.
 
 Use an ignored `local-data/` destination for exports:
 

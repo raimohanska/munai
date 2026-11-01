@@ -2,6 +2,8 @@
 
 ## 0.1.2
 
+- Resume interrupted offline reviews from their existing manifest; skip completed
+  relocations/results and pace the single worker to a default 10% CPU budget.
 - Fix HA configuration: replace the unusable required boundary list with numeric
   Left boundary (0) and Right boundary (640) fields.
 - Make empty exclusion/additional-client lists genuinely optional; use text rows

@@ -11,7 +11,7 @@ from unittest.mock import patch
 from ha_service.options import AppError, validate
 from ha_service.storage import Store, digest
 from test_ha_service import NAME, synthetic_jpeg
-from tools.review_images import review
+from tools.review_images import CPUPacer, review
 
 
 class OfflineReviewTests(unittest.TestCase):
@@ -29,8 +29,11 @@ class OfflineReviewTests(unittest.TestCase):
         self.source.write_bytes(self.data)
         self.profile = patch('tools.review_images.camera_bounds', return_value=(0, 640, []))
         self.profile.start()
+        self.pacing = patch('tools.review_images.CPUPacer.pause')
+        self.pacing.start()
 
     def tearDown(self):
+        self.pacing.stop()
         self.profile.stop()
         self.temporary.cleanup()
 
@@ -78,6 +81,64 @@ class OfflineReviewTests(unittest.TestCase):
             review(self.root, apply=True)
         self.assertEqual(Store(self.root, validate({})).revision, version)
         self.assertEqual(len(self.store.files('references')), 2)
+
+    def test_resume_handles_already_moved_original_without_predicting_again(self):
+        from ha_service.storage import atomic_json
+
+        def interrupt(path, value):
+            if path.parent.name == 'results':
+                raise OSError('Synthetic interruption after first relocation')
+            return atomic_json(path, value)
+
+        with patch('tools.review_images.atomic_json', side_effect=interrupt):
+            with redirect_stdout(io.StringIO()), self.assertRaises(OSError):
+                review(self.root, apply=True)
+        self.assertFalse(self.source.exists())
+        report = next((self.root / 'reports').glob('review-*'))
+        self.assertFalse((report / 'summary.json').exists())
+        with patch('ha_service.runtime.Runtime.predict', side_effect=AssertionError('Do not reclassify')):
+            with redirect_stdout(io.StringIO()):
+                result = review(self.root, apply=True, resume=report.relative_to(self.root))
+        self.assertTrue(result['complete'])
+        self.assertEqual(result['images'], 3)
+        self.assertEqual(len(self.store.files('captures')), 3)
+        self.assertEqual(len(self.store.files('references')), 2)
+        # Re-resuming a completed manifest also leaves identical results intact.
+        result_path = next((self.root / 'results').glob('*.json'))
+        modified = result_path.stat().st_mtime_ns
+        with redirect_stdout(io.StringIO()):
+            review(self.root, apply=True, resume=report.relative_to(self.root))
+        self.assertEqual(result_path.stat().st_mtime_ns, modified)
+
+    def test_resume_rejects_stale_settings_and_unsafe_paths(self):
+        with redirect_stdout(io.StringIO()):
+            review(self.root, apply=True)
+        report = next((self.root / 'reports').glob('review-*'))
+        path = report / 'manifest.json'
+        manifest = json.loads(path.read_text())
+        manifest['recognition']['max_distance'] = 9
+        path.write_text(json.dumps(manifest))
+        with self.assertRaises(AppError):
+            review(self.root, apply=True, resume=report.relative_to(self.root))
+        manifest['recognition']['max_distance'] = 1.25
+        manifest['images'][0]['source'] = 'config.json'
+        path.write_text(json.dumps(manifest))
+        with self.assertRaises(AppError):
+            review(self.root, apply=True, resume=report.relative_to(self.root))
+
+
+class CPUPacingTests(unittest.TestCase):
+    def test_cpu_budget_repays_used_cpu_time_before_next_operation(self):
+        with patch('tools.review_images.time.monotonic', side_effect=[0, 0, 1]), \
+                patch('tools.review_images.time.process_time', side_effect=[0, .1]), \
+                patch('tools.review_images.time.sleep') as sleep:
+            CPUPacer(10).pause()
+            sleep.assert_called_once_with(1)
+
+    def test_invalid_budget_is_rejected(self):
+        for percent in (0, -1, 101, float('nan'), float('inf')):
+            with self.assertRaises(AppError):
+                CPUPacer(percent)
 
 
 if __name__ == '__main__':
