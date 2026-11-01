@@ -47,9 +47,12 @@ produced each egg.
 
 ## Chicken recognition
 
-- Use appearance, not nest position, to identify Hen_a, Hen_b, and Hen_c.
-  Reference images do not necessarily cover
-  every hen in every position. Never infer identity from that missing coverage.
+- Use appearance, not nest position, to identify the configured hens. Reference
+  images do not necessarily cover every hen in every position. Never infer
+  identity from that missing coverage.
+- Never commit real hen names, images, reference measurements, models, capture
+  observations, or deployment calibration. Use synthetic identities in tests and
+  documentation; keep camera-specific exclusions in ignored camera-profile.json.
 - Coordinates, nest zones, and body orientation must not be identity features.
   Camera-specific masks may exclude text/walls, but must not assign identities.
 - Prefer position-independent brightness/texture summaries; changed poses can

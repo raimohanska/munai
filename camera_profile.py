@@ -13,6 +13,8 @@ def camera_bounds():
         return 0, 640, []
     with path.open() as handle:
         profile = json.load(handle)
+    if not isinstance(profile, dict):
+        raise ValueError('Invalid local camera profile')
     bounds = profile.get('horizontal_bounds', [0, 640])
     rectangles = profile.get('excluded_rectangles', [])
     if (not isinstance(bounds, list) or len(bounds) != 2
