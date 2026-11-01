@@ -41,8 +41,12 @@ def split_region(mask):
     centers = []
     for radius, x, y in sorted(candidates, reverse=True):
         # Quantized distance transforms can have disconnected, almost identical
-        # maxima on one egg. Merge nearby peaks before partitioning.
-        if all((x - cx) ** 2 + (y - cy) ** 2 >= max(12, radius) ** 2
+        # maxima on one egg. A straw notch can also create two peaks: require a
+        # genuine neck (15% radius drop), not just two distinct maximum pixels.
+        unused_count, cores = cv2.connectedComponents((distance >= radius * 0.85).astype(np.uint8))
+        core = cores[int(round(y)), int(round(x))]
+        if all((x - cx) ** 2 + (y - cy) ** 2 >= max(12, radius) ** 2 and
+               (core == 0 or core != cores[int(round(cy)), int(round(cx))])
                for cx, cy in centers):
             centers.append((x, y))
     if len(centers) == 1:
@@ -63,19 +67,30 @@ def detect_eggs(gray, texture_threshold=8, min_area=500, max_area=3500):
     smooth = (std < texture_threshold).astype(np.uint8) * 255
     smooth = cv2.morphologyEx(smooth, cv2.MORPH_OPEN,
                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
+    padded_smooth = cv2.copyMakeBorder(smooth, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
     contours = cv2.findContours(smooth, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
     detections = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
-        # Do not try to count clipped objects or split walls into egg-sized parts.
-        if (x == 0 or y == 0 or x + w >= 640 or y + h >= 360 or
-                cv2.contourArea(contour) < min_area or
+        # Do not split walls into egg-sized parts. Modestly clipped eggs can be
+        # recovered from their visible curved boundary, but not from a tiny arc.
+        if (cv2.contourArea(contour) < min_area or
                 cv2.contourArea(contour) > 4 * max_area):
             continue
         region = np.zeros((h + 2, w + 2), np.uint8)
         local_contour = contour - np.array([[[x - 1, y - 1]]], np.int32)
         cv2.drawContours(region, [local_contour], -1, 255, -1)
-        for part in split_region(region):
+        border = x == 0 or y == 0 or x + w == 640 or y + h == 360
+        # A wall may have many distance peaks. Never manufacture individual
+        # eggs by splitting a border-connected component into smaller pieces.
+        for part in ([region] if border else split_region(region)):
+            smooth_patch = padded_smooth[y:y + h + 2, x:x + w + 2]
+            smooth_fraction = (float(np.count_nonzero((part != 0) & (smooth_patch != 0))) /
+                               max(np.count_nonzero(part), 1))
+            # Filling contours must not turn textured bedding enclosed by a
+            # smooth outline into an egg. Require mostly smooth visible surface.
+            if smooth_fraction < 0.75:
+                continue
             pieces = cv2.findContours(part, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
             if not pieces:
                 continue
@@ -84,15 +99,31 @@ def detect_eggs(gray, texture_threshold=8, min_area=500, max_area=3500):
             area = cv2.contourArea(piece)
             if not min_area <= area <= max_area or len(piece) < 5:
                 continue
-            perimeter = cv2.arcLength(piece, True)
-            circularity = 4 * np.pi * area / max(perimeter * perimeter, 1)
-            solidity = area / max(cv2.contourArea(cv2.convexHull(piece)), 1)
-            ellipse = cv2.fitEllipse(piece)
+            hull = cv2.convexHull(piece)
+            hull_area = cv2.contourArea(hull)
+            perimeter = cv2.arcLength(hull, True)
+            circularity = 4 * np.pi * hull_area / max(perimeter * perimeter, 1)
+            solidity = area / max(hull_area, 1)
+            # A straw notch or a contact seam can make the raw perimeter very
+            # jagged without changing the egg's outer shape. Fit the envelope,
+            # not those inward nicks; retain a solidity check against straw.
+            points = hull.reshape(-1, 2)
+            visible = ((points[:, 0] > 0) & (points[:, 0] < 639) &
+                       (points[:, 1] > 0) & (points[:, 1] < 359))
+            clipped = not bool(np.all(visible))
+            curved = points[visible] if clipped else points
+            if len(curved) < 5:
+                continue
+            ellipse = cv2.fitEllipse(curved.reshape(-1, 1, 2))
             axes = ellipse[1]
             aspect = min(axes) / max(max(axes), 1)
-            if circularity >= 0.60 and solidity >= 0.88 and aspect >= 0.55:
+            ellipse_area = np.pi * axes[0] * axes[1] / 4
+            coverage = area / max(ellipse_area, 1)
+            if (circularity >= 0.72 and solidity >= 0.82 and aspect >= 0.50 and
+                    0.70 <= coverage <= 1.10 and min_area <= ellipse_area <= max_area):
                 detections.append({'box': [int(v) for v in cv2.boundingRect(piece)],
-                                   'ellipse': ellipse, 'area': float(area)})
+                                   'ellipse': ellipse, 'area': float(area),
+                                   'partial': clipped, 'smooth_fraction': smooth_fraction})
     return sorted(detections, key=lambda item: item['box'])
 
 
@@ -114,6 +145,9 @@ def annotated(path, result):
     if image is None:
         raise ValueError('Cannot decode image: ' + str(path))
     image = cv2.resize(image, (640, 360), interpolation=cv2.INTER_AREA)
+    # Keep the full camera frame visible: a footer painted over the bottom edge
+    # would conceal precisely the partly clipped eggs we want reviewers to see.
+    image = cv2.copyMakeBorder(image, 0, 30, 0, 0, cv2.BORDER_CONSTANT, value=(0, 0, 0))
     for index, detection in enumerate(result['detections']):
         cv2.ellipse(image, detection['ellipse'], (0, 220, 0), 2)
         x, y, unused_w, unused_h = detection['box']
@@ -121,8 +155,7 @@ def annotated(path, result):
                     cv2.FONT_HERSHEY_SIMPLEX, .5, (0, 220, 0), 1)
     caption = ('Visible eggs (estimate): ' + str(result['count'])
                if result['count'] is not None else result['status'])
-    cv2.rectangle(image, (0, 330), (640, 360), (0, 0, 0), -1)
-    cv2.putText(image, caption, (5, 351), cv2.FONT_HERSHEY_SIMPLEX, .55, (255, 255, 255), 1)
+    cv2.putText(image, caption, (5, 381), cv2.FONT_HERSHEY_SIMPLEX, .55, (255, 255, 255), 1)
     return image
 
 
@@ -171,22 +204,25 @@ def main(argv=None):
         with (output / 'counts.csv').open('w', newline='') as handle:
             writer = csv.writer(handle)
             writer.writerow(['source', 'status', 'visible_eggs_estimate', 'boxes_640x360',
-                             'chicken_area', 'texture_threshold', 'min_area', 'max_area'])
+                             'chicken_area', 'texture_threshold', 'min_area', 'max_area',
+                             'partial_detections', 'smooth_fractions'])
             sheet = None
             for index, path in enumerate(paths):
                 result = count_image(path, exclusions, args.chicken_area, args.texture_threshold,
                                      min_area=args.min_area, max_area=args.max_area)
                 writer.writerow([str(path), result['status'], result['count'],
-                                 repr([d['box'] for d in result['detections']])] + list(values))
+                                 repr([d['box'] for d in result['detections']])] + list(values) +
+                                [repr([i + 1 for i, d in enumerate(result['detections']) if d['partial']]),
+                                 repr([round(d['smooth_fraction'], 3) for d in result['detections']])])
                 preview = annotated(path, result)
                 write_image(output / 'annotated' / ('{:04d}.jpg'.format(index)), preview)
                 # Bounded 24-image pages, not a growing in-memory image collection.
                 slot = index % 24
                 if slot == 0:
-                    sheet = np.full((6 * 205, 4 * 320, 3), 240, np.uint8)
-                x, y = (slot % 4) * 320, (slot // 4) * 205
-                sheet[y:y + 180, x:x + 320] = cv2.resize(preview, (320, 180))
-                cv2.putText(sheet, '{:04d} {}'.format(index, path.stem[:24]), (x + 3, y + 196),
+                    sheet = np.full((6 * 220, 4 * 320, 3), 240, np.uint8)
+                x, y = (slot % 4) * 320, (slot // 4) * 220
+                sheet[y:y + 195, x:x + 320] = cv2.resize(preview, (320, 195))
+                cv2.putText(sheet, '{:04d} {}'.format(index, path.stem[:24]), (x + 3, y + 211),
                             cv2.FONT_HERSHEY_SIMPLEX, .38, (0, 0, 0), 1)
                 if slot == 23 or index == len(paths) - 1:
                     write_image(output / 'sheet-{:03d}.jpg'.format(index // 24 + 1), sheet)

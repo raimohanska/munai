@@ -7,7 +7,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from count_eggs import count_image, detect_eggs, main
+from count_eggs import annotated, count_image, detect_eggs, main
 
 
 def nest(centers=()):
@@ -29,6 +29,50 @@ class EggTests(unittest.TestCase):
 
     def test_touching_eggs(self):
         self.assertEqual(len(detect_eggs(nest([(180, 180), (217, 180)]))), 2)
+
+    def test_notched_egg_keeps_smooth_surface_evidence(self):
+        image = nest([(180, 180)])
+        # A short straw intrusion should not disqualify the entire egg.
+        cv2.line(image, (155, 172), (171, 178), 25, 2)
+        result = detect_eggs(image)
+        self.assertEqual(len(result), 1)
+        self.assertGreaterEqual(result[0]['smooth_fraction'], 0.75)
+
+    def test_touching_pair_with_jagged_contact_seam(self):
+        image = nest([(180, 180), (217, 180)])
+        cv2.line(image, (196, 169), (200, 180), 35, 2)
+        cv2.line(image, (200, 180), (196, 190), 35, 2)
+        self.assertEqual(len(detect_eggs(image)), 2)
+
+    def test_mostly_visible_border_egg(self):
+        for center in ((180, 344), (180, 15), (10, 180), (629, 180)):
+            result = detect_eggs(nest([center]))
+            self.assertEqual(len(result), 1)
+            self.assertTrue(result[0]['partial'])
+
+    def test_smooth_border_wall_is_not_split_into_eggs(self):
+        image = nest()
+        for center in ((0, 80), (0, 115), (0, 150), (0, 185)):
+            cv2.ellipse(image, center, (30, 28), 0, 0, 360, 140, -1)
+        self.assertEqual(detect_eggs(image), [])
+
+    def test_smooth_ring_does_not_hide_textured_bedding(self):
+        image = nest()
+        cv2.ellipse(image, (180, 180), (30, 35), 0, 0, 360, 140, 13)
+        self.assertEqual(detect_eggs(image), [])
+
+    def test_size_and_shape_reject_smooth_non_eggs(self):
+        for axes in ((8, 10), (60, 70), (12, 65)):
+            image = nest()
+            cv2.ellipse(image, (180, 180), axes, 0, 0, 360, 140, -1)
+            self.assertEqual(detect_eggs(image), [])
+
+    def test_footer_does_not_obscure_bottom_of_frame(self):
+        image = np.full((360, 640, 3), 110, np.uint8)
+        with patch('count_eggs.cv2.imread', return_value=image):
+            preview = annotated('synthetic.jpg', {'detections': [], 'count': 0})
+        self.assertEqual(preview.shape, (390, 640, 3))
+        np.testing.assert_array_equal(preview[:360], image)
 
     def test_location_is_not_a_detection_requirement(self):
         for center in ((90, 90), (320, 180), (530, 270)):

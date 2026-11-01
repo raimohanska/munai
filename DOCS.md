@@ -30,8 +30,11 @@ The default output is a new, ignored `reports/eggs-<UTC timestamp>/` directory:
 
 - `counts.csv`: per-image status, visible-egg estimate, boxes in 640×360
   coordinates, and detector thresholds. A hen-present frame has a blank count,
-  **not zero**.
+  **not zero**. `partial_detections` lists the one-based detection numbers whose
+  contours touch the image edge; `smooth_fractions` records how much of each
+  candidate's visible region passes the texture test.
 - `annotated/0000.jpg`, etc.: numbered detection overlays, matching CSV row order.
+  Captions appear below the original frame, not on top of bottom-edge eggs.
 - `sheet-001.jpg`, etc.: paginated contact sheets for visual review.
 
 Reviewed `empty/` images in the active reference version are required; use
@@ -39,13 +42,24 @@ Reviewed `empty/` images in the active reference version are required; use
 only by the existing hen-presence heuristic. Egg detection itself does not use
 that mask: an egg visible in an empty reference must not be masked away.
 
-The counter finds locally smooth, convex, egg-sized regions and separates
-touching candidates using distance-transform peaks. `--texture-threshold`,
+The counter finds locally smooth, egg-sized regions. At least 75% of a
+candidate's visible surface must pass the texture test; size bounds apply to
+both its visible area and fitted ellipse. It fits the outer convex envelope
+rather than penalizing every straw notch or jagged contact seam. Touching
+candidates are separated using distance-transform peaks with a substantial neck
+between them, so small notches do not automatically split one egg into two.
+
+Mostly visible border-clipped eggs can be counted if at least 70% of the fitted
+ellipse area is supported by the visible region. Border-connected components
+are never split into smaller candidates, to avoid turning walls into eggs.
+These are conservative heuristics, not proof that a partial shape is an egg.
+
+`--texture-threshold`,
 `--min-area`, `--max-area`, and `--chicken-area` are experimental controls in the
 normalized image space. Defaults are generic starting points, not a validated
 camera calibration. Keep any deployment-specific measurements/settings private.
 
-**Limitations:** partial occlusion, border-clipped eggs, changing light, smooth
+**Limitations:** heavy occlusion/clipping, changing light, smooth
 straw/walls, and missed hens can produce wrong estimates. Review the overlays;
 zero means no candidates detected, not proof that the nest is empty. Synthetic
 tests verify mechanics, not real-world accuracy. Compare with manually reviewed
