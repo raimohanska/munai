@@ -42,6 +42,16 @@ Reviewed `empty/` images in the active reference version are required; use
 only by the existing hen-presence heuristic. Egg detection itself does not use
 that mask: an egg visible in an empty reference must not be masked away.
 
+Hen presence uses the same check in recognition, pre-sorting, offline egg counting,
+and HA. A region must first meet `chicken_area`, then contain either an unclosed
+smooth patch with radius at least 22 pixels or less than 75% smooth surface
+(feather-like texture). Thickness is measured **before** closing joins nearby
+shells: a large, mostly smooth egg pile is not enough on its own. If the largest
+region is rejected, smaller regions are still checked so a pile cannot hide a
+hen elsewhere. These are presence cues only, never identity features. Hens still
+suppress all egg processing. Thresholds refer to 640×360 normalized images and
+remain experimental, not guarantees for new lighting or poses.
+
 The counter finds locally smooth, egg-sized regions. At least 75% of a
 candidate's visible surface must pass the texture test; size bounds apply to
 both its visible area and fitted ellipse. It fits the outer convex envelope
@@ -69,6 +79,17 @@ tool does not publish MQTT; the HA app uses the same detector for its Egg count
 sensor. Neither detects laying events or identifies the laying hen.
 
 ## Validation status
+
+The committed image regression suite contains 24 reproducibly drawn scenes:
+4 empty, 4 separated-egg, 5 touching-pile, and 11 hen images. It checks both smooth
+and patterned plumage, clipped/smaller hens, hens alongside eggs or larger piles,
+and integration through HA and offline egg-count gating. See
+[`tests/fixtures/nest_presence/README.md`](tests/fixtures/nest_presence/README.md)
+for provenance, regeneration, and count limitations. Tests read the committed
+JPEGs; they do not regenerate images just to make a changed detector pass.
+Camera-derived data stays private and is not covered by the public-fixture
+exception in the path check. Review independent real images locally as well:
+synthetic regression success is not a field-accuracy measurement.
 
 Offline tests exercise real local HTTPS, synthetic reference upload/download,
 authorization, pinning, rollback, persistence, retention, MQTT payloads, and CLI

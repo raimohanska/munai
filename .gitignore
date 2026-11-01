@@ -25,6 +25,8 @@ references/
 *.jpg
 *.jpeg
 *.png
+# Reproducibly drawn, synthetic-only offline regression fixtures.
+!/tests/fixtures/nest_presence/synthetic_*.jpg
 *.onnx
 *.pt
 *.pth

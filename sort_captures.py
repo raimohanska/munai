@@ -27,11 +27,44 @@ def capture_files(directory):
                   and not p.is_symlink())
 
 
+def chicken_region(smooth, valid, chicken_area=4500):
+    """Find a hen-sized region with broad smooth plumage or feather texture.
+
+    Inputs are 640x360 masks, with background exclusions already removed from
+    smooth. Closing can merge an egg pile into one large blob: measure thickness
+    on the *unclosed* mask, and retain textured hens even without a thick patch.
+    These presence cues never participate in identity comparison.
+    """
+    joined = cv2.morphologyEx(smooth, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
+    joined = cv2.bitwise_and(joined, valid)
+    contours = cv2.findContours(joined, cv2.RETR_EXTERNAL,
+                                cv2.CHAIN_APPROX_SIMPLE)[-2]
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    distance = None
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < chicken_area:
+            break
+        if distance is None:
+            distance = cv2.distanceTransform(smooth, cv2.DIST_L2, 5)
+        region = np.zeros(smooth.shape, np.uint8)
+        cv2.drawContours(region, [contour], -1, 255, -1)
+        inside = (region != 0) & (valid != 0)
+        radius = float(distance[inside].max())
+        smooth_fraction = float(np.mean(smooth[inside] != 0))
+        if radius >= 22 or smooth_fraction < 0.75:
+            return contour, float(area), True
+        # A larger egg pile must not hide a smaller hen elsewhere in the frame.
+    contour = contours[0] if contours else None
+    area = float(cv2.contourArea(contour)) if contour is not None else 0.0
+    return contour, area, False
+
+
 def classify(path, chicken_area=4500, texture_threshold=8, background_mask=None):
     """Scores/coordinates are at 640x360, with reference-derived exclusions.
 
     Straw is locally textured. Smooth connected regions represent foreground;
-    a large region wins over any egg candidates. This is a heuristic, not ML.
+    a supported hen region wins over any egg candidates. This is a heuristic, not ML.
     """
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -44,13 +77,12 @@ def classify(path, chicken_area=4500, texture_threshold=8, background_mask=None)
     if background_mask is not None:
         mask[background_mask] = 0
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    # Join feather-sized gaps for chickens; separate touching eggs by opening.
-    chicken_mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
+    valid = np.full(gray.shape, 255, np.uint8)
     if background_mask is not None:
-        chicken_mask[background_mask] = 0
-    chicken_contours = cv2.findContours(chicken_mask, cv2.RETR_EXTERNAL,
-                                       cv2.CHAIN_APPROX_SIMPLE)[-2]
-    largest = max([cv2.contourArea(c) for c in chicken_contours] or [0])
+        valid[background_mask] = 0
+    unused_contour, largest, chicken = chicken_region(mask, valid, chicken_area)
+    if chicken:
+        return 'chicken', largest, []
     egg_mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
                               cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13)))
     contours = cv2.findContours(egg_mask, cv2.RETR_EXTERNAL,
@@ -70,7 +102,7 @@ def classify(path, chicken_area=4500, texture_threshold=8, background_mask=None)
         aspect = min(axes) / max(max(axes), 1)
         if circularity >= 0.65 and solidity >= 0.88 and aspect >= 0.6:
             eggs.append((x, y, w, h))
-    category = 'chicken' if largest >= chicken_area else 'eggs' if eggs else 'empty'
+    category = 'eggs' if eggs else 'empty'
     return category, largest, eggs
 
 

@@ -15,7 +15,7 @@ import sys
 import cv2
 import numpy as np
 
-from sort_captures import capture_files
+from sort_captures import capture_files, chicken_region
 from data_layout import RESERVED, reference_directory
 
 
@@ -76,15 +76,10 @@ def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None):
         valid[background_mask] = 0
     smooth = ((std < texture_threshold) & (valid != 0)).astype(np.uint8) * 255
     smooth = cv2.morphologyEx(smooth, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    joined = cv2.morphologyEx(smooth, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
-    joined = cv2.bitwise_and(joined, valid)
-    contours = cv2.findContours(joined, cv2.RETR_EXTERNAL,
-                                cv2.CHAIN_APPROX_SIMPLE)[-2]
-    contour = max(contours, key=cv2.contourArea) if contours else None
-    area = cv2.contourArea(contour) if contour is not None else 0
-    result = {'area': float(area), 'chicken': bool(area >= chicken_area),
+    contour, area, chicken = chicken_region(smooth, valid, chicken_area)
+    result = {'area': area, 'chicken': chicken,
               'box': None, 'features': None}
-    if area < chicken_area:
+    if not chicken:
         return result
     # Fill holes, but not a convex hull (which can swallow a lot of straw).
     mask = np.zeros(gray.shape, np.uint8)

@@ -1,0 +1,153 @@
+{
+  "provenance": "Entirely procedural; no camera images, names, or sampled textures.",
+  "size": [
+    640,
+    360
+  ],
+  "cases": [
+    {
+      "file": "synthetic_empty_1.jpg",
+      "category": "empty",
+      "visible_eggs": 0,
+      "description": "Independent synthetic straw and a smooth background wall"
+    },
+    {
+      "file": "synthetic_empty_2.jpg",
+      "category": "empty",
+      "visible_eggs": 0,
+      "description": "Independent synthetic straw and a smooth background wall"
+    },
+    {
+      "file": "synthetic_empty_3.jpg",
+      "category": "empty",
+      "visible_eggs": 0,
+      "description": "Independent synthetic straw and a smooth background wall"
+    },
+    {
+      "file": "synthetic_empty_4.jpg",
+      "category": "empty",
+      "visible_eggs": 0,
+      "description": "Independent synthetic straw and a smooth background wall"
+    },
+    {
+      "file": "synthetic_eggs_01.jpg",
+      "category": "egged",
+      "visible_eggs": 1,
+      "description": "Separated shells with varied positions and rotations"
+    },
+    {
+      "file": "synthetic_eggs_03.jpg",
+      "category": "egged",
+      "visible_eggs": 3,
+      "description": "Separated shells with varied positions and rotations"
+    },
+    {
+      "file": "synthetic_eggs_09.jpg",
+      "category": "egged",
+      "visible_eggs": 9,
+      "description": "Separated shells with varied positions and rotations"
+    },
+    {
+      "file": "synthetic_eggs_15.jpg",
+      "category": "egged",
+      "visible_eggs": 15,
+      "description": "Separated shells with varied positions and rotations"
+    },
+    {
+      "file": "synthetic_pile_03.jpg",
+      "category": "clustered",
+      "visible_eggs": 3,
+      "description": "One touching pile, partial shell occlusions, and contact seams"
+    },
+    {
+      "file": "synthetic_pile_06.jpg",
+      "category": "clustered",
+      "visible_eggs": 6,
+      "description": "One touching pile, partial shell occlusions, and contact seams"
+    },
+    {
+      "file": "synthetic_pile_09.jpg",
+      "category": "clustered",
+      "visible_eggs": 9,
+      "description": "One touching pile, partial shell occlusions, and contact seams"
+    },
+    {
+      "file": "synthetic_pile_12.jpg",
+      "category": "clustered",
+      "visible_eggs": 12,
+      "description": "One touching pile, partial shell occlusions, and contact seams"
+    },
+    {
+      "file": "synthetic_pile_15.jpg",
+      "category": "clustered",
+      "visible_eggs": 15,
+      "description": "One touching pile, partial shell occlusions, and contact seams"
+    },
+    {
+      "file": "synthetic_hen_dark.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: dark"
+    },
+    {
+      "file": "synthetic_hen_light.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: light"
+    },
+    {
+      "file": "synthetic_hen_coarse.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: coarse"
+    },
+    {
+      "file": "synthetic_hen_fine.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: fine"
+    },
+    {
+      "file": "synthetic_hen_small_patterned.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: small patterned"
+    },
+    {
+      "file": "synthetic_hen_clipped_left.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: clipped left"
+    },
+    {
+      "file": "synthetic_hen_clipped_right.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: clipped right"
+    },
+    {
+      "file": "synthetic_hen_clipped_top.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: clipped top"
+    },
+    {
+      "file": "synthetic_hen_clipped_bottom.jpg",
+      "category": "chickened",
+      "visible_eggs": 0,
+      "description": "Abstract drawn hen: clipped bottom"
+    },
+    {
+      "file": "synthetic_hen_with_eggs.jpg",
+      "category": "chickened",
+      "visible_eggs": 3,
+      "description": "Abstract drawn hen: with eggs"
+    },
+    {
+      "file": "synthetic_hen_beside_pile.jpg",
+      "category": "chickened",
+      "visible_eggs": 15,
+      "description": "Abstract drawn hen: beside pile"
+    }
+  ]
+}

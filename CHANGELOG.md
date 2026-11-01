@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Reject egg-pile chicken false positives using unclosed smooth-patch thickness
+  together with plumage texture; share the presence check across recognition and
+  pre-sorting. Check smaller candidates after rejecting a larger pile, and keep
+  hen priority over all egg processing.
+- Add 24 committed, reproducibly drawn offline image fixtures for empty nests,
+  separated eggs, touching piles, smooth/patterned/clipped hens, and mixed scenes;
+  exercise recognition, pre-sorting, counting gates, and HA prediction together.
+
 ## 0.1.4
 
 - Discover an Egg count MQTT measurement sensor alongside Occupant using the
