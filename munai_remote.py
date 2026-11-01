@@ -332,9 +332,9 @@ def main(argv=None, credentials=None):
             except Exception:
                 credentials.delete(profile['account'])
                 raise
-            print('Token stored in macOS Keychain. Add this SHA256 digest to transfer_tokens in HA Configuration:')
+            print('Token stored in macOS Keychain. Paste this digest into Transfer token SHA256 (transfer_token_sha256) in HA Configuration:')
             print(sha256(token.encode('utf-8')))
-            print('Set scope to write for uploads, save, restart the app, then run remote status.')
+            print('Set Transfer client permissions (transfer_token_scope) to write for uploads, save, restart, then run remote status.')
             return 0
         if arguments.profile not in profiles:
             raise RemoteError('No matching profile; run remote pair first.')

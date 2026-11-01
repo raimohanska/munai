@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2
+
+- Fix HA configuration: replace the unusable required boundary list with numeric
+  Left boundary (0) and Right boundary (640) fields.
+- Make empty exclusion/additional-client lists genuinely optional; use text rows
+  instead of the UI-optional/backend-required list-of-object mismatch.
+- Add simple primary transfer-client fields; pairing needs only a pasted digest.
+- Keep legacy runtime options readable and reject conflicting masks safely.
+
 ## 0.1.1
 
 - Share the image layout between development and HA: separate versioned

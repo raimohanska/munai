@@ -62,11 +62,68 @@ class OptionsTests(unittest.TestCase):
         options = validate({'excluded_rectangles': [{'x1': 10, 'y1': 20, 'x2': 30, 'y2': 40}]})
         self.assertEqual(options['camera_profile']['excluded_rectangles'], [[10, 20, 30, 40]])
 
+    def test_form_numeric_bounds_need_no_brackets(self):
+        options = validate({'horizontal_left': 10, 'horizontal_right': 630})
+        self.assertEqual(options['camera_profile']['horizontal_bounds'], [10, 630])
+        for raw in ({'horizontal_left': 640}, {'horizontal_right': 0},
+                    {'horizontal_left': 200, 'horizontal_right': 100},
+                    {'horizontal_left': ''}):
+            with self.assertRaises(AppError):
+                validate(raw)
+
+    def test_empty_optional_lists_can_be_omitted_by_ha_form(self):
+        options = validate({'horizontal_left': 0, 'horizontal_right': 640})
+        self.assertEqual(options['transfer_tokens'], [])
+        self.assertEqual(options['camera_profile']['excluded_rectangles'], [])
+        self.assertEqual(options['transfer_token_sha256'], '')
+
+    def test_optional_rectangle_rows_need_no_json(self):
+        options = validate({'excluded_rectangles': ['10,20,30,40', ' 100, 50, 120, 70 ']})
+        self.assertEqual(options['camera_profile']['excluded_rectangles'], [[10, 20, 30, 40], [100, 50, 120, 70]])
+        for row in ('[10,20,30,40]', '10,20,30', '10,20,5,40', 'secret-invalid'):
+            with self.assertRaises(AppError) as caught:
+                validate({'excluded_rectangles': [row]})
+            self.assertNotIn('secret-invalid', str(caught.exception))
+
+    def test_primary_token_uses_scalar_form_fields(self):
+        sha = 'a' * 64  # Synthetic digest, not a credential.
+        options = validate({'transfer_token_sha256': sha, 'transfer_token_name': 'test-client',
+                            'transfer_token_scope': 'read'})
+        self.assertEqual(options['transfer_tokens'], [{'name': 'test-client', 'scope': 'read', 'sha256': sha}])
+        with self.assertRaises(AppError):
+            validate({'transfer_token_sha256': 'secret-invalid'})
+
+    def test_additional_token_rows_and_legacy_runtime_entries(self):
+        sha = 'b' * 64
+        expected = [{'name': 'second', 'scope': 'write', 'sha256': sha}]
+        self.assertEqual(validate({'transfer_tokens': ['second|write|' + sha]})['transfer_tokens'], expected)
+        self.assertEqual(validate({'transfer_tokens': expected})['transfer_tokens'], expected)
+
+    def test_legacy_bounds_are_accepted_but_conflicts_are_not_silent(self):
+        self.assertEqual(validate({'horizontal_bounds': [10, 630]})['camera_profile']['horizontal_bounds'], [10, 630])
+        with self.assertRaises(AppError):
+            validate({'horizontal_bounds': [10, 630], 'horizontal_left': 0, 'horizontal_right': 640})
+
     def test_metadata_options_and_schema_agree(self):
         from ha_service import VERSION
         config = json.loads((Path(__file__).resolve().parent.parent / 'config.json').read_text())
         self.assertEqual(config['version'], VERSION)
-        self.assertEqual(set(config['options']), set(config['schema']))
+        self.assertLessEqual(set(config['options']), set(config['schema']))
+        missing = set(config['schema']) - set(config['options'])
+        self.assertEqual(missing, {'transfer_token_sha256', 'transfer_tokens', 'excluded_rectangles'})
+        for key in missing:
+            typ = config['schema'][key]
+            if isinstance(typ, list):
+                typ = typ[0]
+            self.assertIsInstance(typ, str)
+            self.assertTrue(typ.endswith('?'))  # Supervisor's missing-option rule.
+        self.assertNotIn('horizontal_bounds', config['schema'])
+        self.assertEqual(config['options']['horizontal_left'], 0)
+        self.assertEqual(config['options']['horizontal_right'], 640)
+        # Empty list-of-object fields are optional in UiOptions but required by
+        # AppOptions: prohibit that mismatch in our installable metadata.
+        self.assertTrue(all(not isinstance(value, list) or not isinstance(value[0], dict)
+                            for value in config['schema'].values()))
         self.assertIn('aarch64', config['arch'])
         self.assertNotIn('image', config)  # Build on the Green, like Paine.
         for permission in ('privileged', 'host_network', 'docker_api', 'homeassistant_api', 'hassio_api', 'map'):

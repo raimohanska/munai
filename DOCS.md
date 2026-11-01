@@ -70,11 +70,18 @@ the token's **SHA256 digest** is printed. The raw token is never printed, put in
 process arguments, or saved in the profile JSON. The profile contains only the
 address, public certificate fingerprint, and a Keychain account identifier.
 
-In HA's **Configuration** form, add a `transfer_tokens` entry:
+In HA's **Configuration** form, use the ordinary primary-client fields:
 
-- `name`: a descriptive local name, such as `desktop`
-- `sha256`: the digest printed by the CLI (not the certificate fingerprint)
-- `scope`: `write` for uploading; `read` permits only status/downloads
+- **Transfer client name** (`transfer_token_name`): for example, `desktop`
+- **Transfer token SHA256** (`transfer_token_sha256`): paste the printed digest,
+  not the certificate fingerprint; this field is optional until pairing
+- **Transfer client permissions** (`transfer_token_scope`): `write` for uploading;
+  `read` permits only status/downloads
+
+Leave **Additional transfer clients** empty unless you need multiple clients.
+That optional field accepts text rows `name|read-or-write|SHA256`, without JSON or
+brackets. Clearing the primary digest and leaving additional clients empty locks
+all authenticated transfers after restart.
 
 Save and restart the app. Then run:
 
@@ -100,13 +107,16 @@ logs; do not accept a new fingerprint supplied by an untrusted network endpoint.
 
 Before uploading, set any camera-specific masks in HA's **Configuration** form:
 
-- `horizontal_bounds`: exactly `[left, right]`, default `[0, 640]` (full width).
-- `excluded_rectangles`: zero or more objects with `x1`, `y1`, `x2`, `y2`.
+- **Left boundary** (`horizontal_left`): number, default **0**.
+- **Right boundary** (`horizontal_right`): number, default **640**.
+- **Camera overlay/wall exclusions** (`excluded_rectangles`): optional; leave
+  empty for none, or add a text row `x1,y1,x2,y2` per rectangle, without brackets.
 
 Coordinates use the **640×360 processing frame**, not the original camera
 resolution. They exclude overlays/walls only, never chicken identities. Your
 ignored local `camera-profile.json` uses rectangles as `[x1, y1, x2, y2]` arrays;
-copy your private values into the corresponding HA form fields. No real camera
+copy its left/right values into the two numeric HA fields, and its rectangles as
+comma-separated text rows. No brackets or JSON are typed into HA's form. No real camera
 calibration is included in this repository. Save and restart after option changes.
 
 The same relative layout is used on this machine (the checkout is the data root)
@@ -327,13 +337,30 @@ because this recognizer uses references, not trained models.
   Local CLI exports contain references/captures/results, **not** options, tokens or
   TLS keys, so they supplement rather than replace an HA backup. Restoring only
   images to a fresh installation requires pairing with its new certificate.
-- To revoke a client, remove its digest from `transfer_tokens`, save and restart
+- To revoke the primary client, clear `transfer_token_sha256`; for an additional
+  client, remove its row from `transfer_tokens`. Save and restart
   the app. Then run `remote logout` locally. Logout alone does not revoke the
   server-side token. To rotate, revoke/logout and pair again.
 - If the new app causes trouble, stop it and restore the old cron schedule. Keep
   the legacy Pi references/configuration and ignored camera profile backed up.
 
 ## Logs and troubleshooting
+
+### Upgrading the configuration form from 0.1.1
+
+Version 0.1.2 replaces the broken required numeric-list `horizontal_bounds` field
+with **Left boundary = 0** and **Right boundary = 640**. Empty exclusions and extra
+clients are now genuinely optional to both HA's UI and Supervisor validator.
+Reload the app repository, update Munai, then reopen Configuration. Do not reset
+your camera or MQTT settings. Copy any custom old boundary values into the new
+numeric fields before enabling capture. Saving the new form removes the obsolete
+schema key. The runtime accepts old bounds when the new fields are absent and
+rejects conflicting old/new masks rather than silently changing calibration.
+
+For old nonempty exclusion lists, re-enter each rectangle as `x1,y1,x2,y2`.
+For an old token object, copy its digest/name/scope into the new primary fields,
+or convert additional clients to the optional text-row format above. No actual
+token needs to be exposed or regenerated just to change the form.
 
 INFO logs show startup modes, the public certificate fingerprint, reference reloads,
 occupant changes, actionable failures, and recovery. Identical failures repeat at

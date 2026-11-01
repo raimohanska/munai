@@ -1,6 +1,6 @@
 {
   "name": "Munai",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "slug": "munai",
   "description": "Recognize nest occupants and publish an MQTT device",
   "arch": ["aarch64", "amd64"],
@@ -27,7 +27,8 @@
     "device_id": "munai_ha_nest",
     "device_name": "Munai nest",
     "transfer_enabled": true,
-    "transfer_tokens": [],
+    "transfer_token_name": "desktop",
+    "transfer_token_scope": "write",
     "store_captures": false,
     "retention_days": 7,
     "capture_storage_mb": 256,
@@ -36,8 +37,8 @@
     "texture_threshold": 8,
     "max_distance": 1.25,
     "min_margin": 0.25,
-    "horizontal_bounds": [0, 640],
-    "excluded_rectangles": [],
+    "horizontal_left": 0,
+    "horizontal_right": 640,
     "log_level": "info"
   },
   "schema": {
@@ -55,7 +56,10 @@
     "device_id": "match(^[a-zA-Z0-9_-]{1,48}$)",
     "device_name": "str",
     "transfer_enabled": "bool",
-    "transfer_tokens": [{"name": "str", "sha256": "password", "scope": "list(read|write)"}],
+    "transfer_token_name": "str(1,80)",
+    "transfer_token_scope": "list(read|write)",
+    "transfer_token_sha256": "password?",
+    "transfer_tokens": ["str?"],
     "store_captures": "bool",
     "retention_days": "int(1,365)",
     "capture_storage_mb": "int(16,4096)",
@@ -64,8 +68,9 @@
     "texture_threshold": "int(1,100)",
     "max_distance": "float(0.01,10)",
     "min_margin": "float(0,10)",
-    "horizontal_bounds": ["int(0,640)"],
-    "excluded_rectangles": [{"x1": "int(0,639)", "y1": "int(0,359)", "x2": "int(1,640)", "y2": "int(1,360)"}],
+    "horizontal_left": "int(0,639)",
+    "horizontal_right": "int(1,640)",
+    "excluded_rectangles": ["str?"],
     "log_level": "list(info|debug)"
   }
 }

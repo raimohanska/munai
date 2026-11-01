@@ -6,6 +6,8 @@ import re
 
 from camera_profile import camera_bounds
 
+OPTIONAL_DEFAULTS = {'transfer_token_sha256': '', 'transfer_tokens': [], 'excluded_rectangles': []}
+
 
 class AppError(Exception):
     """Only fixed, credential-free messages belong here."""
@@ -29,9 +31,10 @@ def validate(raw):
     # Defaults live in the single HA metadata file, not a developer env file.
     with (Path(__file__).resolve().parent.parent / 'config.json').open() as handle:
         defaults = json.load(handle)['options']
-    if not isinstance(raw, dict) or set(raw) - set(defaults):
+    if not isinstance(raw, dict) or set(raw) - (set(defaults) | set(OPTIONAL_DEFAULTS) | {'horizontal_bounds'}):
         raise AppError('Unknown or invalid app options; check the HA Configuration tab.')
-    options = dict(defaults, **raw)
+    options = dict(defaults, **OPTIONAL_DEFAULTS)
+    options.update(raw)
     for key in ('capture_enabled', 'mqtt_enabled', 'mqtt_tls', 'transfer_enabled', 'store_captures'):
         if type(options[key]) is not bool:
             raise AppError('Enable/disable options must be booleans.')
@@ -42,7 +45,7 @@ def validate(raw):
               'expire_after': (60, 172800), 'mqtt_port': (1, 65535),
               'retention_days': (1, 365), 'capture_storage_mb': (16, 4096),
               'minimum_free_mb': (64, 4096), 'chicken_area': (100, 100000),
-              'texture_threshold': (1, 100)}
+              'texture_threshold': (1, 100), 'horizontal_left': (0, 639), 'horizontal_right': (1, 640)}
     for key, (low, high) in ranges.items():
         if type(options[key]) is not int or not low <= options[key] <= high:
             raise AppError('Invalid numeric option: ' + key + '.')
@@ -65,21 +68,64 @@ def validate(raw):
     tokens = options['transfer_tokens']
     if not isinstance(tokens, list) or len(tokens) > 16:
         raise AppError('Provide at most 16 transfer tokens.')
+    records = []
     for token in tokens:
+        # Old options.json object entries remain readable; the HA form now uses
+        # optional text rows because empty object lists are rendered optional by
+        # HA but nevertheless required by Supervisor's list-of-dict validator.
+        if isinstance(token, str):
+            parts = token.split('|')
+            if len(parts) != 3:
+                raise AppError('Additional transfer clients use name|read-or-write|SHA256, one client per row.')
+            token = dict(zip(('name', 'scope', 'sha256'), (part.strip() for part in parts)))
+        records.append(token)
+    primary = options['transfer_token_sha256']
+    if not isinstance(options['transfer_token_name'], str) or not 1 <= len(options['transfer_token_name']) <= 80:
+        raise AppError('Transfer client name must contain 1-80 characters.')
+    if not isinstance(primary, str):
+        raise AppError('Transfer token digest must be text.')
+    if options['transfer_token_scope'] not in ('read', 'write'):
+        raise AppError('Transfer token scope must be read or write.')
+    if primary:
+        records.append({'name': options['transfer_token_name'], 'scope': options['transfer_token_scope'],
+                        'sha256': primary})
+    if len(records) > 16:
+        raise AppError('Provide at most 16 transfer tokens.')
+    for token in records:
         if (not isinstance(token, dict) or set(token) != {'name', 'sha256', 'scope'}
                 or not isinstance(token['name'], str) or not 1 <= len(token['name']) <= 80
                 or not isinstance(token['sha256'], str)
                 or not re.fullmatch(r'[a-f0-9]{64}', token['sha256'])
                 or token['scope'] not in ('read', 'write')):
             raise AppError('Each transfer token needs a name, lowercase SHA256 digest and read/write scope.')
+    options['transfer_tokens'] = records
     try:
         rectangles = options['excluded_rectangles']
         if not isinstance(rectangles, list) or len(rectangles) > 32:
             raise ValueError()
-        profile = {'horizontal_bounds': options['horizontal_bounds'],
-                   'excluded_rectangles': [[r[k] for k in ('x1', 'y1', 'x2', 'y2')] for r in rectangles]}
+        bounds = [options['horizontal_left'], options['horizontal_right']]
+        # Compatibility for local callers/old runtime options, without retaining
+        # the broken numeric-list field in HA's new form.
+        if 'horizontal_bounds' in raw:
+            legacy = raw['horizontal_bounds']
+            camera_bounds({'horizontal_bounds': legacy})
+            if 'horizontal_left' not in raw and 'horizontal_right' not in raw:
+                bounds = legacy
+            elif bounds != legacy:
+                raise ValueError()
+        converted = []
+        for rectangle in rectangles:
+            if isinstance(rectangle, str):
+                parts = rectangle.split(',')
+                if len(parts) != 4:
+                    raise ValueError()
+                converted.append([int(part.strip()) for part in parts])
+            else:
+                converted.append([rectangle[k] for k in ('x1', 'y1', 'x2', 'y2')])
+        profile = {'horizontal_bounds': bounds, 'excluded_rectangles': converted}
         camera_bounds(profile)
         options['camera_profile'] = profile
+        options['horizontal_left'], options['horizontal_right'] = bounds
     except Exception:
-        raise AppError('Invalid camera mask; use two horizontal bounds and valid exclusion rectangles.') from None
+        raise AppError('Invalid camera mask: left must be less than right; exclusion rows use x1,y1,x2,y2 without brackets. Clear conflicting legacy horizontal_bounds.') from None
     return options
