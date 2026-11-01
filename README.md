@@ -1,392 +1,162 @@
 # Munai
 
-**Home Assistant app:** see [DOCS.md](DOCS.md) for installation, HA configuration,
-MQTT discovery, secure devcontainer reference uploads, backups, and current validation
-limits. Capture/MQTT start disabled. No deployment has been performed by the agent.
+Home Assistant app that recognizes the current nest occupant and creates an
+MQTT **Occupant** sensor. Egg counting is not implemented yet.
 
-The legacy Pi/cron tooling below remains available until the HA app is validated.
+**Already installed and paired?** Continue with [upload references](#3-upload-references),
+then [enable MQTT](#4-enable-mqtt) and [enable capture](#5-enable-capture).
 
-Capture one RTSP frame per invocation and save a timestamped JPEG when it differs
-sufficiently from the last saved image.
+All terminal commands below run **inside the VS Code devcontainer**, from the
+repository directory. No separate CLI installation, venv, or wrapper is needed.
 
-## Home Assistant MQTT chicken device
+## 1. Install the HA app
 
-`chicken_device.py` is the combined entry point: capture one fresh camera image,
-recognize the hen, optionally save the image, and update an MQTT sensor. Run it
-once per minute with cron, **instead of** running `capture.py` separately.
-It uses the same FFmpeg capture and reference-based recognizer, not a neural
-network. Reference images must remain available even when capture storage is off.
+1. In Home Assistant, open **Settings → Apps → Install app → ⋮ → Repositories**
+   (older versions: **Add-ons → Add-on Store**).
+2. Add this public GitHub repository's URL and install **Munai**. It builds on HA.
+3. Use **version 0.1.2 or newer** for the configuration fields shown here.
+4. Leave **Protection mode enabled**. Keep `capture_enabled` and `mqtt_enabled`
+   off until the steps below are complete.
 
-### Minimal installation
+## 2. Connect the transfer CLI
 
-On Raspberry Pi OS / Debian, prefer OS-built OpenCV and NumPy packages rather
-than compiling or installing modern wheels on the old Pi:
+### Enable the transfer port
 
-```bash
-sudo apt-get update
-sudo apt-get install ffmpeg python3-opencv python3-numpy python3-pip ca-certificates
-python3 -m pip install --user -r /home/pi/munai/requirements-device.txt
-```
+On **Settings → Apps/Add-ons → Munai → Configuration**:
 
-Adjust `/home/pi/munai` to your installation path. The only additional pip
-dependency is **paho-mqtt==1.5.1**, pinned for Python 3.5 compatibility. Do not
-upgrade to paho-mqtt 1.6+ on that Python. OpenCV 3.x/4.x and NumPy are used only
-for image processing; no Pillow, notebooks, Node.js, or ML runtime is needed.
-On an old Python 3.5 OS, use that distribution's compatible packages; verify
-`python3 -c 'import cv2, numpy, paho.mqtt.client'` succeeds. Legacy OS repositories
-may need maintenance; this is not a claim of hardware-tested Pi deployment.
+1. Enable **HTTPS reference transfers** (`transfer_enabled`).
+2. Find the **Network** section below the app options.
+3. Beside **`8443/tcp`**, enter **`8443`** in the host-port field.
+4. Save and restart Munai.
 
-For container development, the existing image provides OpenCV/NumPy; install the
-new dependency with `/opt/venv/bin/python -m pip install -r requirements-device.txt`
-or rebuild the container.
+This is an **HA app setting, not router port forwarding**. Use it only on your
+LAN/VPN. Port **8123 is HA's UI**, not Munai's transfer API.
 
-### Runtime configuration
+### Pair once
 
-The program reads the local `.env` at runtime with the existing literal-value
-parser. Keep the camera settings from the capture configuration below and add:
+Open Munai's **Logs** and copy the value after
+**Transfer certificate SHA256 fingerprint**. This is not the browser certificate.
 
-```dotenv
-MQTT_HOST=mqtt.example.invalid
-MQTT_PORT=1883
-MQTT_USER=YOUR_MQTT_USER
-MQTT_PASSWORD=YOUR_MQTT_PASSWORD
-MQTT_TLS=false
-```
-
-Use your actual broker settings locally, never in version control. Omit user and
-password for an anonymous broker. `MQTT_HOST` is a hostname/IP, not a URL.
-`MQTT_TLS` accepts `true` or `false`; TLS verifies the broker certificate using
-system CA trust. The default port is 1883 without TLS or 8883 with TLS. Without
-TLS, MQTT credentials and messages are unencrypted; use only on a trusted LAN.
-
-- With a nonempty `CAPTURE_DIR`, captures are saved using the existing timestamp,
-  atomic-write, and similarity-filtering behavior, now routed into category
-  folders (below). Relative paths are resolved against the `.env` directory.
-- **Omit `CAPTURE_DIR` entirely to disable persistent capture storage.** A temporary
-  JPEG is still needed for recognition and is removed after the round, including
-  on failure. Setting `CAPTURE_DIR=` is a configuration error, not the off switch.
-- Recognition runs on **every successful capture**, even if similarity filtering
-  decides not to store it. Position is not an identity feature; eggs are ignored.
-- This optional-storage behavior belongs to `chicken_device.py`. The standalone
-   legacy `capture.py` still stores unclassified images in `captures/pending/`.
-
-Saved images are categorized automatically, preserving UTC filenames:
-
-```text
-CAPTURE_DIR/
-  empty/YYYYMMDDTHHMMSS_ffffffZ.jpg
-  eggs/YYYYMMDDTHHMMSS_ffffffZ.jpg
-  unknown/YYYYMMDDTHHMMSS_ffffffZ.jpg
-  hen_a/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
-  hen_b/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
-  hen_c/unreviewed/YYYYMMDDTHHMMSS_ffffffZ.jpg
-```
-
-Chicken detection takes priority over eggs. Only frames without a detected hen
-are checked for egg candidates, using the existing lightweight shape/texture
-heuristics; this separates `empty` and `eggs` but is not a reliable egg count.
-Disagreement between the presence heuristics is conservatively categorized as an
-unknown chicken. Similarity filtering compares against the latest saved image
-**in the destination category**, so each category has its own baseline.
-
-Automatic named-chicken images go under `unreviewed/` rather than beside the
-confirmed reference JPEGs. Reference loading is nonrecursive and always excludes
-the reserved `unknown/` directory, preventing automatic predictions (including
-unknown hens) from silently becoming identity references. After visual review,
-copy selected images into an explicitly reviewed import folder and run
-`tools/import_references.py --apply` as documented in [DOCS.md](DOCS.md).
-Never edit managed reference versions directly. Existing local data can be
-reorganized using the explicit, dry-run-first layout migration in that guide.
-
-### Run and discover
-
-Reviewed references live in `references/versions/<version>/<identity>/`, with
-`references/state.json` selecting the active version, exactly as on HA. The
-default `--references` is the managed `references/` root beside these scripts.
-An explicit flat reviewed import folder remains accepted for compatibility.
+Replace `HA_HOST` with HA's LAN IP/hostname and `FINGERPRINT` with that value:
 
 ```bash
-python3 /home/pi/munai/chicken_device.py
+python munai_remote.py remote pair https://HA_HOST:8443 --fingerprint FINGERPRINT
 ```
 
-Enable the **MQTT integration** in Home Assistant and point it at the same broker,
-with discovery enabled (standard prefix `homeassistant`). No HA YAML sensor
-configuration is needed. The default MQTT device ID is `munai_nest`; set a stable,
-different `--device-id` for additional nests. The broker must allow this client
-to publish to `homeassistant/sensor/<device-id>/chicken/config` and
-`munai/<device-id>/state`.
+The command prints a **token digest**. In Munai's **Configuration**:
 
-The discovered **Munai / Chicken** text sensor has these states:
+1. Enable **Show unused optional configuration options** if the field is hidden.
+2. Paste the printed digest into **Transfer token SHA256 (optional)**
+   (`transfer_token_sha256`). Do **not** paste the certificate fingerprint here.
+3. Set **Transfer client permissions** (`transfer_token_scope`) to **write**.
+4. Save and restart Munai.
 
-- `Hen_a`, `Hen_b`, or `Hen_c` when recognized.
-- An empty string when no chicken is detected (including images containing eggs).
-- `Unknown chicken` for a detected hen whose identity is ambiguous or unfamiliar,
-  rather than falsely reporting empty. This is a literal sensor value, distinct
-  from Home Assistant's built-in `unknown` state before receiving observations.
-- HA `unavailable` after 180 seconds without an update; configure
-  `--expire-after SECONDS` to exceed your scheduling interval.
-
-State messages are JSON, e.g. `{"chicken":"Hen_a"}` or `{"chicken":""}`;
-discovery extracts the name. Discovery is retained and republished each round;
-state messages use QoS 1 and are **not retained**, avoiding replay of a stale
-observation as fresh after an HA restart. After a restart, HA receives a fresh
-state on the next scheduled round. No persistent MQTT connection or daemon is
-needed. Failed captures publish no new state; old state expires. A broker failure
-returns nonzero but does not undo an already saved capture. Errors never print
-broker credentials, camera URLs, or raw external diagnostics.
-
-Example cron entry (replace the old capture-only entry):
-
-```cron
-* * * * * /usr/bin/python3 /home/pi/munai/chicken_device.py >> /home/pi/munai/chicken-device.log 2>&1
-```
-
-The runtime user needs write access to the project directory for a stable overlap
-lock, the capture directory when enabled, and system temporary storage. Keep
-`.chicken-device.lock` in place. Each capture is bounded by
-`CAPTURE_TIMEOUT_SECONDS`; MQTT connection and each acknowledged publication have
-a separate timeout (`--mqtt-timeout`, default 10 seconds). Concurrent combined
-runs skip rather than overlap. SIGKILL or power loss may leave temporary files.
-
-Offline checks (no configuration read, camera, or broker connection):
+Check the connection:
 
 ```bash
-/opt/venv/bin/python chicken_device.py --help
-/opt/venv/bin/python -m unittest discover -s tests
+python munai_remote.py remote status
 ```
 
-## Image experiments
+Pairing is only needed once; skip it on subsequent uploads. The token is stored
+in gitignored `.munai-remote.json` with owner-only permissions. Do not share it
+or paste full configuration errors: they can expose passwords.
 
-For offline image processing, open this folder in VS Code and select **Dev
-Containers: Reopen in Container** (requires Docker and the Dev Containers
-extension). The separate Python 3.10 environment includes OpenCV and notebook
-tooling; it does not change the Pi capture requirements below.
+## 3. Upload references
 
-OpenCode **2.2.0** is also installed. Run `opencode` in the container terminal;
-connect your provider there if needed. Host credentials are not copied into the
-image. After changing container tooling, select **Dev Containers: Rebuild and
-Reopen in Container**.
+Before uploading, configure any camera masks in Munai's HA **Configuration**:
 
-See [PLAN.md](PLAN.md) for the original experiment plan. The current offline
-helpers use traditional image processing, without trained models.
-Run all experiment Python commands inside the container. Do not load `.env` for
-offline experiments. The workspace is mounted, so treat its secrets accordingly.
+- **Left boundary / Right boundary**: plain numbers; defaults **0 / 640**.
+- **Camera overlay/wall exclusions**: optional text rows `x1,y1,x2,y2`, no brackets.
 
-### Lightweight capture sorter
+Coordinates refer to the **640×360 processing frame**. If you use the local
+`camera-profile.json`, copy its private boundary/exclusion values into these HA
+fields so local and HA recognition use the same mask. Save and restart after changes.
+
+Upload the active reviewed reference set:
 
 ```bash
-/opt/venv/bin/python sort_captures.py                 # preview, no image moves
-/opt/venv/bin/python sort_captures.py --move          # fill each folder to 10
-/opt/venv/bin/python sort_captures.py --move --target 20 --seed 7
+python munai_remote.py push references --dry-run
+python munai_remote.py push references
+python munai_remote.py remote status
 ```
 
-The offline helper randomly examines timestamped JPEGs in `captures/pending/`
-and moves selected originals into `captures/empty/`, `captures/unknown/`, and
-`captures/eggs/`. Existing category images count toward the target; full categories
-are skipped. No images are copied, deleted, or overwritten. A CSV move manifest
-is saved in `reports/sorting/sort-*.csv`; an exclusive lock prevents concurrent sorters.
-Moves use Linux's atomic no-replace rename (same filesystem required).
+**Check:** `reference_count` should match the uploaded set and `references_ready`
+should be `true`. References for at least two identities are required.
 
-Only OpenCV and NumPy are needed. Processing uses 640×360 grayscale local texture:
-smooth foreground regions are joined to find large chicken blobs; smaller smooth,
-round regions are egg candidates. Chicken takes precedence over eggs. Optional local camera exclusions can mask text, logos, and walls. Thresholds are camera-specific heuristics,
-not reliable labels or egg counts, especially for obscured eggs, changed camera
-positions, or unusual lighting. `--chicken-area` (default 4500 downsampled pixels)
-and `--texture-threshold` (default 8 intensity units) allow tuning. Originals retain
-their resolution and filenames. Exhausting the candidates before reaching every
-target returns a nonzero status without undoing completed moves.
+Unchanged images are skipped; nothing is deleted. Captured predictions and renamed
+corrections are **not automatically promoted to references**. Review and import
+new reference images separately using the [reference workflow](DOCS.md#3-configure-recognition-and-upload-reviewed-references).
 
-Review local selections before relying on them; calibration is not a held-out
-accuracy benchmark. This move-based workflow supersedes the earlier
-preserve-in-place proposal in `PLAN.md`.
+## 4. Enable MQTT
 
-### Chicken recognizer (no trained model)
+In Munai's HA **Configuration**, set:
 
-Confirmed references belong in the managed `references/` root, separate from
-all captures. Its active version has one folder per identity. Only timestamped
-JPEGs directly inside those identity folders are references. Folder names become
-identity labels; reserved categories and nested `unreviewed/` folders are excluded.
+| Setting | Value |
+| --- | --- |
+| `mqtt_host` | `core-mosquitto` for HA's Mosquitto app, or your broker's hostname/IP. **No `http://`, port, or trailing `/`.** |
+| `mqtt_port` | `1883` for plain MQTT, or your TLS broker's port |
+| `mqtt_user` / `mqtt_password` | Your broker credentials |
+| `mqtt_tls` | Enable only when the broker uses TLS with a trusted certificate |
+| `device_name` | The name you want to see in HA |
+| `mqtt_enabled` | On |
+
+Keep `device_id` stable. Save and restart Munai.
+
+**Check:** under **Settings → Devices & services → MQTT → Devices**, find your
+Munai device and its **Occupant** sensor. It is unavailable until a fresh capture
+is published. HA's MQTT integration must be configured and discovery enabled.
+
+## 5. Enable capture
+
+Disable any old cron capture schedule using the same camera before enabling HA
+capture. Keep the old setup available for rollback.
+
+In Munai's HA **Configuration**, set:
+
+| Setting | Starting value |
+| --- | --- |
+| `camera_url` | Your complete RTSP URL, including credentials and stream path |
+| `capture_interval` | `60` seconds |
+| `capture_timeout` | `20` seconds; allowed range **1–60**, never negative |
+| `expire_after` | `180` seconds |
+| `store_captures` | On if you want saved images to review; otherwise off |
+| `capture_enabled` | On |
+
+Save and restart. Allow one capture interval for the first observation.
+
+**Check:** Occupant shows an identity, `empty`, or `unknown`. Failed/stale
+observations become `unavailable`; expiry must exceed interval + timeout + 10.
+Logs show occupant changes, failures, and recovery—not a line for every frame.
+
+Watch HA responsiveness. Once it works reliably, enable **Start on boot** on
+Munai's Info page. If it causes trouble, stop Munai before restoring the cron job.
+
+## 6. Review and maintain
+
+Download saved HA images into an ignored local directory:
 
 ```bash
-/opt/venv/bin/python recognize_chickens.py --output recognition/run-001
-/opt/venv/bin/python -m unittest discover -s tests
+python munai_remote.py pull captures local-data/ha-captures
 ```
 
-The recognizer scans the unsorted JPEGs in `captures/pending/`. It never moves,
-copies, deletes, or modifies original captures and never accesses `.env` or the
-camera. Each run requires a new output directory to preserve previous reports:
+Images are grouped as `empty/`, `unknown/`, and `<identity>/unreviewed/`.
+Automatic identity predictions remain unreviewed until you check them.
 
-- `predictions.csv`: identity, nearest reference, distance, ambiguity margin,
-  foreground area/box, and measured features for every unsorted image.
-- `hen_a-candidates.jpg`, `hen_b-candidates.jpg`, etc.: annotated contact sheets
-  of strongest accepted matches, spaced at least ten minutes apart. Corresponding
-  `*-candidates.txt` files list original paths in sheet order. The default is up
-  to 24 previews per identity; use `--examples` to change it.
-- `references.json`: reference measurements, feature scales, and run settings.
-- `label-check.csv`: checks on labeled empty/egg images and identity references
-  with the image itself excluded. Identities with just one reference are marked
-  untested. Adjacent frames are correlated: these checks are **not** a held-out
-  accuracy benchmark.
+After adding reviewed references locally, repeat **`push references`**; no
+re-pairing is needed. Take an **encrypted HA backup including Munai** before
+updates or uninstalling. Retention removes old captures/results, never reviewed
+references; uninstalling can remove the app's data.
 
-The appearance features use grayscale rather than colour. A large connected
-low-texture region indicates a hen; small foreground objects, including eggs,
-are ignored. The body mask is filled and eroded to reduce straw contamination.
-Measurements include brightness quartiles relative to visible background straw,
-the fraction of dark pixels, local texture quartiles, and edge density. These
-summarize appearance without embedding any real hen measurements or identities. Distances are compared with each identity's closest reference;
-there is no neural network, training, or fitted classifier.
+## If something fails
 
-Identity comparisons deliberately ignore coordinates, nest zones, body box size,
-and orientation. Any hen can occupy any position;
-we do not require a reference for every hen/position combination or treat absent
-examples as evidence. Local masks may exclude camera text/walls only. The pooled
-appearance summaries reduce positional dependence, but are not a guarantee of
-pose invariance: different visible feathers, cropping, and uneven illumination
-can still change measurements and produce an `unknown` result.
+| Problem | Check |
+| --- | --- |
+| Cannot connect to HTTPS | Munai is running; `transfer_enabled` is on; host port **8443** is mapped under **Network**; use `https://HA_HOST:8443`, not port 8123. Use a LAN IP if `.local` DNS fails inside the container. |
+| No Transfer token SHA256 field | Enable **Show unused optional configuration options**. Check **Info** shows **0.1.2+**; reload the app repository and update if older. |
+| Token rejected / HTTP 401 | Paste the **token digest**, not the certificate fingerprint; use write permissions, save and restart. |
+| Certificate fingerprint changed | Verify the fingerprint in trusted Munai logs. Do not bypass the check. |
+| Reference rejected | Check the image, camera mask and recognition settings. The image needs measurable hen/background detail. |
+| No MQTT device or fresh state | Check broker host format, credentials, HA's MQTT integration, and Munai's logs. |
 
-An identity is accepted only within `--max-distance` (default 1.25) and with a
-sufficient gap to the next identity (`--min-margin`, default 0.25). Otherwise it
-is `unknown`. Scores are heuristic distances, **not probabilities**. `no_chicken`
-means the foreground-area threshold was not reached, not a guarantee that the
-nest is empty. A detected hen always takes priority; eggs are not counted.
-`--chicken-area` and `--texture-threshold` have the same defaults as the sorter.
-
-Review candidate sheets before manually promoting images to confirmed folders.
-Do not blindly feed predictions back as labels. Partial hens, multiple hens,
-pose changes, lighting shifts, or a moved camera can defeat these heuristics.
-The code keeps Python 3.5-compatible syntax/APIs, but runs here in the container;
-deployment on the Pi still needs compatible OpenCV/NumPy packages and timing
-checks (the container's modern package versions do not support Python 3.5).
-
-## Requirements
-
-- Linux / Raspberry Pi OS with Python 3.5.3 or newer.
-- System FFmpeg (including the Pi's FFmpeg 3.2.18).
-- Network access to the camera.
-
-No pip or npm packages are needed. Python manages configuration and scheduling
-constraints; FFmpeg connects over RTSP/TCP and decodes the image.
-
-## Configuration
-
-Create a local `.env` beside `capture.py`, using `.env.example` as a template.
-If you already have a `.env`, edit it locally rather than overwriting it.
-
-```dotenv
-RTSP_URL=rtsp://USER:PASSWORD@CAMERA_IP:554/STREAM_PATH
-CAPTURE_DIR=captures
-CAPTURE_TIMEOUT_SECONDS=30
-FFMPEG_PATH=/usr/bin/ffmpeg
-SIMILARITY_PIXEL_THRESHOLD=15
-SIMILARITY_MIN_CHANGED_PERCENT=0.1
-```
-
-- `RTSP_URL` is required. Percent-encode special characters in URL credentials.
-- `CAPTURE_DIR` defaults to `captures`, relative to the configuration file.
-- `CAPTURE_TIMEOUT_SECONDS` defaults to 30 and bounds the FFmpeg process.
-- `FFMPEG_PATH` defaults to `/usr/bin/ffmpeg`. A bare executable name is resolved
-  through PATH; a relative executable path is relative to the configuration file.
-- `SIMILARITY_PIXEL_THRESHOLD` defaults to 15 (integer, 0–255).
-- `SIMILARITY_MIN_CHANGED_PERCENT` defaults to 0.1 (0–100); 0 disables filtering.
-
-The standard-library parser accepts one `KEY=value` per line, optional `export `
-prefixes, blank lines, and full-line `#` comments. Matching single or double
-quotes around an entire value are removed. Values are literal: no interpolation,
-escape processing, inline comments, multiline values, or shell execution.
-Existing process environment variables do not override the file.
-
-Restrict access, from the project directory:
-
-```bash
-chmod 600 .env
-```
-
-The file is gitignored. Do not paste its contents into logs or support requests.
-Raw FFmpeg diagnostics are never printed because they can expose camera
-credentials. The script maps recognized failures to fixed, credential-free
-summaries (for example, authentication rejected or connection refused), along
-with FFmpeg's numeric exit status. Unrecognized errors receive a generic summary.
-
-## Run
-
-```bash
-python3 /home/pi/munai/capture.py
-```
-
-Adjust the absolute project path to match your Pi. A different configuration
-file can be selected with `--env /absolute/path/to/config`.
-
-Images are stored as:
-
-```text
-captures/pending/20000101T120000_000000Z.jpg
-```
-
-The UTC timestamp records the start of the capture attempt, before connecting to
-the stream; it is not a camera-generated exposure timestamp. Keep the Pi's clock
-synchronized. Connection and decoding may add a delay before the captured frame.
-
-A successful capture is renamed atomically from a temporary file in the same
-directory, after FFmpeg succeeds and JPEG boundary markers are checked. Failed
-or timed-out captures return status 1 and remove the temporary image. A shared
-lock in the output directory prevents overlapping invocations using that output
-directory; a skipped overlapping run exits successfully. Leave `.capture.lock`
-in place. A forced kill or power loss may leave a hidden `.capture-*.jpg` file,
-but never promotes it to a finished image.
-
-## Skip similar images
-
-Enabled by default, with no additional packages. After capturing a JPEG, FFmpeg
-decodes it and the most recent saved timestamped JPEG into 320×180 grayscale
-images. Python compares the resulting 57,600 brightness values. A pixel counts
-as changed when the absolute difference exceeds `SIMILARITY_PIXEL_THRESHOLD`
-(15 by default on a 0–255 scale). The log reports the changed count and percentage.
-
-With the default `SIMILARITY_MIN_CHANGED_PERCENT=0.1`, fewer than 0.1% changed
-comparison pixels means the new JPEG is deleted and the invocation exits
-successfully. Otherwise it is saved at its original resolution. The reference
-is always the last **saved** image, so gradual changes can accumulate until a new
-image is kept. Only the flat capture directory's timestamped JPEGs are considered.
-
-The first image is always saved. If comparison fails or exceeds the remaining
-capture timeout budget, the new image is saved with a generic warning instead
-of being discarded. Comparison adds up to two local JPEG decoding processes;
-their combined timeout budget is what remains after the camera capture.
-
-These are approximate scene-change counts, not full-resolution RGB pixel counts.
-Downsampling and grayscale can miss very small objects or color-only changes;
-lighting changes can still trigger saves. Review actual egg appearances before
-settling on thresholds. Lower either threshold to preserve smaller changes;
-raise them to skip more images, or set `SIMILARITY_MIN_CHANGED_PERCENT=0` to keep
-every capture.
-
-## Cron
-
-Edit your user's crontab:
-
-```bash
-crontab -e
-```
-
-For one capture per minute:
-
-```cron
-* * * * * /usr/bin/python3 /home/pi/munai/capture.py >> /home/pi/munai/capture.log 2>&1
-```
-
-Cron supplies scheduling; the script performs a single capture and exits. Logs
-and images accumulate, so choose a retention policy as collection grows.
-
-## Private data and camera calibration
-
-All names in this documentation and the tests are synthetic examples. Real hen
-names, reference images, observations, and model artifacts belong outside Git.
-Do not publish private deployment data or old, unsanitized Git history.
-
-The offline helpers optionally read `camera-profile.json` beside the scripts.
-This ignored file contains `horizontal_bounds: [left, right]` and
-`excluded_rectangles: [[x1, y1, x2, y2], ...]` as JSON. Coordinates refer to the
-640x360 processing frame; rectangles exclude overlays/walls, never identities.
-Without a profile the entire processing frame is considered. Keep a private
-backup of your profile alongside your references. Changing masks requires local
-recognition review; generic thresholds are heuristics, not an accuracy guarantee.
+[Advanced settings, storage, backups and offline tools](DOCS.md) ·
+[Legacy Pi/cron instructions](LEGACY.md)

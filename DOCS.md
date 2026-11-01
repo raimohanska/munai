@@ -1,5 +1,8 @@
 # Munai: install, configure, and transfer references
 
+For the step-by-step setup and what to do next, start with [README.md](README.md).
+This file covers advanced settings, storage, offline tooling, and validation details.
+
 Munai is an **experimental Home Assistant app**. It builds locally on the Green,
 like Paine; no container registry is required. The repository root is the app's
 build context. Supervisor discovers the root `config.json` and `repository.json`.
@@ -78,6 +81,10 @@ resolve there, replace it with HA's LAN IP/DNS name; certificate pinning still
 checks the same fingerprint before transmitting any token.
 
 In HA's **Configuration** form, use the ordinary primary-client fields:
+
+**Enable “Show unused optional configuration options”** if the token field is
+hidden. If it is still absent, check Munai's **Info** tab: these fields require
+**0.1.2 or newer**. Reload the app repository and update the app if necessary.
 
 - **Transfer client name** (`transfer_token_name`): for example, `desktop`
 - **Transfer token SHA256** (`transfer_token_sha256`): paste the printed digest,
