@@ -190,6 +190,8 @@ and HA (the data root is `/data`):
     eggs/                              # optional legacy/offline egg candidates
     unknown/                           # detected hen, identity not known
     hen_a/unreviewed/                   # named automatic predictions
+    hen_a/reviewed/                     # human-confirmed correct predictions
+    hen_a/incorrect/                    # human-reviewed wrong predictions
   results/
   reports/                             # optional historical/offline reports
 ```
@@ -203,6 +205,21 @@ letter/digit, and contain at most 48 characters. Names `unknown`, `unreviewed`,
 inside identity folders qualify. The reserved `empty/` reference folder calibrates
 background only; it is never a hen identity. Nested predictions and `captures/empty/`
 never become references without explicit review and import.
+
+### Manual capture review convention
+
+Move checked predictions from `captures/<identity>/unreviewed/` into the same
+identity's `reviewed/` directory when correct, or `incorrect/` when wrong.
+**Both destinations mean the image has already been reviewed.** In `incorrect/`,
+the parent directory records the rejected prediction, not the true identity;
+the correct identity may still be unknown. Leave these review decisions intact
+when processing new unreviewed captures.
+
+Review status is separate from reference membership. Neither directory is
+automatically loaded as references. Confirmed images can be explicitly staged
+and imported using the reference workflow below; incorrect images require an
+explicit corrected label first. Keep incorrect examples for later error analysis
+and recognition improvements rather than silently relabeling or discarding them.
 
 ```bash
 python munai_remote.py push references --dry-run

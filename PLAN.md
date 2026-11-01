@@ -1,5 +1,17 @@
 # Image experiment handoff
 
+## Follow-up: reviewed recognition mistakes
+
+- Manual review outcomes are recorded in `captures/<identity>/reviewed/`
+  (confirmed correct) and `captures/<identity>/incorrect/` (confirmed wrong).
+  Both are already human-reviewed; the latter retains the rejected prediction,
+  not a corrected identity. See the convention in `DOCS.md`.
+- TODO: investigate incorrect predictions, establish corrected identities where
+  appearance supports them (otherwise retain unknown), and use these reviewed
+  mistakes to evaluate recognition improvements. Do not automatically promote
+  them to references or infer identity from nest position. Keep real examples
+  and analysis outside Git.
+
 ## Session decisions (2026-10-28)
 
 The project captures timestamped overhead nest images from a LAN RTSP camera.

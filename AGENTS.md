@@ -69,3 +69,10 @@ produced each egg.
   for unidentified hens, and `captures/empty/` for empty nests. Legacy unprocessed
   frames go in `captures/pending/`; offline egg candidates may use `captures/eggs/`.
   Exclude all reserved categories and nested predictions from reference loading.
+- Manual capture review convention: `captures/<identity>/reviewed/` contains
+  human-confirmed correct predictions; `captures/<identity>/incorrect/` contains
+  human-reviewed wrong predictions. Both have already been reviewed. In
+  `incorrect/`, the parent identity is the rejected prediction, not a corrected
+  identity. Preserve these decisions; do not reclassify them as unreviewed or
+  automatically promote either directory to references. Investigate incorrect
+  predictions separately and require an explicit corrected label before import.
