@@ -58,7 +58,7 @@ def split_region(mask):
             for label in range(len(centers))]
 
 
-def detect_eggs(gray, texture_threshold=8, min_area=500, max_area=3500):
+def detect_eggs(gray, texture_threshold=8, min_area=950, max_area=3500):
     """Find smooth, convex, egg-sized ellipses; never use nest position."""
     gray = cv2.resize(gray, (640, 360), interpolation=cv2.INTER_AREA)
     pixels = gray.astype(np.float32)
@@ -128,7 +128,7 @@ def detect_eggs(gray, texture_threshold=8, min_area=500, max_area=3500):
 
 
 def count_image(path, exclusions, chicken_area=4500, texture_threshold=8,
-                min_area=500, max_area=3500):
+                min_area=950, max_area=3500):
     """A detected hen always suppresses the count, including visible eggs."""
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -173,7 +173,7 @@ def main(argv=None):
     parser.add_argument('--output', help='New report directory (must not exist)')
     parser.add_argument('--chicken-area', type=float, default=4500)
     parser.add_argument('--texture-threshold', type=float, default=8)
-    parser.add_argument('--min-area', type=float, default=500)
+    parser.add_argument('--min-area', type=float, default=950)
     parser.add_argument('--max-area', type=float, default=3500)
     args = parser.parse_args(argv)
     values = (args.chicken_area, args.texture_threshold, args.min_area, args.max_area)

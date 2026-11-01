@@ -27,6 +27,15 @@ class EggTests(unittest.TestCase):
         for centers in ([(180, 180)], [(180, 180), (340, 220)]):
             self.assertEqual(len(detect_eggs(nest(centers))), len(centers))
 
+    def test_smaller_eggs_have_dimension_margin(self):
+        # Synthetic baseline axes are (23, 30). Round down after shrinking each
+        # dimension 15%, making this slightly stricter than the requested margin.
+        axes = (int(23 * 0.85), int(30 * 0.85))
+        for center in ((90, 90), (320, 180), (530, 270)):
+            image = nest()
+            cv2.ellipse(image, center, axes, 15, 0, 360, 140, -1)
+            self.assertEqual(len(detect_eggs(image)), 1)
+
     def test_touching_eggs(self):
         self.assertEqual(len(detect_eggs(nest([(180, 180), (217, 180)]))), 2)
 

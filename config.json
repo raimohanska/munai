@@ -35,7 +35,7 @@
     "minimum_free_mb": 128,
     "chicken_area": 4500,
     "texture_threshold": 8,
-    "egg_min_area": 500,
+    "egg_min_area": 950,
     "egg_max_area": 3500,
     "max_distance": 1.25,
     "min_margin": 0.25,

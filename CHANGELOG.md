@@ -8,7 +8,8 @@
 - Share non-retained state, availability, expiry and rediscovery between both
   sensors; include egg counts in stored observations and transfer status.
 - Expose minimum/maximum egg area settings for private deployment calibration.
-  Generic defaults require checks against reviewed positive and negative images.
+  Default the minimum area to 950 in HA and offline counting; size settings remain
+  configurable and require checks against reviewed positive and negative images.
 - Keep full image frames visible in offline reports and tolerate straw notches,
   touching eggs and mostly visible clipped eggs while rejecting textured regions.
 

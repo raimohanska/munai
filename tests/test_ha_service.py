@@ -44,6 +44,7 @@ def synthetic_empty():
 
 class OptionsTests(unittest.TestCase):
     def test_egg_area_validation(self):
+        self.assertEqual(validate({})['egg_min_area'], 950)
         self.assertEqual(validate({'egg_min_area': 700, 'egg_max_area': 2800})['egg_min_area'], 700)
         for options in ({'egg_min_area': True}, {'egg_min_area': 0}, {'egg_max_area': float('nan')},
                         {'egg_min_area': 3000, 'egg_max_area': 2000}):
