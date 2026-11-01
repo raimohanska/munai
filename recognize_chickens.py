@@ -16,7 +16,6 @@ import cv2
 import numpy as np
 
 from sort_captures import capture_files
-from camera_profile import exclude_camera_regions
 from data_layout import RESERVED, reference_directory
 
 
@@ -27,7 +26,15 @@ FEATURES = ('brightness_25', 'brightness_50', 'brightness_75',
 SCALES = np.array([0.18, 0.18, 0.18, 0.25, 4.0, 5.0, 0.12])
 
 
-def measure(path, chicken_area=4500, texture_threshold=8, camera_profile=None):
+class References(list):
+    """Reviewed identities plus background calibration, never an identity feature."""
+
+    def __init__(self, background_mask=None):
+        super(References, self).__init__()
+        self.background_mask = background_mask
+
+
+def image_statistics(path):
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise ValueError('Cannot decode image: ' + str(path))
@@ -35,8 +42,38 @@ def measure(path, chicken_area=4500, texture_threshold=8, camera_profile=None):
     pixels = gray.astype(np.float32)
     mean = cv2.blur(pixels, (7, 7))
     std = np.sqrt(np.maximum(0, cv2.blur(pixels * pixels, (7, 7)) - mean * mean))
+    return gray, pixels, std
+
+
+def background_mask(directory, texture_threshold=8):
+    """Exclude pixels consistently smooth in explicitly reviewed empty images.
+
+    Walls/overlays must not count as feathers. Majority voting tolerates straw
+    changes and small eggs. Only reviewed references/empty/ is used, never captures.
+    Recomputed when references load; no disk cache or learned identity positions.
+    """
+    folder = Path(directory) / 'empty'
+    if not folder.is_dir() or folder.is_symlink():
+        return None
+    votes = np.zeros((360, 640), np.uint32)
+    count = 0
+    for path in capture_files(folder):
+        unused_gray, unused_pixels, std = image_statistics(path)
+        votes += (std < texture_threshold)
+        count += 1
+    if not count:
+        return None
+    mask = votes > count // 2
+    if np.count_nonzero(~mask) < 1000:
+        raise ValueError('Empty references lack measurable background texture')
+    return mask
+
+
+def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None):
+    gray, pixels, std = image_statistics(path)
     valid = np.full(gray.shape, 255, np.uint8)
-    exclude_camera_regions(valid, camera_profile)
+    if background_mask is not None:
+        valid[background_mask] = 0
     smooth = ((std < texture_threshold) & (valid != 0)).astype(np.uint8) * 255
     smooth = cv2.morphologyEx(smooth, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     joined = cv2.morphologyEx(smooth, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
@@ -71,16 +108,15 @@ def measure(path, chicken_area=4500, texture_threshold=8, camera_profile=None):
     return result
 
 
-def load_references(directory, chicken_area=4500, texture_threshold=8, camera_profile=None):
+def load_references(directory, chicken_area=4500, texture_threshold=8):
     directory = reference_directory(directory)
-    references = []
+    references = References(background_mask(directory, texture_threshold))
     for folder in sorted(directory.iterdir()):
         if (not folder.is_dir() or folder.is_symlink() or folder.name.startswith('.')
                 or folder.name.lower() in RESERVED):
             continue
         for path in capture_files(folder):
-            measurement = (measure(path, chicken_area, texture_threshold) if camera_profile is None
-                           else measure(path, chicken_area, texture_threshold, camera_profile))
+            measurement = measure(path, chicken_area, texture_threshold, references.background_mask)
             if measurement['features'] is None:
                 raise ValueError('Reference has no measurable chicken: ' + str(path))
             references.append((folder.name, path, measurement))
@@ -164,7 +200,8 @@ def check_labels(directory, references, output, args):
             if not folder.is_dir() or folder.is_symlink():
                 continue
             for path in capture_files(folder):
-                measurement = measure(path, args.chicken_area, args.texture_threshold)
+                measurement = measure(path, args.chicken_area, args.texture_threshold,
+                                      references.background_mask)
                 prediction = identify(measurement, references, args.max_distance, args.min_margin)
                 writer.writerow([str(path), 'no_chicken', prediction['label'], 'labeled negative'])
 
@@ -188,6 +225,8 @@ def main():
     cv2.setNumThreads(1)
     reference_root = Path(args.references).resolve() if args.references else directory.parent / 'references'
     references = load_references(reference_root, args.chicken_area, args.texture_threshold)
+    if references.background_mask is None:
+        raise ValueError('Add reviewed no-hen JPEGs to references/empty/ before recognition')
     output.mkdir(parents=True, exist_ok=False)
     check_labels(directory, references, output, args)
     with (output / 'references.json').open('w') as handle:
@@ -201,7 +240,8 @@ def main():
         writer = csv.writer(handle)
         writer.writerow(['path', 'label', 'nearest', 'distance', 'margin', 'reference', 'area', 'box'] + list(FEATURES))
         for path in capture_files(directory / 'pending'):
-            measurement = measure(path, args.chicken_area, args.texture_threshold)
+            measurement = measure(path, args.chicken_area, args.texture_threshold,
+                                  references.background_mask)
             prediction = identify(measurement, references, args.max_distance, args.min_margin)
             counts[prediction['label']] = counts.get(prediction['label'], 0) + 1
             writer.writerow([str(path), prediction['label'], prediction['nearest'],

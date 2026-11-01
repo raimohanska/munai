@@ -119,19 +119,15 @@ logs; do not accept a new fingerprint supplied by an untrusted network endpoint.
 
 ## 3. Configure recognition and upload reviewed references
 
-Before uploading, set any camera-specific masks in HA's **Configuration** form:
-
-- **Left boundary** (`horizontal_left`): number, default **0**.
-- **Right boundary** (`horizontal_right`): number, default **640**.
-- **Camera overlay/wall exclusions** (`excluded_rectangles`): optional; leave
-  empty for none, or add a text row `x1,y1,x2,y2` per rectangle, without brackets.
-
-Coordinates use the **640×360 processing frame**, not the original camera
-resolution. They exclude overlays/walls only, never chicken identities. Your
-ignored local `camera-profile.json` uses rectangles as `[x1, y1, x2, y2]` arrays;
-copy its left/right values into the two numeric HA fields, and its rectangles as
-comma-separated text rows. No brackets or JSON are typed into HA's form. No real camera
-calibration is included in this repository. Save and restart after option changes.
+Include explicitly reviewed no-hen JPEGs in the reference set's `empty/` folder.
+Eggs are allowed. Use several examples covering lighting and straw changes.
+At 640×360 resolution, pixels smooth in a majority of these images are excluded
+from the feather detector, so walls do not become false hens. Calibration is
+computed in memory when references load; there are no generated cache files.
+Hen references and captures use the same calibration. Coordinates never identify
+a hen. Recognition no longer reads `camera-profile.json` or offers manual masks.
+Re-review empty references if the camera moves or the background changes materially;
+this texture heuristic is not a general-purpose object detector.
 
 The same relative layout is used on this machine (the checkout is the data root)
 and HA (the data root is `/data`):
@@ -143,6 +139,7 @@ and HA (the data root is `/data`):
     versions/<version>/
       hen_a/20000101T120000_000000Z.jpg
       hen_b/20000101T120100_000000Z.jpg
+      empty/20000101T120200_000000Z.jpg  # reviewed no-hen background, eggs allowed
     staging/
   captures/
     pending/                           # unclassified standalone/offline frames
@@ -160,7 +157,9 @@ names must be lowercase letters, digits, underscores or hyphens, start with a
 letter/digit, and contain at most 48 characters. Names `unknown`, `unreviewed`,
 `empty`, `eggs`, `pending`, `no_chicken`, `unavailable`, `versions`, `staging` and
 `state` are reserved. Only timestamped JPEGs directly
-inside identity folders qualify. Nested predictions never become references.
+inside identity folders qualify. The reserved `empty/` reference folder calibrates
+background only; it is never a hen identity. Nested predictions and `captures/empty/`
+never become references without explicit review and import.
 
 ```bash
 python munai_remote.py push references --dry-run
@@ -169,14 +168,15 @@ python munai_remote.py remote status
 ```
 
 The server validates each JPEG and checks it contains a measurable hen using
-the configured masks/thresholds. It checks SHA256, rejects symlinks and unsafe
+the reviewed empty references/thresholds. Empty references are reviewed background,
+not identities. It checks SHA256, rejects symlinks and unsafe
 paths, stages the change, and atomically activates it **between recognition
-rounds**. Readiness requires reviewed references for at least **two identities**.
+rounds**. Readiness requires reviewed **empty images and two hen identities**.
 Include varied appearances/poses; missing nest positions are never identity evidence.
 
 `push references` resolves only the active local snapshot from `state.json`; it
 does not upload previous versions, staging files, or any captured predictions.
-A flat directory of explicitly reviewed identity folders can also be used as an
+A flat directory of explicitly reviewed identity and `empty/` folders can also be used as an
 import source, but is not the managed data layout.
 
 ### Migrate existing local images before deployment
@@ -200,7 +200,7 @@ Existing offline reports retain their historical paths; regenerate rather than
 editing them. Take a private data backup before a large manual reorganization.
 
 To add newly reviewed images later, put copies in an ignored staging folder such
-as `local-data/reviewed/<identity>/`, then run:
+as `local-data/reviewed/<identity>/` or `local-data/reviewed/empty/`, then run:
 
 ```bash
 /tmp/opencode/munai-ha-venv/bin/python tools/import_references.py local-data/reviewed
@@ -303,7 +303,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/
 
 The first command predicts without relocating images. `--apply` sorts all managed
 captures into `empty/`, `unknown/`, or `<identity>/unreviewed/`, preserving filenames
-and verifying checksums. This uses the local camera mask and the HA default
+and verifying checksums. This uses reference-derived calibration and the HA default
 recognition thresholds. There is no separate offline identity algorithm.
 
 Active reference originals are never moved or modified. Their review copies are
@@ -377,22 +377,17 @@ because this recognizer uses references, not trained models.
   host Keychain entries. `.munai-remote.json` persists across container rebuilds
   in the workspace; it is not an HA backup or an image export.
 - If the new app causes trouble, stop it and restore the old cron schedule. Keep
-  the legacy Pi references/configuration and ignored camera profile backed up.
+  the legacy Pi references/configuration backed up.
 
 ## Logs and troubleshooting
 
-### Upgrading the configuration form from 0.1.1
+### Upgrading to reference-based background calibration
 
-Version 0.1.2 replaces the broken required numeric-list `horizontal_bounds` field
-with **Left boundary = 0** and **Right boundary = 640**. Empty exclusions and extra
-clients are now genuinely optional to both HA's UI and Supervisor validator.
-Reload the app repository, update Munai, then reopen Configuration. Do not reset
-your camera or MQTT settings. Copy any custom old boundary values into the new
-numeric fields before enabling capture. Saving the new form removes the obsolete
-schema key. The runtime accepts old bounds when the new fields are absent and
-rejects conflicting old/new masks rather than silently changing calibration.
-
-For old nonempty exclusion lists, re-enter each rectangle as `x1,y1,x2,y2`.
+Manual boundaries and exclusion settings have been removed. Old mask options are
+ignored on upgrade. Import reviewed no-hen images into `empty/` in your active
+reference set and push references before enabling capture. Missing empty references
+stop recognition rather than silently using uncalibrated wall detections.
+Reload the app repository and reopen Configuration; do not reset camera/MQTT settings.
 For an old token object, copy its digest/name/scope into the new primary fields,
 or convert additional clients to the optional text-row format above. No actual
 token needs to be exposed or regenerated just to change the form.
@@ -407,7 +402,7 @@ debug` adds round timing only; it does not expose secrets.
 - **Fingerprint mismatch:** stop and verify the new public fingerprint in HA logs.
 - **401:** check the token digest/scope, save options and restart; do not paste tokens
   into commands or support logs.
-- **Reference rejected:** inspect the JPEG, filename, masks, and recognition
+- **Reference rejected:** inspect the JPEG, filename, empty references, and recognition
   thresholds; a file must contain enough measurable body and background.
 - **Device missing:** enable MQTT, check credentials/ACLs and HA's MQTT integration.
 - **Unavailable:** inspect capture/MQTT settings and freshness. Never interpret a

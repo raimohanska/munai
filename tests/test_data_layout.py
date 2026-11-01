@@ -95,7 +95,7 @@ class MigrationTests(unittest.TestCase):
         self.write('captures/chicken/hen_a/' + NAME)
         self.write('captures/chicken/hen_b/' + NAME, synthetic_jpeg(200))
         self.write('captures/.DS_Store', b'preserve hidden metadata')
-        with patch('tools.migrate_layout.camera_bounds', return_value=(0, 640, [])), redirect_stdout(io.StringIO()):
+        with redirect_stdout(io.StringIO()):
             migrate(self.root, apply=True)
             self.assertEqual(migrate(self.root, apply=True), (0, 0))
         for old, new in paths.items():
@@ -135,15 +135,14 @@ class MigrationTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             import_references(source.parent.parent, self.root)
             self.assertFalse((self.root / 'references').exists())
-            with patch('tools.import_references.camera_bounds', return_value=(0, 640, [])):
-                import_references(source.parent.parent, self.root, apply=True)
+            import_references(source.parent.parent, self.root, apply=True)
         self.assertEqual(source.read_bytes(), self.image)
         store = Store(self.root, validate({}))
         self.assertEqual(store.read('references', 'hen_a/' + NAME), self.image)
 
     def test_reviewed_import_conflict_requires_explicit_overwrite(self):
         source = self.write('local-data/reviewed/hen_a/' + NAME)
-        with redirect_stdout(io.StringIO()), patch('tools.import_references.camera_bounds', return_value=(0, 640, [])):
+        with redirect_stdout(io.StringIO()):
             import_references(source.parent.parent, self.root, apply=True)
             first = Store(self.root, validate({})).revision
             source.write_bytes(synthetic_jpeg(200))

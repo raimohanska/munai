@@ -11,7 +11,6 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from camera_profile import camera_bounds
 from ha_service.options import AppError, validate
 from ha_service.runtime import Runtime
 from ha_service.storage import Store
@@ -39,8 +38,6 @@ def import_references(source, root, apply=False, overwrite=False):
             except OSError:
                 raise AppError('A local capture/service/import is running; stop it before importing.') from None
         options = validate({})
-        left, right, rectangles = camera_bounds()
-        options['camera_profile'] = {'horizontal_bounds': [left, right], 'excluded_rectangles': rectangles}
         store = Store(root, options)
         runtime = Runtime(options, store)
         current = {item['path']: item['sha256'] for item in store.files('references')}
@@ -56,7 +53,7 @@ def import_references(source, root, apply=False, overwrite=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('directory', type=Path, help='Explicitly reviewed flat identity folders, or a managed reference root')
+    parser.add_argument('directory', type=Path, help='Reviewed flat identity/empty folders, or a managed reference root')
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--overwrite', action='store_true')

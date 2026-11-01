@@ -8,8 +8,8 @@ import tempfile
 import time
 
 from capture import CaptureError, capture
-from recognize_chickens import identify, load_references, measure
-from data_layout import prediction_category
+from recognize_chickens import background_mask, identify, load_references, measure
+from data_layout import RESERVED, prediction_category
 
 from . import VERSION
 from .mqtt import occupant
@@ -54,16 +54,21 @@ class Runtime:
         self.last_occupant = None
         self.events = EventLog()
 
-    def measurement(self, path):
+    def measurement(self, path, mask=None):
         return measure(path, self.options['chicken_area'], self.options['texture_threshold'],
-                       self.options['camera_profile'])
+                       mask)
 
     def validate_reference(self, path):
         try:
-            if self.measurement(path)['features'] is None:
+            # Empty images are explicitly reviewed background, not hen identities.
+            if Path(path).parent.name == 'empty':
+                background_mask(Path(path).parent.parent, self.options['texture_threshold'])
+                return
+            mask = background_mask(Path(path).parent.parent, self.options['texture_threshold'])
+            if self.measurement(path, mask)['features'] is None:
                 raise ValueError()
         except Exception:
-            raise AppError('Reference has no measurable hen; review the image and camera masks/thresholds.', 'invalid_reference') from None
+            raise AppError('Reference is not measurable; review hen/empty images and recognition thresholds.', 'invalid_reference') from None
 
     def predict(self, path, references=None):
         """The same bounded image/appearance pipeline for HA and offline review."""
@@ -71,30 +76,37 @@ class Runtime:
         if path.stat().st_size > MAX_FILE_BYTES:
             raise AppError('Image exceeds 8 MiB; lower the camera resolution.')
         image_valid(path.read_bytes())
-        return identify(self.measurement(path), self._references() if references is None else references,
+        references = self._references() if references is None else references
+        mask = getattr(references, 'background_mask', None)
+        if mask is None:
+            raise AppError('Upload reviewed empty-nest references before recognition.')
+        return identify(self.measurement(path, mask), references,
                         self.options['max_distance'], self.options['min_margin'])
 
     def status(self):
         with self.store.lock:
             references = self.store.files('references')
-            identities = len({item['path'].split('/')[0] for item in references})
+            identities = len({item['path'].split('/')[0] for item in references
+                              if item['path'].split('/')[0] not in RESERVED})
+            empty_count = sum(item['path'].startswith('empty/') for item in references)
             return {'version': VERSION, 'capture_enabled': self.options['capture_enabled'],
                     'mqtt_enabled': self.options['mqtt_enabled'],
                     'mqtt_connected': bool(self.publisher and self.publisher.connected.is_set()),
                     'reference_revision': self.store.revision, 'reference_count': len(references),
-                    'identity_count': identities, 'references_ready': identities >= 2,
+                    'identity_count': identities, 'empty_reference_count': empty_count,
+                    'references_ready': identities >= 2 and empty_count > 0,
                     'last_observation': self.last_observation}
 
     def _references(self):
         root = self.store.reference_root()
-        if root is None or len([p for p in root.iterdir() if p.is_dir()]) < 2:
+        if root is None or len([p for p in root.iterdir() if p.is_dir() and p.name not in RESERVED]) < 2:
             raise AppError('Upload reviewed reference JPEGs for at least two identities before enabling capture.')
         if self.reference_revision != self.store.revision:
             try:
                 self.references = load_references(root, self.options['chicken_area'],
-                                                  self.options['texture_threshold'], self.options['camera_profile'])
+                                                  self.options['texture_threshold'])
             except Exception:
-                raise AppError('References are not usable with these settings; review references and camera masks.') from None
+                raise AppError('References are not usable with these settings; review hen and empty references.') from None
             self.reference_revision = self.store.revision
             LOG.info('Loaded %d reviewed references for %d identities.', len(self.references),
                      len({item[0] for item in self.references}))

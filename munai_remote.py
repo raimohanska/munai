@@ -97,7 +97,7 @@ class Remote:
                     known = {'low_storage': 'HA storage reserve reached; free disk space or reduce capture retention.',
                              'reference_limit': 'Reference limit reached: 500 files or 128 MiB.',
                              'invalid_image': 'Invalid JPEG: at most 8 MiB, 8192 pixels per side and 16 million pixels total.',
-                             'invalid_reference': 'No measurable hen in this reference; review the image and HA camera masks/thresholds.'}
+                              'invalid_reference': 'Reference is not measurable; review hen/empty images and recognition thresholds.'}
                     if isinstance(code, str) and code in known:
                         raise RemoteError(known[code])
                 errors = {401: 'Token rejected or scope insufficient; check HA Configuration and restart the app.',
@@ -181,7 +181,7 @@ def local_references(root):
     for folder in sorted(root.iterdir()):
         if folder.is_symlink():
             raise RemoteError('Symlink reference folders are not allowed.')
-        if not folder.is_dir() or folder.name in RESERVED or folder.name.startswith('.'):
+        if not folder.is_dir() or (folder.name in RESERVED and folder.name != 'empty') or folder.name.startswith('.'):
             continue
         if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,47}', folder.name):
             raise RemoteError('Identity folders must use 1-48 lowercase letters, digits, underscores or hyphens.')

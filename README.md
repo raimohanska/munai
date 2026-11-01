@@ -14,7 +14,7 @@ repository directory. No separate CLI installation, venv, or wrapper is needed.
 1. In Home Assistant, open **Settings → Apps → Install app → ⋮ → Repositories**
    (older versions: **Add-ons → Add-on Store**).
 2. Add this public GitHub repository's URL and install **Munai**. It builds on HA.
-3. Use **version 0.1.2 or newer** for the configuration fields shown here.
+3. Use **version 0.1.3 or newer** for reference-based background calibration.
 4. Leave **Protection mode enabled**. Keep `capture_enabled` and `mqtt_enabled`
    off until the steps below are complete.
 
@@ -63,14 +63,10 @@ or paste full configuration errors: they can expose passwords.
 
 ## 3. Upload references
 
-Before uploading, configure any camera masks in Munai's HA **Configuration**:
-
-- **Left boundary / Right boundary**: plain numbers; defaults **0 / 640**.
-- **Camera overlay/wall exclusions**: optional text rows `x1,y1,x2,y2`, no brackets.
-
-Coordinates refer to the **640×360 processing frame**. If you use the local
-`camera-profile.json`, copy its private boundary/exclusion values into these HA
-fields so local and HA recognition use the same mask. Save and restart after changes.
+Include reviewed **empty-nest images** in the active reference set's `empty/`
+folder, alongside the named hen folders. Eggs are fine, but no hen may be present.
+Use several images covering lighting and straw changes. Background exclusions
+are derived automatically from these images; there are no manual mask settings.
 
 Upload the active reviewed reference set:
 
@@ -81,7 +77,7 @@ python munai_remote.py remote status
 ```
 
 **Check:** `reference_count` should match the uploaded set and `references_ready`
-should be `true`. References for at least two identities are required.
+should be `true`. Reviewed empty images and at least two hen identities are required.
 
 Unchanged images are skipped; nothing is deleted. Captured predictions and renamed
 corrections are **not automatically promoted to references**. Review and import
@@ -155,7 +151,7 @@ references; uninstalling can remove the app's data.
 | No Transfer token SHA256 field | Enable **Show unused optional configuration options**. Check **Info** shows **0.1.2+**; reload the app repository and update if older. |
 | Token rejected / HTTP 401 | Paste the **token digest**, not the certificate fingerprint; use write permissions, save and restart. |
 | Certificate fingerprint changed | Verify the fingerprint in trusted Munai logs. Do not bypass the check. |
-| Reference rejected | Check the image, camera mask and recognition settings. The image needs measurable hen/background detail. |
+| Reference rejected | Check the image, empty references and recognition settings. References need measurable hen/background detail. |
 | No MQTT device or fresh state | Check broker host format, credentials, HA's MQTT integration, and Munai's logs. |
 
 [Advanced settings, storage, backups and offline tools](DOCS.md) ·

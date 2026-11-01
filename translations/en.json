@@ -26,9 +26,6 @@
     "texture_threshold": {"name": "Foreground texture threshold"},
     "max_distance": {"name": "Maximum identity distance", "description": "A larger distance produces unknown, not a forced identity. Scores are not probabilities."},
     "min_margin": {"name": "Minimum identity separation", "description": "Require this gap between the two nearest identities; ambiguous observations remain unknown."},
-    "horizontal_left": {"name": "Left boundary", "description": "Left edge in the 640×360 processing frame. Default 0; type a number, not brackets."},
-    "horizontal_right": {"name": "Right boundary", "description": "Right edge in the 640×360 processing frame. Default 640; must be greater than the left boundary."},
-    "excluded_rectangles": {"name": "Camera overlay/wall exclusions (optional)", "description": "Leave empty for none. Add one text row per rectangle: x1,y1,x2,y2, without brackets. Coordinates use the 640×360 frame; never assign identities by position."},
     "log_level": {"name": "Log level", "description": "Info logs changes and actionable failures; debug adds round timing, never credentials."}
   },
   "network": {

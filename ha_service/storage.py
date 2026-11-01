@@ -181,7 +181,8 @@ class Store:
     def valid_file(kind, relative):
         parts = relative.split('/')
         if kind == 'references':
-            return (len(parts) == 2 and bool(LABEL.fullmatch(parts[0])) and parts[0] not in RESERVED
+            return (len(parts) == 2 and bool(LABEL.fullmatch(parts[0]))
+                    and (parts[0] not in RESERVED or parts[0] == 'empty')
                     and bool(re.fullmatch(STAMP + r'\.jpg', parts[1])))
         if kind == 'results':
             return bool(re.fullmatch(STAMP + r'\.json', relative))
@@ -202,7 +203,7 @@ class Store:
 
     def upload(self, relative, data, expected_hash, expected_revision, overwrite, validate_reference):
         if not self.valid_file('references', relative):
-            raise AppError('Use an identity folder and a timestamped JPEG; reserved identities are not references.')
+            raise AppError('Use an identity or reviewed empty folder and a timestamped JPEG.')
         if not re.fullmatch(r'[a-f0-9]{64}', expected_hash) or digest(data) != expected_hash:
             raise AppError('Upload checksum does not match.')
         image_valid(data)

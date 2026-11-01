@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+- Derive recognition background exclusions from reviewed empty-nest references,
+  including egg-only images; remove manual mask fields and local profile reads
+  from recognition. No persistent calibration cache.
+- Transfer/version reviewed `empty/` references separately from hen identities;
+  require empty references before recognition and never promote predictions.
+
 ## 0.1.2
 
 - Simplify transfers: standard-library devcontainer CLI with an explicitly

@@ -4,9 +4,10 @@ import math
 from pathlib import Path
 import re
 
-from camera_profile import camera_bounds
-
-OPTIONAL_DEFAULTS = {'transfer_token_sha256': '', 'transfer_tokens': [], 'excluded_rectangles': []}
+OPTIONAL_DEFAULTS = {'transfer_token_sha256': '', 'transfer_tokens': []}
+# Ignore retired settings on upgrade; never read a local camera profile.
+RETIRED_MASK_OPTIONS = frozenset(('horizontal_bounds', 'horizontal_left', 'horizontal_right',
+                                  'excluded_rectangles'))
 
 
 class AppError(Exception):
@@ -31,10 +32,10 @@ def validate(raw):
     # Defaults live in the single HA metadata file, not a developer env file.
     with (Path(__file__).resolve().parent.parent / 'config.json').open() as handle:
         defaults = json.load(handle)['options']
-    if not isinstance(raw, dict) or set(raw) - (set(defaults) | set(OPTIONAL_DEFAULTS) | {'horizontal_bounds'}):
+    if not isinstance(raw, dict) or set(raw) - (set(defaults) | set(OPTIONAL_DEFAULTS) | RETIRED_MASK_OPTIONS):
         raise AppError('Unknown or invalid app options; check the HA Configuration tab.')
     options = dict(defaults, **OPTIONAL_DEFAULTS)
-    options.update(raw)
+    options.update({key: value for key, value in raw.items() if key not in RETIRED_MASK_OPTIONS})
     for key in ('capture_enabled', 'mqtt_enabled', 'mqtt_tls', 'transfer_enabled', 'store_captures'):
         if type(options[key]) is not bool:
             raise AppError('Enable/disable options must be booleans.')
@@ -45,7 +46,7 @@ def validate(raw):
               'expire_after': (60, 172800), 'mqtt_port': (1, 65535),
               'retention_days': (1, 365), 'capture_storage_mb': (16, 4096),
               'minimum_free_mb': (64, 4096), 'chicken_area': (100, 100000),
-              'texture_threshold': (1, 100), 'horizontal_left': (0, 639), 'horizontal_right': (1, 640)}
+               'texture_threshold': (1, 100)}
     for key, (low, high) in ranges.items():
         if type(options[key]) is not int or not low <= options[key] <= high:
             raise AppError('Invalid numeric option: ' + key + '.')
@@ -99,33 +100,4 @@ def validate(raw):
                 or token['scope'] not in ('read', 'write')):
             raise AppError('Each transfer token needs a name, lowercase SHA256 digest and read/write scope.')
     options['transfer_tokens'] = records
-    try:
-        rectangles = options['excluded_rectangles']
-        if not isinstance(rectangles, list) or len(rectangles) > 32:
-            raise ValueError()
-        bounds = [options['horizontal_left'], options['horizontal_right']]
-        # Compatibility for local callers/old runtime options, without retaining
-        # the broken numeric-list field in HA's new form.
-        if 'horizontal_bounds' in raw:
-            legacy = raw['horizontal_bounds']
-            camera_bounds({'horizontal_bounds': legacy})
-            if 'horizontal_left' not in raw and 'horizontal_right' not in raw:
-                bounds = legacy
-            elif bounds != legacy:
-                raise ValueError()
-        converted = []
-        for rectangle in rectangles:
-            if isinstance(rectangle, str):
-                parts = rectangle.split(',')
-                if len(parts) != 4:
-                    raise ValueError()
-                converted.append([int(part.strip()) for part in parts])
-            else:
-                converted.append([rectangle[k] for k in ('x1', 'y1', 'x2', 'y2')])
-        profile = {'horizontal_bounds': bounds, 'excluded_rectangles': converted}
-        camera_bounds(profile)
-        options['camera_profile'] = profile
-        options['horizontal_left'], options['horizontal_right'] = bounds
-    except Exception:
-        raise AppError('Invalid camera mask: left must be less than right; exclusion rows use x1,y1,x2,y2 without brackets. Clear conflicting legacy horizontal_bounds.') from None
     return options

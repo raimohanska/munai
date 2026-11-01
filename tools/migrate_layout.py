@@ -14,7 +14,6 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from camera_profile import camera_bounds
 from data_layout import LABEL, RESERVED, STAMP
 from ha_service.options import AppError, validate
 from ha_service.runtime import Runtime
@@ -124,8 +123,6 @@ def migrate(root, apply=False):
         references, moves = inventory(root)
         preflight(root, references, moves)
         options = validate({})
-        left, right, rectangles = camera_bounds()
-        options['camera_profile'] = {'horizontal_bounds': [left, right], 'excluded_rectangles': rectangles}
         store = Store(root, options)
         runtime = Runtime(options, store)
         manifest = {item['path']: item for item in store.files('references')}

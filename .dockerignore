@@ -4,7 +4,6 @@
 !requirements-app.txt
 !config.json
 !capture.py
-!camera_profile.py
 !data_layout.py
 !recognize_chickens.py
 !sort_captures.py

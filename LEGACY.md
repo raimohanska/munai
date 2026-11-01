@@ -382,10 +382,9 @@ All names in this documentation and the tests are synthetic examples. Real hen
 names, reference images, observations, and model artifacts belong outside Git.
 Do not publish private deployment data or old, unsanitized Git history.
 
-The offline helpers optionally read `camera-profile.json` beside the scripts.
-This ignored file contains `horizontal_bounds: [left, right]` and
-`excluded_rectangles: [[x1, y1, x2, y2], ...]` as JSON. Coordinates refer to the
-640x360 processing frame; rectangles exclude overlays/walls, never identities.
-Without a profile the entire processing frame is considered. Keep a private
-backup of your profile alongside your references. Changing masks requires local
-recognition review; generic thresholds are heuristics, not an accuracy guarantee.
+Recognition and sorting now derive background exclusions from reviewed no-hen
+JPEGs in the active reference set's `empty/` folder. Eggs are allowed. Manual
+`camera-profile.json` files are no longer read. Keep reviewed empty images backed
+up alongside hen references, and review calibration again if the camera moves.
+See [the current reference workflow](DOCS.md#3-configure-recognition-and-upload-reviewed-references).
+Generic thresholds remain heuristics, not an accuracy guarantee.

@@ -16,8 +16,6 @@ import time
 import cv2
 import numpy as np
 
-from camera_profile import exclude_camera_regions
-
 
 CATEGORIES = ('empty', 'unknown', 'eggs')
 CAPTURE_NAME = re.compile(r'^\d{8}T\d{6}_\d{6}Z\.jpg$')
@@ -29,8 +27,8 @@ def capture_files(directory):
                   and not p.is_symlink())
 
 
-def classify(path, chicken_area=4500, texture_threshold=8):
-    """Scores/coordinates are at 640x360, with optional local camera exclusions.
+def classify(path, chicken_area=4500, texture_threshold=8, background_mask=None):
+    """Scores/coordinates are at 640x360, with reference-derived exclusions.
 
     Straw is locally textured. Smooth connected regions represent foreground;
     a large region wins over any egg candidates. This is a heuristic, not ML.
@@ -43,10 +41,13 @@ def classify(path, chicken_area=4500, texture_threshold=8):
     mean = cv2.blur(pixels, (7, 7))
     std = np.sqrt(np.maximum(0, cv2.blur(pixels * pixels, (7, 7)) - mean * mean))
     mask = (std < texture_threshold).astype(np.uint8) * 255
-    left, right = exclude_camera_regions(mask)
+    if background_mask is not None:
+        mask[background_mask] = 0
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     # Join feather-sized gaps for chickens; separate touching eggs by opening.
     chicken_mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
+    if background_mask is not None:
+        chicken_mask[background_mask] = 0
     chicken_contours = cv2.findContours(chicken_mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)[-2]
     largest = max([cv2.contourArea(c) for c in chicken_contours] or [0])
@@ -60,7 +61,7 @@ def classify(path, chicken_area=4500, texture_threshold=8):
         if not 800 <= area <= 3000 or len(contour) < 5:
             continue
         x, y, w, h = cv2.boundingRect(contour)
-        if x <= left or x + w >= right or y <= 0 or y + h >= 360:
+        if x <= 0 or x + w >= 640 or y <= 0 or y + h >= 360:
             continue
         perimeter = cv2.arcLength(contour, True)
         circularity = 4 * np.pi * area / max(perimeter * perimeter, 1)
@@ -101,6 +102,13 @@ def main():
         parser.error('Target and thresholds must be positive')
     directory = Path(args.directory).resolve()
     cv2.setNumThreads(1)
+    # Local import avoids the shared capture_files helper's import cycle.
+    from recognize_chickens import background_mask
+    from data_layout import reference_directory
+    calibration = background_mask(reference_directory(directory.parent / 'references'),
+                                  args.texture_threshold)
+    if calibration is None:
+        raise ValueError('Add reviewed no-hen JPEGs to references/empty/ before sorting')
     with (directory / '.sort.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         counts = {}
@@ -134,7 +142,8 @@ def main():
             for path in files:
                 if all(counts[c] >= args.target for c in CATEGORIES):
                     break
-                category, largest, eggs = classify(path, args.chicken_area, args.texture_threshold)
+                category, largest, eggs = classify(path, args.chicken_area, args.texture_threshold,
+                                                  calibration)
                 category = 'unknown' if category == 'chicken' else category
                 scanned += 1
                 if counts[category] >= args.target:

@@ -22,12 +22,12 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from camera_profile import camera_bounds
 from data_layout import prediction_category
 from ha_service.mqtt import occupant
 from ha_service.options import AppError, validate
 from ha_service.runtime import Runtime
 from ha_service.storage import Store, atomic_json, digest, safe_path, sync_directory
+from recognize_chickens import References
 
 
 class CPUPacer:
@@ -79,8 +79,6 @@ def review(root, apply=False, resume=None, cpu_percent=10):
     if root.is_symlink() or (root / 'captures').is_symlink():
         raise AppError('Data/capture roots must not be symlinks.')
     options = validate({})
-    left, right, rectangles = camera_bounds()
-    options['camera_profile'] = {'horizontal_bounds': [left, right], 'excluded_rectangles': rectangles}
     # Locks are outside the image hierarchy and do not require any credentials.
     with ExitStack() as stack:
         for relative in ('.chicken-device.lock', 'captures/.capture.lock', 'captures/.sort.lock', 'service.lock'):
@@ -96,7 +94,7 @@ def review(root, apply=False, resume=None, cpu_percent=10):
         store = Store(root, options)
         runtime = Runtime(options, store)
         recognition = {key: options[key] for key in
-                       ('chicken_area', 'texture_threshold', 'max_distance', 'min_margin', 'camera_profile')}
+                       ('chicken_area', 'texture_threshold', 'max_distance', 'min_margin')}
         if resume is not None:
             report = root / resume
             relative = report.relative_to(root)
@@ -112,7 +110,8 @@ def review(root, apply=False, resume=None, cpu_percent=10):
         else:
             references = runtime._references()
             reference_files = store.files('references')
-            reference_hashes = {store.reference_root() / item['path']: item['sha256'] for item in reference_files}
+            reference_hashes = {store.reference_root() / item['path']: item['sha256'] for item in reference_files
+                                if not item['path'].startswith('empty/')}
             sources = [(store.root / 'captures' / item['path'], item['sha256'], False)
                        for item in store.files('captures')]
             sources += [(path, sha, True) for path, sha in reference_hashes.items()]
@@ -120,7 +119,10 @@ def review(root, apply=False, resume=None, cpu_percent=10):
             targets = {}
             for source, sha, is_reference in sources:
                 matches = [item for item in references if reference_hashes[item[1]] == sha]
-                comparison = [item for item in references if reference_hashes[item[1]] != sha] if matches else references
+                comparison = references
+                if matches:
+                    comparison = References(references.background_mask)
+                    comparison.extend(item for item in references if reference_hashes[item[1]] != sha)
                 testable = (len({item[0] for item in comparison}) >= 2
                             and all(any(other[0] == match[0] for other in comparison) for match in matches))
                 prediction = (runtime.predict(source, comparison) if testable

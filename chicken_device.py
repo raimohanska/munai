@@ -83,10 +83,12 @@ def storage_category(prediction, background_category=None):
 
 
 def categorize(path, references, detect_eggs=True):
-    prediction = identify(measure(path), references)
+    mask = getattr(references, 'background_mask', None)
+    prediction = identify(measure(path) if mask is None else measure(path, background_mask=mask), references)
     background = None
     if prediction['label'] == 'no_chicken' and detect_eggs:
-        background, unused_area, unused_eggs = classify(path)
+        background, unused_area, unused_eggs = (classify(path) if mask is None else
+                                               classify(path, background_mask=mask))
         if background == 'chicken':
             # Conservative fallback if the two foreground masks disagree:
             # never call a potential chicken an egg or an empty nest.
@@ -165,6 +167,8 @@ def run(args):
     values = load_env(env_path)
     settings = mqtt_configuration(values)
     references = load_references(Path(args.references).resolve())
+    if references.background_mask is None:
+        raise DeviceError('Add reviewed empty-nest references before recognition.')
     store = 'CAPTURE_DIR' in values
     if store and not values['CAPTURE_DIR'].strip():
         raise DeviceError('CAPTURE_DIR must be nonempty, or omitted to disable storage.')

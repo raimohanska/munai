@@ -5,8 +5,9 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+import cv2
 
-from recognize_chickens import identify, load_references, measure, SCALES
+from recognize_chickens import background_mask, identify, load_references, measure, SCALES
 
 
 def measurement(features=None, chicken=True):
@@ -89,6 +90,82 @@ class RecognitionTests(unittest.TestCase):
     def test_undecodable_image(self, unused):
         with self.assertRaises(ValueError):
             measure(Path('invalid.jpg'))
+
+
+class EmptyCalibrationTests(unittest.TestCase):
+    """Synthetic offline images only; never test camera capture."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='munai-empty-test-')
+        self.root = Path(self.temporary.name)
+        self.empty = self.root / 'empty'
+        self.empty.mkdir()
+        self.rng = np.random.RandomState(19)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def image(self):
+        pixels = self.rng.randint(50, 200, (360, 640)).astype(np.uint8)
+        pixels[:, 570:] = 110  # Synthetic smooth wall, not a hen.
+        return pixels
+
+    def write(self, folder, index, pixels):
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / ('20000101T120000_{:06d}Z.jpg'.format(index))
+        self.assertTrue(cv2.imwrite(str(path), pixels))
+        return path
+
+    def calibrate(self):
+        for index in range(3):
+            pixels = self.image()
+            if index == 0:
+                pixels[150:170, 250:270] = 220  # An egg does not define a permanent exclusion.
+            self.write(self.empty, index, pixels)
+        return background_mask(self.root)
+
+    def test_background_removes_wall_false_positive_and_ignores_small_egg(self):
+        mask = self.calibrate()
+        pixels = self.image()
+        pixels[180:200, 300:320] = 220
+        path = self.write(self.root, 10, pixels)
+        self.assertTrue(measure(path)['chicken'])
+        self.assertFalse(measure(path, background_mask=mask)['chicken'])
+        self.assertFalse(mask[160, 260])
+
+    def test_hen_is_detected_at_different_positions(self):
+        mask = self.calibrate()
+        for index, x in enumerate((30, 230, 400)):
+            pixels = self.image()
+            pixels[80:260, x:x + 120] = 40
+            path = self.write(self.root, 20 + index, pixels)
+            result = measure(path, background_mask=mask)
+            self.assertTrue(result['chicken'])
+            self.assertIsNotNone(result['features'])
+
+    def test_empty_references_calibrate_but_are_never_identities(self):
+        self.calibrate()
+        for index, (label, brightness) in enumerate((('hen_a', 40), ('hen_b', 210))):
+            pixels = self.image()
+            pixels[80:260, 220:400] = brightness
+            self.write(self.root / label, index, pixels)
+        refs = load_references(self.root)
+        self.assertEqual([item[0] for item in refs], ['hen_a', 'hen_b'])
+        self.assertIsNotNone(refs.background_mask)
+
+    def test_capture_predictions_and_nested_empty_images_do_not_calibrate(self):
+        self.write(self.root / 'captures' / 'empty', 0, self.image())
+        self.write(self.empty / 'unreviewed', 0, self.image())
+        self.assertIsNone(background_mask(self.root))
+
+    def test_calibration_is_recomputed_from_changed_reviewed_images(self):
+        mask = self.calibrate()
+        self.assertFalse(mask[120, 60])
+        for index in range(3):
+            pixels = self.image()
+            pixels[40:240, 20:100] = 100
+            self.write(self.empty, index, pixels)
+        self.assertTrue(background_mask(self.root)[120, 60])
 
 
 if __name__ == '__main__':

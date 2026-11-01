@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from ha_service.options import AppError, validate
 from ha_service.storage import Store, digest
-from test_ha_service import NAME, synthetic_jpeg
+from test_ha_service import NAME, synthetic_empty, synthetic_jpeg
 from tools.review_images import CPUPacer, review
 
 
@@ -23,18 +23,17 @@ class OfflineReviewTests(unittest.TestCase):
                                         ('hen_b', 200, '20000101T120600_000000Z.jpg')):
             data = synthetic_jpeg(brightness)
             self.store.upload(label + '/' + name, data, digest(data), self.store.revision, False, lambda path: None)
+        data = synthetic_empty()
+        self.store.upload('empty/' + NAME, data, digest(data), self.store.revision, False, lambda path: None)
         self.source = self.root / 'captures' / 'pending' / NAME
         self.source.parent.mkdir()
         self.data = synthetic_jpeg(41)
         self.source.write_bytes(self.data)
-        self.profile = patch('tools.review_images.camera_bounds', return_value=(0, 640, []))
-        self.profile.start()
         self.pacing = patch('tools.review_images.CPUPacer.pause')
         self.pacing.start()
 
     def tearDown(self):
         self.pacing.stop()
-        self.profile.stop()
         self.temporary.cleanup()
 
     def test_preview_predicts_without_relocating_images(self):
@@ -80,7 +79,7 @@ class OfflineReviewTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             review(self.root, apply=True)
         self.assertEqual(Store(self.root, validate({})).revision, version)
-        self.assertEqual(len(self.store.files('references')), 2)
+        self.assertEqual(len(self.store.files('references')), 3)
 
     def test_resume_handles_already_moved_original_without_predicting_again(self):
         from ha_service.storage import atomic_json
@@ -102,7 +101,7 @@ class OfflineReviewTests(unittest.TestCase):
         self.assertTrue(result['complete'])
         self.assertEqual(result['images'], 3)
         self.assertEqual(len(self.store.files('captures')), 3)
-        self.assertEqual(len(self.store.files('references')), 2)
+        self.assertEqual(len(self.store.files('references')), 3)
         # Re-resuming a completed manifest also leaves identical results intact.
         result_path = next((self.root / 'results').glob('*.json'))
         modified = result_path.stat().st_mtime_ns

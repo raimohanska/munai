@@ -35,55 +35,34 @@ def synthetic_jpeg(brightness=40):
     return stream.getvalue()
 
 
+def synthetic_empty():
+    pixels = np.random.default_rng(7).integers(70, 180, size=(360, 640), dtype=np.uint8)
+    stream = io.BytesIO()
+    Image.fromarray(pixels).save(stream, format='JPEG', quality=95)
+    return stream.getvalue()
+
+
 class OptionsTests(unittest.TestCase):
     def test_safe_defaults_and_no_implicit_profile_read(self):
-        with patch('camera_profile.Path.open', side_effect=AssertionError('No private file access')):
-            # options reads public metadata with Path.open too: check camera_bounds
-            # directly rather than patching the shared Path class during validate.
-            from camera_profile import camera_bounds
-            self.assertEqual(camera_bounds({}), (0, 640, []))
         options = validate({})
         self.assertFalse(options['capture_enabled'])
         self.assertFalse(options['mqtt_enabled'])
-        self.assertEqual(options['camera_profile'], {'horizontal_bounds': [0, 640], 'excluded_rectangles': []})
+        self.assertNotIn('camera_profile', options)
 
     def test_invalid_options_do_not_expose_values(self):
         for extra in ({'camera_url': 'secret-invalid', 'capture_enabled': True},
                       {'mqtt_port': 'secret-invalid'}, {'device_id': 'secret-invalid/'},
                       {'log_level': 'secret-invalid'}, {'capture_timeout': True},
-                      {'capture_interval': 180}, {'horizontal_bounds': [0, 0]},
-                      {'excluded_rectangles': [{'x1': 30, 'y1': 20, 'x2': 10, 'y2': 40}]},
+                      {'capture_interval': 180},
                       {'transfer_tokens': [{'name': 'test', 'sha256': 'secret-invalid', 'scope': 'write'}]}):
             with self.assertRaises(AppError) as caught:
                 validate(extra)
             self.assertNotIn('secret-invalid', str(caught.exception))
 
-    def test_ui_rectangle_adapter(self):
-        options = validate({'excluded_rectangles': [{'x1': 10, 'y1': 20, 'x2': 30, 'y2': 40}]})
-        self.assertEqual(options['camera_profile']['excluded_rectangles'], [[10, 20, 30, 40]])
-
-    def test_form_numeric_bounds_need_no_brackets(self):
-        options = validate({'horizontal_left': 10, 'horizontal_right': 630})
-        self.assertEqual(options['camera_profile']['horizontal_bounds'], [10, 630])
-        for raw in ({'horizontal_left': 640}, {'horizontal_right': 0},
-                    {'horizontal_left': 200, 'horizontal_right': 100},
-                    {'horizontal_left': ''}):
-            with self.assertRaises(AppError):
-                validate(raw)
-
     def test_empty_optional_lists_can_be_omitted_by_ha_form(self):
-        options = validate({'horizontal_left': 0, 'horizontal_right': 640})
+        options = validate({})
         self.assertEqual(options['transfer_tokens'], [])
-        self.assertEqual(options['camera_profile']['excluded_rectangles'], [])
         self.assertEqual(options['transfer_token_sha256'], '')
-
-    def test_optional_rectangle_rows_need_no_json(self):
-        options = validate({'excluded_rectangles': ['10,20,30,40', ' 100, 50, 120, 70 ']})
-        self.assertEqual(options['camera_profile']['excluded_rectangles'], [[10, 20, 30, 40], [100, 50, 120, 70]])
-        for row in ('[10,20,30,40]', '10,20,30', '10,20,5,40', 'secret-invalid'):
-            with self.assertRaises(AppError) as caught:
-                validate({'excluded_rectangles': [row]})
-            self.assertNotIn('secret-invalid', str(caught.exception))
 
     def test_primary_token_uses_scalar_form_fields(self):
         sha = 'a' * 64  # Synthetic digest, not a credential.
@@ -99,10 +78,9 @@ class OptionsTests(unittest.TestCase):
         self.assertEqual(validate({'transfer_tokens': ['second|write|' + sha]})['transfer_tokens'], expected)
         self.assertEqual(validate({'transfer_tokens': expected})['transfer_tokens'], expected)
 
-    def test_legacy_bounds_are_accepted_but_conflicts_are_not_silent(self):
-        self.assertEqual(validate({'horizontal_bounds': [10, 630]})['camera_profile']['horizontal_bounds'], [10, 630])
-        with self.assertRaises(AppError):
-            validate({'horizontal_bounds': [10, 630], 'horizontal_left': 0, 'horizontal_right': 640})
+    def test_retired_masks_are_ignored_on_upgrade(self):
+        self.assertEqual(validate({'horizontal_bounds': [10, 630], 'horizontal_left': 0,
+                                   'horizontal_right': 640, 'excluded_rectangles': ['1,2,3,4']}), validate({}))
 
     def test_metadata_options_and_schema_agree(self):
         from ha_service import VERSION
@@ -110,7 +88,7 @@ class OptionsTests(unittest.TestCase):
         self.assertEqual(config['version'], VERSION)
         self.assertLessEqual(set(config['options']), set(config['schema']))
         missing = set(config['schema']) - set(config['options'])
-        self.assertEqual(missing, {'transfer_token_sha256', 'transfer_tokens', 'excluded_rectangles'})
+        self.assertEqual(missing, {'transfer_token_sha256', 'transfer_tokens'})
         for key in missing:
             typ = config['schema'][key]
             if isinstance(typ, list):
@@ -118,8 +96,9 @@ class OptionsTests(unittest.TestCase):
             self.assertIsInstance(typ, str)
             self.assertTrue(typ.endswith('?'))  # Supervisor's missing-option rule.
         self.assertNotIn('horizontal_bounds', config['schema'])
-        self.assertEqual(config['options']['horizontal_left'], 0)
-        self.assertEqual(config['options']['horizontal_right'], 640)
+        self.assertNotIn('horizontal_left', config['schema'])
+        self.assertNotIn('horizontal_right', config['schema'])
+        self.assertNotIn('excluded_rectangles', config['schema'])
         # Empty list-of-object fields are optional in UiOptions but required by
         # AppOptions: prohibit that mismatch in our installable metadata.
         self.assertTrue(all(not isinstance(value, list) or not isinstance(value[0], dict)
@@ -149,11 +128,36 @@ class StorageFixture(unittest.TestCase):
 
 
 class StorageTests(StorageFixture):
+    def test_predict_refuses_uncalibrated_references(self):
+        self.upload()
+        self.upload('hen_b/' + NAME, synthetic_jpeg(200))
+        with self.assertRaisesRegex(AppError, 'empty-nest'):
+            self.runtime.predict(self.store.reference_root() / 'hen_a' / NAME)
+
+    def test_empty_background_never_counts_as_a_second_hen(self):
+        self.upload('empty/' + NAME, synthetic_empty())
+        self.upload()
+        self.assertFalse(self.runtime.status()['references_ready'])
+        self.assertEqual(self.runtime.status()['identity_count'], 1)
+        with self.assertRaises(AppError):
+            self.runtime._references()
+
+    def test_featureless_empty_reference_is_rejected(self):
+        stream = io.BytesIO()
+        Image.new('L', (640, 360), 100).save(stream, format='JPEG')
+        with self.assertRaises(AppError):
+            self.upload('empty/' + NAME, stream.getvalue())
+        self.assertEqual(self.store.revision, 'none')
+
     def test_upload_restart_and_reference_readiness(self):
         self.upload()
         self.assertFalse(self.runtime.status()['references_ready'])
         self.upload('hen_b/' + NAME, synthetic_jpeg(200))
+        self.assertFalse(self.runtime.status()['references_ready'])
+        self.upload('empty/' + NAME, synthetic_empty())
         self.assertTrue(self.runtime.status()['references_ready'])
+        self.assertEqual(self.runtime.status()['identity_count'], 2)
+        self.assertEqual(self.runtime.status()['empty_reference_count'], 1)
         self.assertEqual(len(self.runtime._references()), 2)
         restart = Store(self.store.root, self.options)
         self.assertEqual(restart.revision, self.store.revision)
@@ -161,7 +165,7 @@ class StorageTests(StorageFixture):
 
     def test_unknown_and_unreviewed_are_never_references(self):
         for path in ('unknown/' + NAME, 'unreviewed/' + NAME, 'hen_a/unreviewed/' + NAME,
-                     'empty/' + NAME, '../hen_a/' + NAME, '/hen_a/' + NAME, 'hen_a/not-a-timestamp.jpg'):
+                      'empty/unreviewed/' + NAME, '../hen_a/' + NAME, '/hen_a/' + NAME, 'hen_a/not-a-timestamp.jpg'):
             with self.assertRaises(AppError):
                 self.upload(path)
         self.assertEqual(self.store.revision, 'none')
@@ -418,6 +422,9 @@ class APITests(StorageFixture):
         second = source.parent / 'hen_b'
         second.mkdir()
         (second / NAME).write_bytes(synthetic_jpeg(200))
+        empty = source.parent / 'empty'
+        empty.mkdir()
+        (empty / NAME).write_bytes(synthetic_empty())
         with redirect_stdout(io.StringIO()):
             push(self.remote, source.parent, dry_run=True)
             self.assertEqual(self.store.revision, 'none')
