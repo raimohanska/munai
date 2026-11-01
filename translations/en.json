@@ -1,0 +1,33 @@
+{
+  "configuration": {
+    "capture_enabled": {"name": "Enable camera capture", "description": "Leave off until references and MQTT have been checked. Restart after changing options."},
+    "camera_url": {"name": "Camera RTSP URL", "description": "Full RTSP URL, including camera credentials when needed. Never included in logs."},
+    "capture_interval": {"name": "Capture interval (seconds)", "description": "One serial recognition round per interval; missed rounds are skipped."},
+    "capture_timeout": {"name": "Camera timeout (seconds)"},
+    "expire_after": {"name": "Observation expiry (seconds)", "description": "Must exceed capture interval + camera timeout + 10. Stale observations become unavailable."},
+    "mqtt_enabled": {"name": "Enable MQTT discovery and states", "description": "Enable before capture to discover the initially unavailable Occupant sensor."},
+    "mqtt_host": {"name": "MQTT broker host"},
+    "mqtt_port": {"name": "MQTT broker port"},
+    "mqtt_user": {"name": "MQTT username"},
+    "mqtt_password": {"name": "MQTT password"},
+    "mqtt_tls": {"name": "Use verified MQTT TLS", "description": "Use system CA trust and hostname verification. Plain MQTT is unencrypted; use only on a trusted network."},
+    "device_id": {"name": "Stable MQTT device ID", "description": "Keep this unchanged after discovery. Use a different ID from the legacy cron device."},
+    "device_name": {"name": "Device display name"},
+    "transfer_enabled": {"name": "Enable HTTPS reference transfers", "description": "Also map the host port under Network. LAN/VPN only; never use router port forwarding."},
+    "transfer_tokens": {"name": "Transfer client token digests", "description": "Add the SHA256 digest printed by native CLI pairing, not the certificate fingerprint. Remove and restart to revoke."},
+    "store_captures": {"name": "Save captured images", "description": "Optional. Named predictions stay under unreviewed and never become references automatically."},
+    "retention_days": {"name": "Capture/result retention (days)"},
+    "capture_storage_mb": {"name": "Combined capture/result storage cap (MiB)", "description": "Oldest files are removed first. Reviewed references are not removed by retention."},
+    "minimum_free_mb": {"name": "Minimum free disk space (MiB)", "description": "New captures and uploads stop before consuming this reserve."},
+    "chicken_area": {"name": "Minimum hen area", "description": "Presence heuristic in the 640×360 processing frame, not an identity feature."},
+    "texture_threshold": {"name": "Foreground texture threshold"},
+    "max_distance": {"name": "Maximum identity distance", "description": "A larger distance produces unknown, not a forced identity. Scores are not probabilities."},
+    "min_margin": {"name": "Minimum identity separation", "description": "Require this gap between the two nearest identities; ambiguous observations remain unknown."},
+    "horizontal_bounds": {"name": "Usable horizontal bounds", "description": "Exactly [left, right] in the 640×360 processing frame. Default [0, 640] uses the full width."},
+    "excluded_rectangles": {"name": "Camera overlay/wall exclusions", "description": "Each rectangle has x1, y1, x2, y2 in the 640×360 frame. Never use position to assign identities."},
+    "log_level": {"name": "Log level", "description": "Info logs changes and actionable failures; debug adds round timing, never credentials."}
+  },
+  "network": {
+    "8443/tcp": "Pinned HTTPS reference-transfer API; map a host port to enable LAN/VPN access"
+  }
+}

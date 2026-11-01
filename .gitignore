@@ -13,3 +13,19 @@ __pycache__/
 # Private deployment calibration and runtime data.
 camera-profile.json
 local-data/
+
+# Real reference data, trained artifacts, keys, and native CLI state stay local.
+models/
+references/
+*.jpg
+*.jpeg
+*.png
+*.onnx
+*.pt
+*.pth
+*.npz
+*.pkl
+*.joblib
+*.pem
+*.key
+profiles.json

@@ -184,7 +184,7 @@ def is_similar(temporary, output_dir, executable, deadline, pixel_threshold, min
 
 
 def capture(url, output_dir, executable, timeout, pixel_threshold, min_changed,
-            on_capture=None, store=True):
+            on_capture=None, store=True, quiet=False):
     os.makedirs(output_dir, exist_ok=True)
     # Keep the lock file in place: unlinking a flock file can allow overlapping runs.
     with open(os.path.join(output_dir, '.capture.lock'), 'a') as lock:
@@ -192,7 +192,8 @@ def capture(url, output_dir, executable, timeout, pixel_threshold, min_changed,
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             if error.errno in (errno.EACCES, errno.EAGAIN):
-                print('Capture skipped: another capture is running.')
+                if not quiet:
+                    print('Capture skipped: another capture is running.')
                 return
             raise
 
@@ -235,7 +236,8 @@ def capture(url, output_dir, executable, timeout, pixel_threshold, min_changed,
             if on_capture is not None:
                 category = on_capture(temporary)
             if not store:
-                print('Capture processed; persistent storage disabled.')
+                if not quiet:
+                    print('Capture processed; persistent storage disabled.')
                 return
             storage_dir = output_dir
             if category is not None:

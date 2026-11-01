@@ -26,7 +26,7 @@ FEATURES = ('brightness_25', 'brightness_50', 'brightness_75',
 SCALES = np.array([0.18, 0.18, 0.18, 0.25, 4.0, 5.0, 0.12])
 
 
-def measure(path, chicken_area=4500, texture_threshold=8):
+def measure(path, chicken_area=4500, texture_threshold=8, camera_profile=None):
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise ValueError('Cannot decode image: ' + str(path))
@@ -35,7 +35,7 @@ def measure(path, chicken_area=4500, texture_threshold=8):
     mean = cv2.blur(pixels, (7, 7))
     std = np.sqrt(np.maximum(0, cv2.blur(pixels * pixels, (7, 7)) - mean * mean))
     valid = np.full(gray.shape, 255, np.uint8)
-    exclude_camera_regions(valid)
+    exclude_camera_regions(valid, camera_profile)
     smooth = ((std < texture_threshold) & (valid != 0)).astype(np.uint8) * 255
     smooth = cv2.morphologyEx(smooth, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     joined = cv2.morphologyEx(smooth, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
@@ -70,14 +70,15 @@ def measure(path, chicken_area=4500, texture_threshold=8):
     return result
 
 
-def load_references(directory, chicken_area=4500, texture_threshold=8):
+def load_references(directory, chicken_area=4500, texture_threshold=8, camera_profile=None):
     references = []
     for folder in sorted(directory.iterdir()):
         if (not folder.is_dir() or folder.is_symlink() or folder.name.startswith('.')
                 or folder.name.lower() == 'unknown'):
             continue
         for path in capture_files(folder):
-            measurement = measure(path, chicken_area, texture_threshold)
+            measurement = (measure(path, chicken_area, texture_threshold) if camera_profile is None
+                           else measure(path, chicken_area, texture_threshold, camera_profile))
             if measurement['features'] is None:
                 raise ValueError('Reference has no measurable chicken: ' + str(path))
             references.append((folder.name, path, measurement))

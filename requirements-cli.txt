@@ -1,0 +1,2 @@
+# Native macOS CLI only. No OpenCV or FFmpeg needed on the host.
+keyring==25.7.0

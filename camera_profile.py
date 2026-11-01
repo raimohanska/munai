@@ -7,12 +7,13 @@ import json
 from pathlib import Path
 
 
-def camera_bounds():
-    path = Path(__file__).resolve().parent / 'camera-profile.json'
-    if not path.exists():
-        return 0, 640, []
-    with path.open() as handle:
-        profile = json.load(handle)
+def camera_bounds(profile=None):
+    if profile is None:
+        path = Path(__file__).resolve().parent / 'camera-profile.json'
+        if not path.exists():
+            return 0, 640, []
+        with path.open() as handle:
+            profile = json.load(handle)
     if not isinstance(profile, dict):
         raise ValueError('Invalid local camera profile')
     bounds = profile.get('horizontal_bounds', [0, 640])
@@ -32,8 +33,8 @@ def camera_bounds():
     return bounds[0], bounds[1], rectangles
 
 
-def exclude_camera_regions(mask):
-    left, right, rectangles = camera_bounds()
+def exclude_camera_regions(mask, profile=None):
+    left, right, rectangles = camera_bounds(profile)
     mask[:, :left] = 0
     mask[:, right:] = 0
     for x1, y1, x2, y2 in rectangles:

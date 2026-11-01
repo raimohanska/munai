@@ -1,0 +1,5 @@
+# Isolated modern HA runtime; do not install these on the legacy Pi.
+numpy==2.2.6
+opencv-python-headless==4.13.0.92
+Pillow==12.3.0
+paho-mqtt==2.1.0

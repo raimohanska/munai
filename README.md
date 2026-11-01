@@ -1,4 +1,10 @@
-# Munai camera capture
+# Munai
+
+**Home Assistant app:** see [DOCS.md](DOCS.md) for installation, HA configuration,
+MQTT discovery, secure native reference uploads, backups, and current validation
+limits. Capture/MQTT start disabled. No deployment has been performed by the agent.
+
+The legacy Pi/cron tooling below remains available until the HA app is validated.
 
 Capture one RTSP frame per invocation and save a timestamped JPEG when it differs
 sufficiently from the last saved image.
