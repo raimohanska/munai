@@ -267,6 +267,31 @@ These retention policies run in the HA service, not the local migration/import o
 offline review tools. Local originals are not purged as part of preparing a review.
 Hidden local locks/OS metadata are neither exported nor counted as image data.
 
+### Offline review of existing images
+
+After deployment preparation, use the same recognition pipeline without live
+capture, MQTT, HA, credentials, training, or retention:
+
+```bash
+/tmp/opencode/munai-ha-venv/bin/python tools/review_images.py
+/tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --apply
+```
+
+The first command predicts without relocating images. `--apply` sorts all managed
+captures into `empty/`, `unknown/`, or `<identity>/unreviewed/`, preserving filenames
+and verifying checksums. This uses the local camera mask and the HA default
+recognition thresholds. There is no separate offline identity algorithm.
+
+Active reference originals are never moved or modified. Their review copies are
+compared with byte-identical references excluded; singleton identities that cannot
+be checked independently remain unknown. Those copies are independent files,
+not hardlinks to golden references. The private `reports/review-*/manifest.json`
+records source/destination, prediction, checksum, and whether a result is a
+reference self-check. `summary.json` marks a completed pass. Existing result JSON
+is backed up in that run's report before replacement. Predictions and correlated
+frames are **not** a held-out accuracy measurement and never become new references
+automatically. Do not run HA's retention loop against this local review dataset.
+
 Use an ignored `local-data/` destination for exports:
 
 ```bash

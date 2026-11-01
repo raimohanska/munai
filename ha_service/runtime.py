@@ -65,6 +65,15 @@ class Runtime:
         except Exception:
             raise AppError('Reference has no measurable hen; review the image and camera masks/thresholds.', 'invalid_reference') from None
 
+    def predict(self, path, references=None):
+        """The same bounded image/appearance pipeline for HA and offline review."""
+        path = Path(path)
+        if path.stat().st_size > MAX_FILE_BYTES:
+            raise AppError('Image exceeds 8 MiB; lower the camera resolution.')
+        image_valid(path.read_bytes())
+        return identify(self.measurement(path), self._references() if references is None else references,
+                        self.options['max_distance'], self.options['min_margin'])
+
     def status(self):
         with self.store.lock:
             references = self.store.files('references')
@@ -100,11 +109,7 @@ class Runtime:
 
             def process(path):
                 source = Path(path)
-                if source.stat().st_size > MAX_FILE_BYTES:
-                    raise AppError('Captured image exceeds 8 MiB; lower the camera resolution.')
-                image_valid(source.read_bytes())
-                prediction = identify(self.measurement(source), references,
-                                      self.options['max_distance'], self.options['min_margin'])
+                prediction = self.predict(source, references)
                 predictions.append(prediction)
                 if self.options['store_captures']:
                     category = '/'.join(prediction_category(prediction['label']))

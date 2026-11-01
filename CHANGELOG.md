@@ -7,6 +7,8 @@
 - Resolve the same active reference snapshots in the native CLI and Pi scripts.
 - Preserve standalone/Pi cron workflows with pending/unknown/empty/egg categories.
 - Add dry-run-first local layout migration and reviewed-reference import tooling.
+- Add an offline review runner using the HA image pipeline, checksum verification,
+  self-excluded reference checks and untouched golden references; no retention.
 - No automatic migration, batch classification, publication, or live deployment.
 
 ## 0.1.0
