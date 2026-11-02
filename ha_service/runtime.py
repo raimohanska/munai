@@ -89,8 +89,8 @@ class Runtime:
             raise AppError('Upload reviewed empty-nest references before recognition.')
         prediction = identify(self.measurement(path, mask), references,
                               self.options['max_distance'], self.options['min_margin'])
-        # Known and unknown hens both suppress egg detection. Zero is the
-        # requested occupied-nest state, not evidence that no eggs are hidden.
+        # Known and unknown hens suppress egg detection. This raw placeholder
+        # never replaces the confirmed egg count in live state.
         prediction['egg_count'] = 0
         if prediction['label'] == 'no_chicken':
             try:
@@ -167,19 +167,24 @@ class Runtime:
                 raise AppError(str(error)) from None  # CaptureError contains only fixed summaries.
             if not predictions:
                 raise AppError('Capture did not complete; check the camera and overlap lock.')
-            prediction = predictions[0]
-            observation = {'timestamp': stamp, 'occupant': occupant(prediction),
-                           'egg_count': prediction['egg_count'],
-                           'distance': prediction['distance'], 'margin': prediction['margin']}
-            atomic_json(self.store.root / 'results' / (stamp + '.json'), observation)
-            for event in self.nest.observe(prediction['label'], prediction['egg_count']):
-                LOG.info('Latest event: %s.', event)
-            self.last_observation = observation
-            if self.last_occupant != observation['occupant']:
-                LOG.info('Nest occupant: %s.', observation['occupant'])
-                self.last_occupant = observation['occupant']
-            if self.publisher:
-                self.publisher.publish(prediction, self.nest.state['latest_event'] or 'No events yet')
+            self.observe(stamp, predictions[0])
+
+    def observe(self, stamp, prediction):
+        """Commit and publish the same confirmed state for a successful prediction."""
+        for event in self.nest.observe(prediction['label'], prediction['egg_count']):
+            LOG.info('Latest event: %s.', event)
+        state = self.nest.snapshot()
+        observation = dict(state, timestamp=stamp,
+                           distance=prediction['distance'], margin=prediction['margin'],
+                           raw_prediction={'occupant': occupant(prediction),
+                                           'egg_count': prediction['egg_count']})
+        atomic_json(self.store.root / 'results' / (stamp + '.json'), observation)
+        self.last_observation = observation
+        if self.last_occupant != observation['occupant']:
+            LOG.info('Nest occupant: %s.', observation['occupant'])
+            self.last_occupant = observation['occupant']
+        if self.publisher:
+            self.publisher.publish(state)
 
     def run(self, stop):
         deadline = time.monotonic()

@@ -391,7 +391,7 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         eggs = discovery(validate({}), 'egg_count')
         self.assertEqual(eggs['name'], 'Egg count')
         self.assertEqual(eggs['unique_id'], 'munai_ha_nest_egg_count')
-        self.assertEqual(eggs['value_template'], '{{ value_json.egg_count }}')
+        self.assertIn("else 'unknown'", eggs['value_template'])
         self.assertEqual(eggs['state_class'], 'measurement')
         for key in ('device', 'expire_after', 'availability_topic', 'state_topic'):
             self.assertEqual(config[key], eggs[key])
@@ -401,33 +401,29 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         mqtt.base = 'munai/synthetic'
         sent = []
         mqtt.send = lambda *args: sent.append(args)
-        mqtt.publish({'label': 'hen_a'})
-        self.assertEqual(json.loads(sent[0][1]), {'occupant': 'Hen_a', 'egg_count': 0})
-        self.assertFalse(sent[0][2])
-        self.assertEqual(sent[1][1:], ('online', True))
+        mqtt.publish({'occupant': 'Hen_a', 'egg_count': 2, 'latest_event': None})
+        self.assertEqual(sent[0][1:], ('No events yet', True))
+        self.assertEqual(json.loads(sent[1][1]), {'occupant': 'Hen_a', 'egg_count': 2})
+        self.assertFalse(sent[1][2])
+        self.assertEqual(sent[2][1:], ('online', True))
 
-    def test_egg_states_and_occupied_nest_zero(self):
+    def test_confirmed_egg_states_including_occupied_and_unestablished(self):
         publisher = MQTT.__new__(MQTT)
         publisher.base = 'munai/synthetic'
         publisher.send = Mock()
-        for prediction, eggs in (({'label': 'no_chicken', 'egg_count': 2}, 2),
-                                 ({'label': 'no_chicken', 'egg_count': 0}, 0),
-                                 ({'label': 'unknown', 'egg_count': 3}, 0),
-                                 ({'label': 'hen_a', 'egg_count': 3}, 0)):
+        for occupant_value, eggs in (('empty', 2), ('empty', 0), ('unknown', 3),
+                                     ('Hen_a', 3), (None, None), ('Hen_a', None)):
             publisher.send.reset_mock()
-            publisher.publish(prediction)
-            state = publisher.send.call_args_list[0].args
+            publisher.publish({'occupant': occupant_value, 'egg_count': eggs,
+                               'latest_event': None})
+            state = publisher.send.call_args_list[1].args
             self.assertEqual(json.loads(state[1])['egg_count'], eggs)
             self.assertFalse(state[2])
-        for value in (None, -1, True, 1.5):
+        for value in (-1, True, 1.5):
             publisher.send.reset_mock()
             with self.assertRaises(AppError):
-                publisher.publish({'label': 'no_chicken', 'egg_count': value})
+                publisher.publish({'occupant': 'empty', 'egg_count': value, 'latest_event': None})
             publisher.send.assert_not_called()
-        publisher.send.reset_mock()
-        with self.assertRaises(AppError):
-            publisher.publish({'label': 'no_chicken'})
-        publisher.send.assert_not_called()
 
     def test_reconnect_and_ha_birth_rediscover_without_replaying_state(self):
         options = validate({})

@@ -2,6 +2,11 @@
 
 ## 0.1.5
 
+- Publish confirmed local state consistently to MQTT, live status, results and
+  occupant logs. Freeze egg counts while occupied; require three matching empty
+  counts for every update, and report unknown until a count is established.
+- Separate departure from egg-count confirmation, preserving pending laying
+  attribution across restarts. Migrate existing persisted visit state safely.
 - Add a retained Latest event MQTT sensor for confirmed arrivals, departures,
   laying events, and egg collection. Require three consecutive observations for
   presence/identity changes and chicken-free zero counts for collection.

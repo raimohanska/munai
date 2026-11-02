@@ -367,10 +367,16 @@ Discovery and availability are retained; **observations are not retained**, so
 HA restarts do not replay old identities as fresh. HA's birth message triggers
 rediscovery; the next successful capture supplies a fresh observation.
 
-From version **0.1.4**, Egg count shares Occupant's observation, availability and
-expiry. It estimates the current visible eggs only when Occupant is `empty`.
-Known and unknown hens both produce **0**, without running egg detection; this
-does not assert that no eggs are hidden beneath a hen. Detection failures fail
+Egg count shares Occupant's observation, availability and expiry. Occupant uses
+the same three-observation confirmation and unknown-identity handling as events.
+Egg count changes require three consecutive empty images with the same count,
+including positive counts and zero. Known and unknown hens suppress egg detection
+and preserve the last confirmed count, rather than replacing it with zero.
+Until established, occupant and egg count are unknown (JSON `null`). Departure
+can be confirmed before the count settles; a later confirmed increase can still
+produce a laying event for that visit. A new visit before the count settles
+discards that attribution and starts without a known egg baseline.
+Detection failures fail
 the observation rather than publishing a fabricated zero. Counting works even
 with `store_captures` disabled and never changes capture categories or references.
 
@@ -379,7 +385,10 @@ egg-free and egg-containing images. They correspond to offline `--min-area` and
 `--max-area`; `texture_threshold` is shared with presence detection. Defaults are
 generic starting points, not deployment calibration. The count is a measurement,
 **not a cumulative total**. Results JSON and transfer status's `last_observation`
-also include `egg_count`. The legacy Pi/cron publisher remains unchanged.
+also include confirmed `egg_count`, occupant and latest event; `raw_prediction`
+keeps the unfiltered occupant/count separately for diagnostics (occupied raw
+counts are placeholders, not measurements). The legacy Pi/cron publisher and
+offline image-review results remain unchanged.
 
 The broker must permit publishing to:
 
@@ -391,7 +400,7 @@ munai/<device_id>/availability
 ```
 
 and subscribing to `homeassistant/status`. The non-retained state JSON contains
-both `occupant` and integer `egg_count`. Eggs remain ignored when identifying
+both `occupant` and integer `egg_count` (or `null` until established). Eggs remain ignored when identifying
 occupants; egg counting does not influence hen identity.
 
 One Python scheduling loop runs serial rounds, uses monotonic deadlines, skips

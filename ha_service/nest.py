@@ -18,16 +18,31 @@ def count(value):
 class NestState:
     def __init__(self, root):
         self.path = safe_path(root, 'nest-state.json')
-        self.state = {'version': 1, 'hen': None, 'eggs': None,
-                      'baseline': None, 'latest_event': None}
+        self.state = {'version': 2, 'hen': None, 'eggs': None,
+                      'baseline': None, 'latest_event': None, 'confirmed': False,
+                      'pending_hen': None, 'pending_baseline': None}
         if self.path.exists():
             try:
                 if not self.path.is_file() or self.path.stat().st_size > 4096:
                     raise ValueError()
                 state = json.loads(self.path.read_text())
+                legacy_keys = {'version', 'hen', 'eggs', 'baseline', 'latest_event'}
+                if (isinstance(state, dict) and set(state) == legacy_keys
+                        and type(state['version']) is int and state['version'] == 1):
+                    state.update(version=2, confirmed=(state['hen'] is not None or
+                                                      state['eggs'] is not None),
+                                 pending_hen=None, pending_baseline=None)
                 if (not isinstance(state, dict) or set(state) != set(self.state)
-                        or type(state['version']) is not int or state['version'] != 1
+                        or type(state['version']) is not int or state['version'] != 2
+                        or type(state['confirmed']) is not bool
                         or (state['hen'] is not None and not valid_hen(state['hen']))
+                        or (state['pending_hen'] is not None and
+                            not valid_hen(state['pending_hen']))
+                        or not count(state['pending_baseline'])
+                        or (state['pending_hen'] is None and state['pending_baseline'] is not None)
+                        or (state['pending_hen'] is not None and state['hen'] is not None)
+                        or (not state['confirmed'] and any(state[key] is not None for key in
+                            ('hen', 'eggs', 'baseline', 'pending_hen', 'pending_baseline')))
                         or not count(state['eggs']) or not count(state['baseline'])
                         or (state['hen'] is None and state['baseline'] is not None)
                         or (state['latest_event'] is not None and
@@ -44,7 +59,16 @@ class NestState:
         # Restarts and failed observations cannot provide consecutive evidence.
         self.candidate = None
         self.streak = 0
-        self.zeros = 0
+        self.egg_candidate = None
+        self.egg_streak = 0
+
+    def snapshot(self):
+        """Public live fields from one committed state, never raw predictions."""
+        hen = self.state['hen']
+        return {'occupant': (hen.capitalize() if hen != 'unknown' else 'unknown')
+                if hen is not None else ('empty' if self.state['confirmed'] else None),
+                'egg_count': self.state['eggs'],
+                'latest_event': self.state['latest_event']}
 
     def observe(self, label, eggs):
         if label != 'no_chicken' and not valid_hen(label):
@@ -57,13 +81,21 @@ class NestState:
         target = hen if label == 'unknown' and hen is not None else label
         candidate = target
         streak = min(3, self.streak + 1) if candidate == self.candidate else 1
-        zeros = min(3, self.zeros + 1) if label == 'no_chicken' and eggs == 0 else 0
+        egg_candidate = eggs if label == 'no_chicken' else None
+        egg_streak = (min(3, self.egg_streak + 1)
+                      if egg_candidate is not None and egg_candidate == self.egg_candidate
+                      else 1 if egg_candidate is not None else 0)
         events = []
         if streak >= 3:
+            state['confirmed'] = True
             if target == 'no_chicken' and hen is not None:
                 name = hen.capitalize() if hen != 'unknown' else 'Unknown'
-                laid = state['baseline'] is not None and eggs > state['baseline']
+                laid = (egg_streak >= 3 and state['baseline'] is not None
+                        and eggs > state['baseline'])
                 events.append(name + (' laid an Egg' if laid else ' left'))
+                if egg_streak < 3:
+                    state['pending_hen'] = hen
+                    state['pending_baseline'] = state['baseline']
                 state['hen'] = None
                 state['baseline'] = None
             elif target != 'no_chicken' and target != hen:
@@ -71,20 +103,26 @@ class NestState:
                     events.append(hen.capitalize() + ' left')
                 # No empty frame between hens means hidden eggs cannot be attributed.
                 if hen is None:
-                    state['baseline'] = state['eggs']
+                    # An unsettled post-visit count is not a safe new baseline.
+                    state['baseline'] = (state['eggs'] if state['pending_hen'] is None
+                                         else None)
                 elif hen != 'unknown':
                     state['baseline'] = None
                 state['hen'] = target
+                state['pending_hen'] = None
+                state['pending_baseline'] = None
                 events.append(target.capitalize() + ' arrived')
 
-        if label == 'no_chicken' and state['hen'] is None:
-            if zeros >= 3:
-                if state['eggs'] is not None and state['eggs'] > 0:
-                    n = state['eggs']
-                    events.append('{} {} collected'.format(n, 'egg' if n == 1 else 'eggs'))
-                state['eggs'] = 0
-            elif eggs > 0:
-                state['eggs'] = eggs
+        if label == 'no_chicken' and state['hen'] is None and egg_streak >= 3:
+            if (state['pending_hen'] is not None and state['pending_baseline'] is not None
+                    and eggs > state['pending_baseline']):
+                events.append(state['pending_hen'].capitalize() + ' laid an Egg')
+            if eggs == 0 and state['eggs'] is not None and state['eggs'] > 0:
+                n = state['eggs']
+                events.append('{} {} collected'.format(n, 'egg' if n == 1 else 'eggs'))
+            state['eggs'] = eggs
+            state['pending_hen'] = None
+            state['pending_baseline'] = None
         if events:
             state['latest_event'] = events[-1]
         # Persist before changing memory or publishing. Failed writes cannot consume
@@ -92,5 +130,6 @@ class NestState:
         safe_path(self.path.parent, self.path.name)
         atomic_json(self.path, state)
         self.state = state
-        self.candidate, self.streak, self.zeros = candidate, streak, zeros
+        self.candidate, self.streak = candidate, streak
+        self.egg_candidate, self.egg_streak = egg_candidate, egg_streak
         return events

@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from ha_service.mqtt import MQTT, discovery
 from ha_service.nest import NestState
 from ha_service.options import AppError, validate
+from ha_service.runtime import Runtime
 
 
 class NestTests(unittest.TestCase):
@@ -134,6 +135,9 @@ class NestTests(unittest.TestCase):
         bad = ['synthetic-private-detail', [], dict(good, version=True),
                dict(good, version=99), dict(good, eggs=True),
                dict(good, baseline=-1), dict(good, hen='empty'),
+               dict(good, confirmed=1), dict(good, confirmed=False),
+               dict(good, pending_hen='empty'), dict(good, pending_baseline=1),
+               dict(good, pending_hen='hen_b'),
                dict(good, latest_event='bad\ntext'), dict(good, extra=1)]
         for state in bad:
             self.nest.path.write_text(json.dumps(state))
@@ -157,10 +161,118 @@ class NestTests(unittest.TestCase):
         publisher = MQTT.__new__(MQTT)
         publisher.base = 'munai/synthetic'
         publisher.send = Mock()
-        publisher.publish({'label': 'hen_a'}, 'Hen_a arrived')
+        publisher.publish({'occupant': 'Hen_a', 'egg_count': None,
+                           'latest_event': 'Hen_a arrived'})
         publisher.send.assert_any_call('munai/synthetic/latest_event', 'Hen_a arrived', True)
         self.assertFalse(publisher.send.call_args_list[1].args[2])
         self.assertEqual(self.nest.state['latest_event'], None)
+
+    def test_snapshot_tracks_confirmed_occupant_and_freezes_eggs(self):
+        self.assertEqual(self.nest.snapshot(), {'occupant': None, 'egg_count': None,
+                                               'latest_event': None})
+        self.shots('no_chicken', 2, 2)
+        self.assertIsNone(self.nest.snapshot()['occupant'])
+        self.shots('no_chicken', 2, 1)
+        self.assertEqual(self.nest.snapshot()['occupant'], 'empty')
+        self.shots('hen_a', n=2)
+        self.assertEqual(self.nest.snapshot()['occupant'], 'empty')
+        self.shots('hen_a', n=1)
+        self.shots('unknown')
+        self.assertEqual(self.nest.snapshot(), {'occupant': 'Hen_a', 'egg_count': 2,
+                                               'latest_event': 'Hen_a arrived'})
+        self.shots('no_chicken', 0, 2)
+        self.assertEqual(self.nest.snapshot()['occupant'], 'Hen_a')
+        self.assertEqual(self.nest.snapshot()['egg_count'], 2)
+        self.shots('hen_b')
+        self.assertEqual(self.nest.snapshot()['occupant'], 'Hen_b')
+        self.assertEqual(self.nest.snapshot()['egg_count'], 2)
+
+    def test_all_egg_changes_require_matching_empty_observations(self):
+        self.shots('no_chicken', 2)
+        for eggs in (3, 3, 4, 4, 3, 0, 0, 2):
+            self.shots('no_chicken', eggs, 1)
+            self.assertEqual(self.nest.snapshot()['egg_count'], 2)
+        self.shots('no_chicken', 4, 2)
+        self.nest.reset_confirmation()
+        self.shots('no_chicken', 4, 2)
+        self.assertEqual(self.nest.snapshot()['egg_count'], 2)
+        self.shots('no_chicken', 4, 1)
+        self.assertEqual(self.nest.snapshot()['egg_count'], 4)
+
+    def test_departure_and_laying_confirmation_can_be_separate_and_survive_restart(self):
+        self.shots('no_chicken', 2)
+        self.shots('hen_a')
+        for eggs in (3, 4):
+            self.shots('no_chicken', eggs, 1)
+        self.assertEqual(self.shots('no_chicken', 3, 1), ['Hen_a left'])
+        self.assertEqual(self.nest.snapshot()['occupant'], 'empty')
+        self.assertEqual(self.nest.snapshot()['egg_count'], 2)
+        self.nest = NestState(self.root)
+        self.assertEqual(self.shots('no_chicken', 3, 2), [])
+        self.assertEqual(self.shots('no_chicken', 3, 1), ['Hen_a laid an Egg'])
+        self.assertEqual(self.nest.snapshot()['egg_count'], 3)
+        self.assertEqual(self.shots('no_chicken', 3), [])
+
+    def test_unsettled_departure_cannot_be_attributed_to_next_hen(self):
+        self.shots('no_chicken', 2)
+        self.shots('hen_a')
+        for eggs in (3, 4, 3):
+            self.shots('no_chicken', eggs, 1)
+        self.shots('hen_b')
+        self.assertIsNone(self.nest.state['baseline'])
+        self.assertEqual(self.shots('no_chicken', 4), ['Hen_b left'])
+        self.assertEqual(self.nest.snapshot()['egg_count'], 4)
+
+    def test_first_visit_has_unknown_eggs_not_zero(self):
+        self.shots('unknown')
+        self.assertEqual(self.nest.snapshot()['occupant'], 'unknown')
+        self.assertIsNone(self.nest.snapshot()['egg_count'])
+        self.shots('no_chicken', 1)
+        self.assertEqual(self.nest.snapshot()['egg_count'], 1)
+
+    def test_legacy_state_migrates_without_inventing_counts_or_streaks(self):
+        for hen, eggs in ((None, None), (None, 2), ('hen_a', None), ('hen_a', 2)):
+            self.nest.path.write_text(json.dumps({'version': 1, 'hen': hen,
+                                                'eggs': eggs, 'baseline': None,
+                                                'latest_event': None}))
+            self.nest = NestState(self.root)
+            self.assertEqual(self.nest.snapshot()['egg_count'], eggs)
+            self.assertEqual(self.nest.snapshot()['occupant'],
+                             'Hen_a' if hen else 'empty' if eggs is not None else None)
+            self.shots('no_chicken', 4, 2)
+            self.assertEqual(self.nest.snapshot()['egg_count'], eggs)
+
+    def test_failed_write_does_not_advance_egg_confirmation(self):
+        self.shots('no_chicken', 2)
+        self.shots('no_chicken', 3, 2)
+        before = self.nest.snapshot()
+        with patch('ha_service.nest.atomic_json', side_effect=OSError('synthetic')):
+            with self.assertRaises(OSError):
+                self.nest.observe('no_chicken', 3)
+        self.assertEqual(self.nest.snapshot(), before)
+        self.shots('no_chicken', 3, 1)
+        self.assertEqual(self.nest.snapshot()['egg_count'], 3)
+
+    def test_runtime_results_logs_and_mqtt_share_committed_snapshot(self):
+        publisher = Mock()
+        (self.root / 'results').mkdir()
+        runtime = Runtime(validate({}), Mock(root=self.root), publisher)
+        for index, label in enumerate(['no_chicken'] * 3 + ['hen_a'] * 3 +
+                                      ['unknown', 'no_chicken', 'hen_a']):
+            prediction = {'label': label, 'egg_count': 2 if label == 'no_chicken' else 0,
+                          'distance': None, 'margin': None}
+            stamp = 'synthetic-{}'.format(index)
+            runtime.observe(stamp, prediction)
+            snapshot = runtime.nest.snapshot()
+            publisher.publish.assert_called_with(snapshot)
+            for key, value in snapshot.items():
+                self.assertEqual(runtime.last_observation[key], value)
+            self.assertEqual(runtime.last_occupant, snapshot['occupant'])
+            saved = json.loads((self.root / 'results' / (stamp + '.json')).read_text())
+            self.assertEqual(saved, runtime.last_observation)
+        self.assertEqual(runtime.last_observation['occupant'], 'Hen_a')
+        self.assertEqual(runtime.last_observation['egg_count'], 2)
+        self.assertEqual(runtime.last_observation['raw_prediction']['egg_count'], 0)
 
 
 if __name__ == '__main__':

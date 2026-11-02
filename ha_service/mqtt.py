@@ -10,7 +10,8 @@ def discovery(options, sensor='occupant'):
     base = 'munai/' + device_id
     config = {
         'name': 'Occupant', 'unique_id': device_id + '_occupant',
-        'state_topic': base + '/state', 'value_template': '{{ value_json.occupant }}',
+        'state_topic': base + '/state',
+        'value_template': "{{ value_json.occupant if value_json.occupant is not none else 'unknown' }}",
         'availability_topic': base + '/availability', 'expire_after': options['expire_after'],
         'qos': 1, 'icon': 'mdi:bird',
         'device': {'identifiers': [device_id], 'name': options['device_name'],
@@ -18,7 +19,7 @@ def discovery(options, sensor='occupant'):
     }
     if sensor == 'egg_count':
         config.update({'name': 'Egg count', 'unique_id': device_id + '_egg_count',
-                       'value_template': '{{ value_json.egg_count }}',
+                       'value_template': "{{ value_json.egg_count if value_json.egg_count is not none else 'unknown' }}",
                        'icon': 'mdi:egg', 'state_class': 'measurement'})
     elif sensor == 'latest_event':
         config.update({'name': 'Latest event', 'unique_id': device_id + '_latest_event',
@@ -94,16 +95,15 @@ class MQTT:
         except Exception:
             raise AppError('MQTT publish failed or timed out; check broker connectivity and permissions.') from None
 
-    def publish(self, prediction, latest_event=None):
-        eggs = prediction.get('egg_count') if prediction['label'] == 'no_chicken' else 0
-        if type(eggs) is not int or eggs < 0:
+    def publish(self, state):
+        eggs = state['egg_count']
+        if eggs is not None and (type(eggs) is not int or eggs < 0):
             raise AppError('Invalid egg count; no observation published.')
-        if latest_event is not None:
-            # Historical event, unlike live observations, survives reconnects.
-            self.send(self.base + '/latest_event', latest_event, True)
+        # Historical event, unlike live observations, survives reconnects.
+        self.send(self.base + '/latest_event', state['latest_event'] or 'No events yet', True)
         # Expiring state MUST NOT be retained. Availability alone is insufficient
         # to present an occupant after a restart or an extended capture failure.
-        self.send(self.base + '/state', json.dumps({'occupant': occupant(prediction), 'egg_count': eggs}), False)
+        self.send(self.base + '/state', json.dumps({'occupant': state['occupant'], 'egg_count': eggs}), False)
         self.send(self.base + '/availability', 'online', True)
 
     def offline(self):
