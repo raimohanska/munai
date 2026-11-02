@@ -26,6 +26,8 @@ def discovery(options, sensor='occupant'):
                        'state_topic': base + '/latest_event', 'icon': 'mdi:history'})
         del config['value_template']
         del config['expire_after']
+        # Historical events remain valid while the camera/app is offline.
+        del config['availability_topic']
     elif sensor != 'occupant':
         raise ValueError('Unsupported sensor')
     return config

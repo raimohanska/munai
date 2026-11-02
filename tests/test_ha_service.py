@@ -396,6 +396,26 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         for key in ('device', 'expire_after', 'availability_topic', 'state_topic'):
             self.assertEqual(config[key], eggs[key])
 
+    def test_latest_event_survives_app_availability_changes(self):
+        config = discovery(validate({'device_id': 'synthetic'}), 'latest_event')
+        self.assertNotIn('availability_topic', config)
+        self.assertNotIn('expire_after', config)
+        publisher = MQTT.__new__(MQTT)
+        publisher.base = 'munai/synthetic'
+        publisher.connected = threading.Event()
+        publisher.connected.set()
+        publisher.send = Mock()
+        state = {'occupant': 'empty', 'egg_count': 0,
+                 'latest_event': '1 egg collected'}
+        publisher.publish(state)
+        publisher.offline()
+        publisher.publish(state)
+        event_calls = [call for call in publisher.send.call_args_list
+                       if call.args[0] == config['state_topic']]
+        self.assertEqual(len(event_calls), 2)
+        self.assertTrue(all(call.args[1:] == ('1 egg collected', True)
+                            for call in event_calls))
+
     def test_new_states_not_retained_and_availability_retained(self):
         mqtt = MQTT.__new__(MQTT)
         mqtt.base = 'munai/synthetic'

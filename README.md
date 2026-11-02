@@ -103,7 +103,8 @@ Keep `device_id` stable. Save and restart Munai.
 
 **Check:** under **Settings → Devices & services → MQTT → Devices**, find your
 Munai device and its **Occupant**, **Egg count**, and **Latest event** sensors.
-They are unavailable until a fresh capture is published. HA's MQTT integration
+The live sensors are unavailable until a fresh capture is published. Latest event
+restores its retained text independently of app availability. HA's MQTT integration
 must be configured and discovery enabled.
 
 ## 5. Enable capture
@@ -154,7 +155,8 @@ baseline. Partial collection is not announced.
 
 The event text is retained at `munai/<device_id>/latest_event`, separate from
 non-retained live state at `munai/<device_id>/state`. It does not expire between
-events, but follows device availability. The latest event is republished with
+events and does not follow device availability, so app restarts do not create
+an `unavailable` transition and repeat event notifications. The latest event is republished with
 each successful observation, including after reconnect; intermediate events
 during a broker outage are not an event history. Before any event, it reads
 `No events yet`.
