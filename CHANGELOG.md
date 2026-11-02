@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.5
+## 0.1.6
 
 - Add a dated, retained daily egg-count MQTT object for Influx bridges, with
   atomically persisted per-hen totals and an unknown bucket for every unattributed
@@ -13,6 +13,9 @@
   counts for every update, and report unknown until a count is established.
 - Separate departure from egg-count confirmation, preserving pending laying
   attribution across restarts. Migrate existing persisted visit state safely.
+
+## 0.1.5
+
 - Add a retained Latest event MQTT sensor for confirmed arrivals, departures,
   laying events, and egg collection. Require three consecutive observations for
   presence/identity changes and chicken-free zero counts for collection.

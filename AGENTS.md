@@ -5,6 +5,12 @@
 - Commit completed work when it is ready, after running applicable checks.
 - Include only files related to the task; do not commit unrelated user changes,
   secrets, or generated captures. Do not push unless explicitly requested.
+- For every completed batch of deployable Home Assistant app changes, bump the
+  version in both `config.json` and `ha_service/__init__.py`, and add a matching
+  new release section in `CHANGELOG.md`. Never leave new app behavior under an
+  already published version: Supervisor checks versions, not Git commits, to
+  offer an update. Verify version consistency before committing, and explicitly
+  report whether the release has been pushed so HA can discover it.
 
 ## Goal
 
