@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image
 
 from ha_service.api import TransferServer, tls_context
-from ha_service.mqtt import MQTT, discovery, occupant
+from ha_service.mqtt import MQTT, daily_discovery, discovery, occupant
 from ha_service.options import AppError, validate
 from ha_service.runtime import EventLog, Runtime, next_deadline
 from ha_service.storage import Conflict, Store, digest, image_valid, safe_path
@@ -456,20 +456,22 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         publisher.egg_config = discovery(options, 'egg_count')
         publisher.event_discovery_topic = 'homeassistant/sensor/synthetic/latest_event/config'
         publisher.event_config = discovery(options, 'latest_event')
+        publisher.options = options
+        publisher.daily_configs = {'daily_eggs': daily_discovery(options)}
         client = Mock()
         publisher.on_connect(client, None, None, 0, None)
         self.assertTrue(publisher.connected.is_set())
-        self.assertEqual(client.publish.call_count, 4)
+        self.assertEqual(client.publish.call_count, 5)
         self.assertEqual(client.publish.call_args_list[0].args[0], publisher.discovery_topic)
         self.assertEqual(client.publish.call_args_list[1].args[0], publisher.egg_discovery_topic)
         self.assertEqual(json.loads(client.publish.call_args_list[1].args[1]), publisher.egg_config)
         self.assertEqual(client.publish.call_args_list[2].args[0], publisher.event_discovery_topic)
-        self.assertEqual(client.publish.call_args_list[3].args, ('munai/synthetic/availability', 'offline'))
+        self.assertEqual(client.publish.call_args_list[4].args, ('munai/synthetic/availability', 'offline'))
         self.assertTrue(client.publish.call_args_list[1].kwargs['retain'])
         client.subscribe.assert_called_once_with('homeassistant/status', qos=1)
         message = Mock(topic='homeassistant/status', payload=b'online')
         publisher.on_message(client, None, message)
-        self.assertEqual(client.publish.call_count, 7)
+        self.assertEqual(client.publish.call_count, 9)
         self.assertTrue(all(call.kwargs['retain'] for call in client.publish.call_args_list))
         self.assertTrue(all(call.args[0] != publisher.base + '/state' for call in client.publish.call_args_list))
         publisher.on_disconnect(client, None, None, 0, None)

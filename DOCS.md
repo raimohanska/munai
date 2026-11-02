@@ -395,13 +395,72 @@ The broker must permit publishing to:
 ```text
 homeassistant/sensor/<device_id>/occupant/config
 homeassistant/sensor/<device_id>/egg_count/config
+homeassistant/sensor/<device_id>/daily_eggs/config
+homeassistant/sensor/<device_id>/daily_eggs_<identity>/config
 munai/<device_id>/state
 munai/<device_id>/availability
+munai/<device_id>/daily_eggs
 ```
 
 and subscribing to `homeassistant/status`. The non-retained state JSON contains
 both `occupant` and integer `egg_count` (or `null` until established). Eggs remain ignored when identifying
 occupants; egg counting does not influence hen identity.
+
+### Daily production counts and InfluxDB
+
+`munai/<device_id>/daily_eggs` publishes a **retained, QoS 1 absolute snapshot**:
+
+```json
+{"date":"2026-11-02","counts":{"hen_a":1,"hen_b":0,"unknown":2}}
+```
+
+Keys are the exact identity folder names, without display capitalization. Reviewed
+identities are initialized to zero; `unknown` is always present. Identities already
+counted remain in the object if references change, so their totals are not lost.
+The date uses the service's local/Home Assistant timezone, as capture pause times
+do. Counts reset on the first scheduler iteration of a new day, even while capture
+is paused or disabled. An offline service cannot publish a midnight reset; always
+check the payload date rather than assuming a retained payload describes today.
+
+Every confirmed visible-egg **increase** is added once, by its full amount. A
+reliably attributed visit credits the hen; unidentified visits, ambiguous hen
+swaps, increases without an observed visit, and eggs in the first ever confirmed
+empty-nest count credit `unknown`. First-observed eggs may have been laid before
+monitoring started. Upgrading existing visit state does not count eggs already in
+its baseline again. These are inferred/first-observed production totals, not
+guaranteed biological laying dates. Eggs first confirmed after midnight belong to
+the new day, even if the visit began the previous day.
+
+Collection and other decreases never subtract from production. Repeated stable
+counts do not increment it. Totals, visit transitions and pending attribution are
+committed together in `nest-state.json` before MQTT publication. Restarts, failed
+writes, repeated captures and MQTT retries cannot replay a committed increase.
+If the local date moves backwards, counting fails closed until the clock/timezone
+is corrected instead of silently resetting or duplicating totals.
+
+Keep the existing MQTT-to-Influx bridge: write each `counts` value as an **absolute
+gauge**, with chicken and payload date identifying the daily series. Use `last()`
+or `max()` for daily totals, **not `sum()` of repeated snapshots** and not `+1` on
+message receipt. MQTT duplicates/reconnects then cannot inflate counts. The bridge
+is responsible for history; this topic only retains the current day, not a durable
+archive or delivery queue for previous days. If it misses an entire day or the
+broker remains unreachable through rollover, that day's final total cannot be
+recovered from this topic. Back up application data as well as InfluxDB.
+
+Counts remain camera-based estimates. Eggs hidden during occupancy, simultaneous
+laying/collection, missed activity during downtime, and persistent detection errors
+cannot be reconstructed reliably. A falsely confirmed decrease followed by an
+increase can look like collection followed by new eggs. Confirmation reduces this
+risk but cannot guarantee every physical egg is observed or correctly attributed.
+
+**Home Assistant UI:** MQTT discovery adds **Eggs today** (sum of all buckets),
+one **<identity> eggs today** sensor per hen, and **Unknown eggs today**, all under
+the existing device. Each has a date attribute; the total also exposes the counts
+object as attributes. Add these entities to an **Entities** or **Tile** dashboard
+card using HA's UI—no custom JSON display/card is required. Entity IDs are assigned
+by HA; select the discovered entities rather than assuming an ID. These dated
+totals have no capture expiry, but share device connectivity availability. Existing
+Occupant and visible Egg count sensors retain their expiring live-state behavior.
 
 One Python scheduling loop runs serial rounds, uses monotonic deadlines, skips
 missed rounds instead of catching up, and waits interruptibly on shutdown.

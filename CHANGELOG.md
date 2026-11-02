@@ -2,6 +2,12 @@
 
 ## 0.1.5
 
+- Add a dated, retained daily egg-count MQTT object for Influx bridges, with
+  atomically persisted per-hen totals and an unknown bucket for every unattributed
+  confirmed increase. Reset on the service's local day, independently of capture
+  pauses; preserve visit state and safely migrate previous persistence formats.
+- Discover Home Assistant daily total and per-hen/unknown production sensors with
+  date attributes for ordinary Entities/Tile cards.
 - Publish confirmed local state consistently to MQTT, live status, results and
   occupant logs. Freeze egg counts while occupied; require three matching empty
   counts for every update, and report unknown until a count is established.

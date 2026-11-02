@@ -16,7 +16,7 @@ from data_layout import RESERVED, prediction_category
 
 from . import VERSION
 from .mqtt import occupant
-from .nest import NestState
+from .nest import NestState, valid_hen
 from .options import AppError
 from .schedule import capture_paused
 from .storage import MAX_FILE_BYTES, atomic_json, image_valid, safe_path
@@ -117,7 +117,8 @@ class Runtime:
                     'identity_count': identities, 'empty_reference_count': empty_count,
                     'references_ready': identities >= 2 and empty_count > 0,
                     'last_observation': self.last_observation,
-                    'latest_event': self.nest.state['latest_event']}
+                    'latest_event': self.nest.state['latest_event'],
+                    'daily_eggs': self.nest.daily_snapshot()}
 
     def _references(self):
         root = self.store.reference_root()
@@ -184,7 +185,26 @@ class Runtime:
             LOG.info('Nest occupant: %s.', observation['occupant'])
             self.last_occupant = observation['occupant']
         if self.publisher:
+            self.publish_daily()
             self.publisher.publish(state)
+
+    def update_daily(self):
+        # Only reviewed identity directories, never predictions or nest positions.
+        with self.store.lock:
+            root = self.store.reference_root()
+            identities = [] if root is None else [path.name for path in root.iterdir()
+                if valid_hen(path.name) and path.name not in RESERVED
+                and safe_path(root, path.name).is_dir()]
+        self.nest.update_day(identities)
+
+    def publish_daily(self):
+        if self.publisher:
+            try:
+                self.publisher.publish_daily(self.nest.daily_snapshot())
+                self.events.recovered('daily_mqtt', 'Daily egg publication recovered.')
+            except AppError:
+                # Transport outages must not stop recognition/local counting.
+                self.events.failed('daily_mqtt', 'Daily egg MQTT publication failed; check broker connectivity and permissions.')
 
     def run(self, stop):
         deadline = time.monotonic()
@@ -194,6 +214,8 @@ class Runtime:
             previous_observation = self.last_observation
             try:
                 self.store.retain()
+                self.update_daily()
+                self.publish_daily()
                 paused = capture_paused(self.options)
                 if self.options['capture_enabled'] and paused != was_paused:
                     LOG.info('Scheduled camera capture %s.', 'paused for sleep time' if paused else 'active')
