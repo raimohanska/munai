@@ -6,9 +6,6 @@ from .options import AppError
 from .storage import MAX_FILE_BYTES, MAX_REFERENCES, safe_path
 from .web_layout import start, end
 
-PAGE_SIZE = 20
-
-
 def inventory(store):
     """Snapshot metadata under the caller's store lock; don't hash/decode photos."""
     revision = store.revision
@@ -31,15 +28,13 @@ def inventory(store):
     return revision, items
 
 
-def render(store, page=0, base=''):
+def render(store, base=''):
     with store.lock:
         revision, items = inventory(store)
         layout = store.options['box_split']
     items.sort(key=lambda item: (item['path'].startswith('empty/'), item['path']))
     counts = Counter(item['path'].split('/')[0] for item in items)
     identities = sorted(label for label in counts if label != 'empty')
-    pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = min(page, pages - 1)
     parts = [start('References', 'References', base), '<header><h1>Active references</h1>',
              '<p><a href="{}references">Refresh references</a></p>'.format(base),
              '<p>These are the server’s currently active reviewed references, not local candidates, '
@@ -58,7 +53,7 @@ def render(store, page=0, base=''):
         parts.append('<article><h2>No active reference photos</h2><p>Upload reviewed identity and '
                      'empty-nest references using the transfer CLI. This page is read-only.</p></article>')
     previous = None
-    for item in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
+    for item in items:
         label, name = item['path'].split('/')
         if label != previous:
             if previous is not None:
@@ -83,11 +78,5 @@ def render(store, page=0, base=''):
                          escape(item['path']), item['bytes'] / 1024.0))
     if previous is not None:
         parts.append('</div></article>')
-    parts.append('</main><nav>')
-    if page:
-        parts.append('<a href="?page={}">← Previous</a>'.format(page - 1))
-    parts.append('<span>Page {} of {}</span>'.format(page + 1, pages))
-    if page + 1 < pages:
-        parts.append('<a href="?page={}">Next →</a>'.format(page + 1))
-    parts.append('</nav>' + end())
+    parts.append('</main>' + end())
     return ''.join(parts).encode('utf-8')

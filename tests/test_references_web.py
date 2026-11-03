@@ -126,15 +126,24 @@ class ReferenceGalleryTests(unittest.TestCase):
             self.assertEqual(revision, self.store.revision)
             self.assertIn(b'Hen_a', render(self.store))
 
-    def test_paginated_gallery(self):
+    def test_all_references_on_one_page_including_old_paging_links(self):
         for index in range(23):
             self.upload('hen_a/20000101T120000_{:06d}Z.jpg'.format(index))
-        page = render(self.store)
-        self.assertEqual(page.count(b'<figure>'), 20)
-        self.assertIn(b'Next', page)
-        self.assertEqual(render(self.store, 1).count(b'<figure>'), 3)
-        self.assertIn(b'Previous', render(self.store, 1))
-        self.assertEqual(self.request('/references?page=99999999')[0], 200)
+        self.upload('hen_b/20000101T120000_000023Z.jpg')
+        self.upload('empty/20000101T120000_000024Z.jpg')
+        for path in ('/references', '/references/', '/references?page=1',
+                     '/references?page=99999999'):
+            status, page, _ = self.request(path)
+            self.assertEqual(status, 200)
+            self.assertEqual(page.count(b'<figure>'), 25)
+            self.assertEqual(page.count(b'loading="lazy"'), 25)
+            self.assertEqual(page.count(b'<h2>Hen_a</h2>'), 1)
+            self.assertLess(page.index(b'<h2>Hen_a'), page.index(b'<h2>Hen_b'))
+            self.assertLess(page.index(b'<h2>Hen_b'), page.index(b'<h2>Empty-nest'))
+            self.assertNotIn(b'?page=', page)
+            self.assertNotIn(b'Page 1 of', page)
+            self.assertNotIn(b'Previous', page)
+            self.assertNotIn(b'Next', page)
 
     def test_symlinks_are_not_exposed(self):
         self.upload()

@@ -194,7 +194,7 @@ class JournalHandler(BaseHTTPRequestHandler):
                     raise ValueError()
                 base = '../' if parsed.path not in ('/',) and parsed.path.endswith('/') else ''
                 if parsed.path in ('/references', '/references/'):
-                    data = render_references(self.server.journal.store, int(page), base=base)
+                    data = render_references(self.server.journal.store, base=base)
                 elif parsed.path in ('/journal', '/journal/'):
                     data = render(self.server.journal, int(page), base=base)
                 else:

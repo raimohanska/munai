@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.14
+
+- Show all active reference photos on one References page, grouped by hen with
+  empty calibration photos last. Remove paging controls and retain lazy-loaded
+  images. Existing reference paging links now show the complete gallery.
+
 ## 0.1.13
 
 - Add explicit `push --replace --yes` to validate and atomically replace the
