@@ -57,14 +57,13 @@ produced each egg.
 
 ## Chicken recognition
 
-- The canonical local copy of the production references is the ignored managed
-  store `local-data/production/references/`. Resolve its `state.json` to
-  `versions/<active>/`; do not assume the working `references/` or a report
-  candidate is production. `local-data/production/reference-deployment.json`
-  records provenance, deployment confirmation source, and per-file SHA256 hashes.
-  Keep this snapshot separate from working imports. Update it only when a new
-  production reference deployment is confirmed, preserving earlier versions.
-  Never commit its private contents. See `DOCS.md` for the snapshot convention.
+- The canonical editable production reference folder is the ignored flat folder
+  `local-data/production/references/<identity>/` (including `empty/`). Do not add
+  local version directories or state pointers here. Make requested corrections
+  directly here; do not assume the working `references/` or report candidates
+  are production. Local edits are not deployed until explicitly pushed and
+  confirmed; do not claim they match HA without verification. Never commit its
+  private contents. See `DOCS.md` for upload commands and deletion limitations.
 - Use appearance, not nest position, to identify the configured hens. Reference
   images do not necessarily cover every hen in every position. Never infer
   identity from that missing coverage.

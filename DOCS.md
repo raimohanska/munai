@@ -528,25 +528,27 @@ does not upload previous versions, staging files, or any captured predictions.
 A flat directory of explicitly reviewed identity and `empty/` folders can also be used as an
 import source, but is not the managed data layout.
 
-### Canonical production reference snapshot
+### Canonical editable production references
 
-The local record of the references deployed in production lives at
-`local-data/production/references/`, not in a report candidate directory or the
-working `references/` store. Its `state.json` selects the exact snapshot in
-`versions/<active>/`, using the same managed reference layout as HA. Resolve it
-with `data_layout.reference_directory('local-data/production/references')`.
+Edit production references directly in `local-data/production/references/`, with
+JPEGs immediately inside each identity folder or `empty/`. This is a plain,
+ignored folder: no local version directories, state pointer, or snapshot manifest.
+Keep it separate from report candidates and the working managed `references/`.
 
-`local-data/production/reference-deployment.json` records the original source,
-when the snapshot was recorded, how deployment was confirmed, and each file's
-SHA256 checksum. A locally recorded version is not necessarily HA's version ID;
-the image paths and checksums identify the contents. User-confirmed deployment
-is recorded as such, not represented as independent verification against HA.
+Local corrections are not deployed automatically. Preview and explicitly upload:
 
-Keep these private files ignored. Preserve old production versions and source
-reports. Replace the production pointer and deployment record only after a new
-deployment is confirmed, verifying a complete copy before changing the pointer.
-Working imports or candidate generation must not update this record. This is an
-archival local snapshot: creating it does not upload or activate anything on HA.
+```bash
+python munai_remote.py push local-data/production/references --dry-run --overwrite
+python munai_remote.py push local-data/production/references --overwrite
+python munai_remote.py remote status
+```
+
+`--overwrite` permits replacing differing files with the same path. Push adds or
+updates files but **never deletes remote references**: deleting or moving a local
+image alone does not remove its old remote copy. Handle remote removals explicitly
+before claiming the corrected set matches production. HA still manages its own
+internal versions for safe activation; this folder has no local versioning.
+Never commit these private images or assume pending edits are already on HA.
 
 ### Migrate existing local images before deployment
 
