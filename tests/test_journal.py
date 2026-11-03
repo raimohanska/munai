@@ -254,7 +254,7 @@ class JournalTests(unittest.TestCase):
     def test_ingress_access_paths_headers_and_original_images(self):
         self.shots('hen_a')
         identifier = next(frame_ids(self.entries()[0]))
-        status, data, handler = self.request('/')
+        status, data, handler = self.request('/journal')
         self.assertEqual(status, 200)
         self.assertIn(b'Hen_a arrived', data)
         self.assertIn(b'loading="lazy"', data)
@@ -264,7 +264,7 @@ class JournalTests(unittest.TestCase):
         self.assertEqual((status, data), (200, self.source.read_bytes()))
         for path in ('/', '/journal.js', '/journal.css', '/images/' + identifier + '.jpg'):
             self.assertEqual(self.request(path, '127.0.0.1')[0], 403)
-        for path in ('/journal.js', '/journal.css', '/?page=0'):
+        for path in ('/journal.js', '/journal.css', '/journal?page=0'):
             self.assertEqual(self.request(path)[0], 200)
         for path in ('/images/../nest-state.json', '/?page=-1', '/?page=1&page=2', '/?x=1'):
             self.assertEqual(self.request(path)[0], 400)
@@ -285,7 +285,7 @@ class JournalTests(unittest.TestCase):
         self.assertIn('Older', html)
         self.assertEqual(render(self.journal, 1).count(b'<article>'), 4)
         self.assertIn(b'Newer', render(self.journal, 1))
-        self.assertEqual(self.request('/?page=99999999')[0], 200)
+        self.assertEqual(self.request('/journal?page=99999999')[0], 200)
 
     def test_runtime_commits_evidence_with_mqtt_and_results(self):
         runtime = Runtime(self.options, self.store, Mock())

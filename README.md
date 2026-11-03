@@ -6,7 +6,11 @@ visible eggs when no hen is detected and reports **0 when a hen is present**,
 including unknown hens.
 [Offline egg counting](DOCS.md#offline-egg-counting) is available for calibration.
 
-**Event journal (0.1.7+):** open Munai’s **Open Web UI** in HA for a newest-first
+**Status page (0.1.12+):** **Open Web UI** in HA opens the latest processed image,
+its prediction and separate confirmed state, plus capture health and stale warnings.
+The **MunAI** sidebar links **Status**, **Journal** and **References**.
+
+**Event journal (0.1.7+):** select **Journal** for a newest-first
 timeline with the photos behind each decision. Enable **Show in sidebar** for
 easy access. Journal photos have their own **365-day retention**, even with
 ordinary capture storage off. See [journal storage and evidence](DOCS.md#event-journal).

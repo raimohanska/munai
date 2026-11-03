@@ -10,10 +10,31 @@ Docker's explicit allowlist excludes Git history, `.env`, references, and local
 camera calibration. The legacy Pi/cron entry points remain available unchanged
 in usage; do not retire them until the HA pilot works.
 
+## Status page (0.1.12+)
+
+**Open Web UI** opens Status by default. The **MunAI** sidebar links **Status**,
+**Journal** and **References**. Status refreshes every 15 seconds and shows the latest
+successfully processed image with its timestamp, age and image-specific prediction,
+separately from the confirmed state at that capture. Confirmation may lag the raw
+prediction. Unknown/obscured means uncertainty, not definite hen presence. Expand
+recognition diagnostics to inspect raw per-zone predictions and available scores.
+
+Capture enabled/paused/failed state, MQTT connectivity and current sanitized errors
+appear above the image. A stale warning appears once the image age exceeds the
+larger of `expire_after` and twice `capture_interval`, including during sleep time.
+This is not a live stream or a new on-demand camera request. Failed recognition
+keeps the previous successful observation visible with its original timestamp.
+
+At most two full images (8 MiB each maximum) are held in memory, independent of
+`store_captures`, photo deduplication and journal cleanup. Timestamp-pinned URLs
+never substitute a newer photo; expired URLs return unavailable. After an app
+restart, Status waits for a new successful observation rather than showing an
+unpaired old image. Access remains through HA Ingress, not a public image URL.
+
 ## Event journal
 
-From the Munai app page in HA, choose **Open Web UI**. Enable **Show in sidebar**
-for a persistent journal link. HA Ingress authenticates access; there is no new
+From the Munai app page in HA, choose **Open Web UI**, then **Journal**. Enable **Show in sidebar**
+for a persistent MunAI link. HA Ingress authenticates access; there is no new
 host port or journal password. The existing HTTPS transfer API remains separate.
 
 Entries appear newest first, with browser-local confirmation timestamps and the
@@ -57,7 +78,7 @@ format, so a downgrade also requires restoring the matching pre-upgrade backup.
 
 ## Active references page (0.1.11+)
 
-In Munai's **Open Web UI**, select **References** next to the journal links. The
+In Munai's **Open Web UI**, select **References** in the MunAI sidebar. The
 page shows the active reference version on the server, configured box split,
 counts for each identity, and the original reference photos grouped by hen.
 Reviewed full-frame empty-nest calibration is shown separately. Photos are

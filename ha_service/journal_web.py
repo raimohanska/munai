@@ -3,16 +3,29 @@ from datetime import datetime, timezone
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import shutil
+import re
 from urllib.parse import parse_qs, urlsplit
 
 from .journal import ID
 from .storage import MAX_FILE_BYTES, VERSION_ID, safe_path
 from .references_web import render as render_references
+from .status_web import render as render_status
+from .web_layout import start, end
 
 PAGE_SIZE = 20
 CSS = '''
 :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }
-body { margin: auto; padding: 24px; max-width: 1100px; background: light-dark(#f5f6f2,#131a18); }
+body { margin: 0; background: light-dark(#f5f6f2,#131a18); }
+.content { margin-left: 200px; padding: 24px; max-width: 1100px; }
+.sidebar { position: fixed; inset: 0 auto 0 0; width: 200px; box-sizing: border-box;
+ padding: 24px 16px; border-right: 1px solid #788b7950; background: light-dark(white,#1c2723); }
+.brand { font-size: 1.5rem; font-weight: 700; padding: 0 12px 20px; }
+.sidebar nav { display: flex; flex-direction: column; gap: 8px; padding: 0; }
+.sidebar a { padding: 12px; text-decoration: none; border-radius: 8px; }
+.sidebar a[aria-current] { background: #788b7930; font-weight: 700; }
+.states { display: flex; flex-wrap: wrap; gap: 24px; } dt { font-weight: 600; } dd { margin: 8px 0; }
+.latest { display: block; max-height: 65vh; object-fit: contain; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 header, article { padding: 24px; margin-bottom: 20px; border: 1px solid #788b7950;
 border-radius: 18px; background: light-dark(white,#1c2723); }
 h1 { margin-top: 0; } h2 { font-size: 1.35rem; margin: 8px 0; }
@@ -29,15 +42,19 @@ figcaption { font-size: .85rem; overflow-wrap: anywhere; }
 .photo-id { display: block; font-size: .75rem; margin-top: 6px; user-select: all; }
 nav { display: flex; justify-content: space-between; padding: 16px; }
 .notice { border-left: 4px solid #c99b40; padding-left: 12px; }
-@media(max-width: 500px) { body { padding: 10px; } header,article { padding: 16px; } }
+@media(max-width: 700px) { .sidebar { position: static; width: auto; padding: 16px; }
+ .brand { padding: 0 0 12px; } .sidebar nav { flex-direction: row; }
+ .content { margin: 0; padding: 10px; } header,article { padding: 16px; } }
 '''
 JS = '''
 document.querySelectorAll('time').forEach(node => {
   const date = new Date(node.dateTime);
   if (!isNaN(date)) { node.textContent = date.toLocaleString(); node.title = node.dateTime; }
 });
-if (!new URLSearchParams(location.search).get('page')) {
-  setInterval(() => { if (!document.hidden && window.scrollY < 150) location.reload(); }, 60000);
+const active = document.querySelector('a[aria-current="page"]');
+const status = active && active.textContent === 'Status';
+if (status || !new URLSearchParams(location.search).get('page')) {
+  setInterval(() => { if (!document.hidden && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
 }
 '''
 
@@ -51,7 +68,7 @@ def time_html(identifier):
     return '<time datetime="{}">{}</time>'.format(stamp, stamp)
 
 
-def render(journal, page):
+def render(journal, page, base=''):
     with journal.lock:
         paths = journal.entries()
         pages = max(1, (len(paths) + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -60,16 +77,13 @@ def render(journal, page):
         usage = journal.usage_bytes / (1024 * 1024)
     low_space = journal.store.options['minimum_free_mb']
     free = shutil.disk_usage(str(journal.root)).free / (1024 * 1024)
-    parts = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
-             '<meta name="viewport" content="width=device-width, initial-scale=1">',
-             '<title>Munai journal</title><link rel="stylesheet" href="journal.css">',
-             '<script src="journal.js" defer></script></head><body><header>',
-             '<h1>Munai journal</h1><p>The story of your nest, with the evidence behind each decision.</p>',
+    parts = [start('Journal', 'Journal', base, script=True), '<header>',
+             '<h1>Journal</h1><p>The story of your nest, with the evidence behind each decision.</p>',
              '<p class="muted">{} events · {} days retention · archive {:.1f} MiB at last hourly cleanup</p>'.format(
                  len(paths), journal.store.options['journal_retention_days'], usage),
              '<p class="muted">Times are shown in your browser’s timezone. Event times indicate confirmation, '
              'not the exact moment of laying. Predictions are not reviewed identities.</p>',
-             '<a href="./">Latest entries</a> · <a href="references">References</a> · <a href="">Refresh</a>']
+             '<a href="{}journal">Latest entries</a> · <a href="">Refresh</a>'.format(base)]
     if free < low_space + 16:
         parts.append('<p class="notice">Storage is low. New observations may stop to protect the disk reserve. '
                      'Back up the archive and free space; younger journal entries are not automatically discarded.</p>')
@@ -88,7 +102,7 @@ def render(journal, page):
             has_frames = True
             parts.append('<h3>{}</h3><div class="photos">'.format(escape(group['role'])))
             for frame in group['frames']:
-                source = 'images/' + frame['id'] + '.jpg'
+                source = base + 'images/' + frame['id'] + '.jpg'
                 caption = ('Empty nest · {} eggs detected'.format(frame['egg_count'])
                             if frame['label'] == 'no_chicken' else 'Identity prediction: ' + frame['label'])
                 if 'zone' in entry:
@@ -119,15 +133,16 @@ def render(journal, page):
     parts.append('<span>Page {} of {}</span>'.format(page + 1, pages))
     if page + 1 < pages:
         parts.append('<a href="?page={}">Older →</a>'.format(page + 1))
-    parts.append('</nav></body></html>')
+    parts.append('</nav>' + end())
     return ''.join(parts).encode('utf-8')
 
 
 class JournalServer(HTTPServer):
     allow_reuse_address = True
 
-    def __init__(self, address, journal):
+    def __init__(self, address, journal, runtime=None):
         self.journal = journal
+        self.runtime = runtime
         super().__init__(address, JournalHandler)
 
     def get_request(self):
@@ -170,18 +185,29 @@ class JournalHandler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             if parsed.scheme or parsed.netloc or parsed.fragment:
                 raise ValueError()
-            if parsed.path in ('/', '/index.html', '/references', '/references/'):
+            if parsed.path in ('/', '/index.html', '/status', '/status/', '/journal', '/journal/', '/references', '/references/'):
                 query = parse_qs(parsed.query, strict_parsing=True) if parsed.query else {}
                 if set(query) - {'page'} or len(query.get('page', ['0'])) != 1:
                     raise ValueError()
                 page = query.get('page', ['0'])[0]
                 if not page.isdigit() or len(page) > 8:
                     raise ValueError()
-                data = (render_references(self.server.journal.store, int(page),
-                                          base='../' if parsed.path.endswith('/') else '')
-                        if parsed.path in ('/references', '/references/') else
-                        render(self.server.journal, int(page)))
+                base = '../' if parsed.path not in ('/',) and parsed.path.endswith('/') else ''
+                if parsed.path in ('/references', '/references/'):
+                    data = render_references(self.server.journal.store, int(page), base=base)
+                elif parsed.path in ('/journal', '/journal/'):
+                    data = render(self.server.journal, int(page), base=base)
+                else:
+                    data = render_status(self.server.runtime.web_status(), base=base)
                 self.response(200, data, 'text/html; charset=utf-8')
+            elif parsed.path.startswith('/latest/') and not parsed.query:
+                name = parsed.path[len('/latest/'):]
+                if not re.fullmatch(r'[0-9]{8}T[0-9]{6}_[0-9]{6}Z\.jpg', name):
+                    raise ValueError()
+                data = self.server.runtime.web_image(name[:-4])
+                if data is None:
+                    raise FileNotFoundError()
+                self.response(200, data, 'image/jpeg')
             elif parsed.path == '/journal.css' and not parsed.query:
                 self.response(200, CSS.encode('utf-8'), 'text/css; charset=utf-8')
             elif parsed.path == '/journal.js' and not parsed.query:

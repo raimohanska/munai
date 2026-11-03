@@ -1,8 +1,10 @@
 """Serial recognition rounds around the unchanged appearance-based algorithm."""
 from datetime import datetime, timezone
+import copy
 import logging
 from pathlib import Path
 import time
+import threading
 
 import cv2
 
@@ -57,6 +59,8 @@ class Runtime:
         self.reference_revision = None
         self.references = []
         self.last_observation = None
+        self.web_lock = threading.Lock()
+        self.web_images = {}
         self.last_occupant = None
         # Prediction-only callers may omit storage; they never advance events.
         self.nest = None
@@ -153,6 +157,25 @@ class Runtime:
                     'zones': self.nest.snapshot().get('zones', {}),
                     'daily_eggs': self.nest.daily_snapshot()}
 
+    def web_status(self):
+        """Cheap UI snapshot: no reference loading, image decoding or disk scans."""
+        with self.web_lock:
+            observation = copy.deepcopy(self.last_observation)
+            has_image = bool(observation and observation['timestamp'] in self.web_images)
+        capture_state = ('Disabled' if not self.options['capture_enabled'] else
+                         'Paused for sleep time' if capture_paused(self.options) else
+                         'Failed' if 'round' in self.events.failures else 'Active')
+        return {'observation': observation, 'has_image': has_image,
+                'capture_state': capture_state,
+                'mqtt_state': ('Disabled' if not self.options['mqtt_enabled'] else
+                               'Connected' if self.publisher and self.publisher.connected.is_set() else 'Disconnected'),
+                'stale_after': max(self.options['expire_after'], self.options['capture_interval'] * 2),
+                'errors': [item[0] for item in self.events.failures.copy().values()]}
+
+    def web_image(self, stamp):
+        with self.web_lock:
+            return self.web_images.get(stamp)
+
     def _references(self):
         root = self.store.reference_root()
         if root is None or len([p for p in root.iterdir() if p.is_dir() and p.name not in RESERVED]) < 2:
@@ -177,12 +200,14 @@ class Runtime:
             stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%fZ')
             predictions = []
             evidence = []
+            images = []
 
             def process(path):
                 source = Path(path)
                 prediction = self.predict(source, references)
                 predictions.append(prediction)
                 evidence.append(self.journal.save_frame(source, prediction, stamp=stamp))
+                images.append(source.read_bytes())
                 self.photos.save(source, stamp, prediction)
 
             try:
@@ -192,10 +217,12 @@ class Runtime:
                 raise AppError(str(error)) from None  # CaptureError contains only fixed summaries.
             if not predictions:
                 raise AppError('Capture did not complete; check the camera and overlap lock.')
-            self.observe(stamp, predictions[0], evidence[0])
+            self.observe(stamp, predictions[0], evidence[0], image=images[0])
 
-    def observe(self, stamp, prediction, evidence=None):
+    def observe(self, stamp, prediction, evidence=None, image=None):
         """Commit and publish the same confirmed state for a successful prediction."""
+        if image is not None and len(image) > MAX_FILE_BYTES:
+            raise AppError('Image exceeds 8 MiB; lower the camera resolution.')
         self.journal.flush(self.nest)
         events = (self.nest.observe_zones(prediction['zones'], evidence) if 'zones' in prediction else
                   self.nest.observe(prediction['label'], prediction['egg_count'], evidence))
@@ -212,7 +239,15 @@ class Runtime:
             observation['raw_prediction']['zones'] = prediction['zones']
             observation['raw_prediction']['ambiguous'] = prediction['ambiguous']
         atomic_json(self.store.root / 'results' / (stamp + '.json'), observation)
-        self.last_observation = observation
+        with self.web_lock:
+            # Retain two bounded full frames, independent of optional photo storage
+            # and journal cleanup. A new capture must never replace an older URL.
+            if image is not None:
+                previous = self.last_observation
+                self.web_images = ({previous['timestamp']: self.web_images[previous['timestamp']]}
+                                   if previous and previous['timestamp'] in self.web_images else {})
+                self.web_images[stamp] = image
+            self.last_observation = observation
         if self.last_occupant != observation['occupant']:
             LOG.info('Nest occupant: %s.', observation['occupant'])
             self.last_occupant = observation['occupant']

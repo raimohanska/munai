@@ -52,7 +52,7 @@ def main():
     for page in range(pages):
         html = render(journal, page).decode('utf-8')
         # Static links, not dynamic ?page routes. Historical replay is labelled.
-        html = html.replace('<h1>Munai journal</h1>', '<h1>Offline split replay — reconstructed decisions</h1>')
+        html = html.replace('<h1>Journal</h1>', '<h1>Offline split replay — reconstructed decisions</h1>')
         html = html.replace('The story of your nest, with the evidence behind each decision.',
                             'New algorithm on retained images, not recovered historical events. '
                             'Correlated reference images may appear in this replay; not independent accuracy evidence.')
@@ -61,7 +61,7 @@ def main():
         if page == 0:
             (journal.root / 'index.html').write_text(html)
     (journal.root / 'journal.css').write_text(CSS)
-    (journal.root / 'journal.js').write_text(JS.split('if (!new URLSearchParams')[0])
+    (journal.root / 'journal.js').write_text(JS.split('const active =')[0])
     print('Replayed {} images; {} journal events; results in {}; page {}'.format(
         len(paths), len(journal.entries()), store.root / 'results', journal.root / 'index.html'))
 

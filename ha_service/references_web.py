@@ -4,6 +4,7 @@ from html import escape
 
 from .options import AppError
 from .storage import MAX_FILE_BYTES, MAX_REFERENCES, safe_path
+from .web_layout import start, end
 
 PAGE_SIZE = 20
 
@@ -39,11 +40,8 @@ def render(store, page=0, base=''):
     identities = sorted(label for label in counts if label != 'empty')
     pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(page, pages - 1)
-    parts = ['<!doctype html><html lang="en"><head><meta charset="utf-8">',
-             '<meta name="viewport" content="width=device-width, initial-scale=1">',
-             '<title>Munai references</title><link rel="stylesheet" href="{}journal.css">'.format(base),
-             '</head><body><header><h1>Active references</h1>',
-             '<p><a href="{}">Journal</a> · <a href="{}references">Refresh references</a></p>'.format(base or './', base),
+    parts = [start('References', 'References', base), '<header><h1>Active references</h1>',
+             '<p><a href="{}references">Refresh references</a></p>'.format(base),
              '<p>These are the server’s currently active reviewed references, not local candidates, '
              'unreviewed captures, or journal predictions.</p>',
              '<p>Active reference version: <code>{}</code><br>Configured box split: <strong>{}</strong></p>'.format(
@@ -91,5 +89,5 @@ def render(store, page=0, base=''):
     parts.append('<span>Page {} of {}</span>'.format(page + 1, pages))
     if page + 1 < pages:
         parts.append('<a href="?page={}">Next →</a>'.format(page + 1))
-    parts.append('</nav></body></html>')
+    parts.append('</nav>' + end())
     return ''.join(parts).encode('utf-8')

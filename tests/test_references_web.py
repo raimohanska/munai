@@ -49,7 +49,7 @@ class ReferenceGalleryTests(unittest.TestCase):
         status, page, _ = self.request('/references')
         self.assertEqual(status, 200)
         self.assertIn(b'No active reference photos', page)
-        self.assertIn(b'href="./">Journal', page)
+        self.assertIn(b'href="journal">Journal', page)
         self.assertIn(b'href="references">References', render_journal(self.journal, 0))
 
     def test_grouping_counts_filenames_layout_and_original_image(self):
@@ -78,7 +78,7 @@ class ReferenceGalleryTests(unittest.TestCase):
         status, page, _ = self.request('/references/')
         self.assertEqual(status, 200)
         self.assertIn(b'href="../journal.css"', page)
-        self.assertIn(b'href="../">Journal', page)
+        self.assertIn(b'href="../journal">Journal', page)
         self.assertIn(('../references/' + revision + '/hen_a/').encode(), page)
 
     def test_only_active_version_no_staging_previous_or_predictions(self):

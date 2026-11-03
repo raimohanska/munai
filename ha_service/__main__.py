@@ -45,9 +45,9 @@ def main():
             publisher = MQTT(options)
         runtime = Runtime(options, store, publisher)
         runtime.journal.retain(runtime.nest, force=True)
-        journal_server = JournalServer(('0.0.0.0', 8099), runtime.journal)
+        journal_server = JournalServer(('0.0.0.0', 8099), runtime.journal, runtime)
         threading.Thread(target=journal_server.serve_forever, name='journal', daemon=True).start()
-        LOG.info('Journal ready through Home Assistant Ingress.')
+        LOG.info('MunAI Web UI ready through Home Assistant Ingress.')
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda signum, frame: stop.set())
         if options['transfer_enabled']:

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.12
+
+- Make Status the default HA Ingress page and add a shared MunAI sidebar with
+  Status, Journal and References navigation (compact navigation on small screens).
+- Show the latest successfully processed capture paired with its own prediction,
+  separate confirmed per-zone state, uncertainty explanations and diagnostics.
+  Refresh automatically; show capture/MQTT health, failures, age and stale warnings.
+- Keep at most two latest images in memory even when ordinary photo storage is
+  disabled or deduplicated. Timestamp-pinned URLs never substitute another image;
+  restart waits for a new successful observation. No recognition or counting changes.
+
 ## 0.1.11
 
 - Add a read-only References page linked from the HA Ingress journal, showing
