@@ -244,7 +244,7 @@ identity; synthetic mechanics tests cannot guarantee field accuracy.
 ### Offline review and replay
 
 ```bash
-python tools/review_box_split.py captures/pending --references references \
+python tools/review_box_split.py captures/pending --references local-data/production/references \
   --split vertical --output reports/split-presence-review
 ```
 
@@ -463,10 +463,11 @@ this texture heuristic is not a general-purpose object detector.
 
 The same flat reference layout is used locally and on HA (data root `/data`).
 The canonical editable local folder is `local-data/production/references/`;
-the older checkout-root `references/` is a separate local tool workspace, not
-the production source. Some legacy tools still default to that workspace; pass
-`--references local-data/production/references` where supported. Do not delete
-the old workspace without checking for unique reviewed images first.
+the older checkout-root `references/` is only a non-production archive of reviewed
+images whose SHA256 contents were absent from canonical at cleanup time. It has
+no version directories or state pointer. Do not merge or deploy it automatically.
+For shared modules' standalone command-line entry points, explicitly pass
+`--references local-data/production/references` when reviewing production data.
 
 ```text
 <data-root>/
@@ -561,40 +562,13 @@ and cache invalidation, not a saved version. Ordinary push without `--replace`
 still adds/updates one file at a time and never removes remote-only files.
 Never commit private images or assume pending local edits are already on HA.
 
-### Migrate existing local images before deployment
+### Adding reviewed references
 
-In the devcontainer, preview the old layout migration, then explicitly apply it:
-
-```bash
-/tmp/opencode/munai-ha-venv/bin/python tools/migrate_layout.py
-/tmp/opencode/munai-ha-venv/bin/python tools/migrate_layout.py --apply
-```
-
-It imports reviewed images from the old named `captures/chicken/` folders into
-validated flat references, moves raw root JPEGs into `captures/pending/`,
-flattens unknown/predicted captures, and preserves CSV manifests under
-`reports/legacy/`. Existing empty/egg captures are unchanged. It checks conflicts
-before moving anything, never overwrites differing files, verifies every reference
-before removing its original name, and can be rerun after interruption. It takes
-the local capture/device/service/sorter locks; stop those writers first. It never
-reads or changes `.env`, contacts a camera/broker/HA, or runs batch classification.
-Existing offline reports retain their historical paths; regenerate rather than
-editing them. Take a private data backup before a large manual reorganization.
-
-To add newly reviewed images later, put copies in an ignored staging folder such
-as `local-data/reviewed/<identity>/` or `local-data/reviewed/empty/`, then run:
-
-```bash
-/tmp/opencode/munai-ha-venv/bin/python tools/import_references.py local-data/reviewed
-/tmp/opencode/munai-ha-venv/bin/python tools/import_references.py local-data/reviewed --apply
-```
-
-This preserves source images, validates them, and updates the local working store
-between locked updates. Different contents under an existing name require explicit
-`--overwrite`. This importer updates the checkout workspace, not the canonical
-production source. Never import predictions without
-review. A reference-only CLI backup/pull is a **flat import folder**; restore it
-using this importer, not by downloading into a live managed `references/` root.
+Copy explicitly reviewed JPEGs directly into the appropriate identity or `empty/`
+folder under `local-data/production/references/`, then preview and confirm a
+complete replacement using the commands above. Never import predictions without
+review. The old standalone migration, import, and batch-review utilities have
+been removed. HA's startup migration from its former versioned layout remains.
 
 Unchanged files are skipped. No files are deleted. Different contents under an
 existing name require `--overwrite`; inspect the conflict before using it. Each
@@ -766,51 +740,18 @@ combined `capture_storage_mb` cap (default **256 MiB**), `retention_days` (defau
 it never touches reviewed references. A minimum free-space reserve (default
 **128 MiB**) blocks new captures/uploads before the disk is exhausted. Temporary
 files or unmanaged external disk use can still exceed these application limits.
-These retention policies run in the HA service, not the local migration/import or
-offline review tools. Local originals are not purged as part of preparing a review.
+These retention policies run in the HA service, not against local offline datasets.
+Local originals are not purged as part of preparing a review.
 Hidden local locks/OS metadata are neither exported nor counted as image data.
 
-### Offline review of existing images
+### Offline diagnostics
 
-After deployment preparation, use the same recognition pipeline without live
-capture, MQTT, HA, credentials, training, or retention:
-
-```bash
-OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --cpu-percent 10
-OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --apply --cpu-percent 10
-```
-
-The first command predicts without relocating images. `--apply` sorts all managed
-captures into `empty/`, `unknown/`, or `<identity>/unreviewed/`, preserving filenames
-and verifying checksums. This uses reference-derived calibration and the HA default
-recognition thresholds. There is no separate offline identity algorithm.
-
-Active reference originals are never moved or modified. Their review copies are
-compared with byte-identical references excluded; singleton identities that cannot
-be checked independently remain unknown. Those copies are independent files,
-not hardlinks to golden references. The private `reports/review-*/manifest.json`
-records source/destination, prediction, checksum, and whether a result is a
-reference self-check. `summary.json` marks a completed pass. Existing result JSON
-is backed up in that run's report before replacement. Predictions and correlated
-frames are **not** a held-out accuracy measurement and never become new references
-automatically. Do not run HA's retention loop against this local review dataset.
-
-One process/worker is used. CPU pacing defaults to 10% of one core on average,
-with sleeps between operations; short operations can still burst, so this is not
-an OS hard CPU quota. Low process priority and one OpenCV/BLAS worker keep the
-machine responsive. Run no other image-processing job concurrently.
-
-After interruption, resume the **existing** report instead of starting a second
-pass or treating reference review copies as new input:
-
-```bash
-OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --apply --cpu-percent 10 --resume reports/review-RUN_ID
-```
-
-Resume checks the saved reference content checksum, recognition settings, allowed paths,
-and every checksum. It accepts originals already safely relocated, never repeats
-prediction, and skips rewriting identical results. Stale predictions or differing
-destination contents fail without overwriting anything.
+The split-specific `tools/review_box_split.py` and `tools/replay_split.py` remain
+available for preparing and inspecting split recognition (see the split workflow
+above). `tools/generate_presence_fixtures.py` regenerates synthetic test fixtures,
+and `tools/check_public_tree.py` checks tracked paths for private data. The shared
+capture and recognition modules remain because HA imports them; their standalone
+entry points are not a replacement for the removed Pi/cron MQTT runner.
 
 Use an ignored `local-data/` destination for exports:
 

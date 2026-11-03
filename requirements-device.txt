@@ -1,3 +1,0 @@
-# OpenCV and NumPy should come from OS packages on the Pi (see README).
-# Newer MQTT clients require newer Python; 1.5.1 supports Python 3.5.
-paho-mqtt==1.5.1

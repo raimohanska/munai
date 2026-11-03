@@ -11,7 +11,8 @@ Read `AGENTS.md` first; never inspect, copy, source, or expose `.env`.
 The workspace already contains capture, recognition, MQTT code, and tests,
 including uncommitted work. Inspect and reuse it without overwriting user work.
 `PLAN.md` is an older image-experiment handoff, not current implementation status.
-Preserve the legacy Pi/Python 3.5 capture path; isolate modern add-on tooling.
+Retain capture and recognition modules imported by HA. The old standalone
+Pi/cron MQTT runner and local migration/import/batch-review utilities are removed.
 
 ## Intended architecture
 
@@ -112,8 +113,8 @@ works. Do not deploy as part of that milestone.
   or publish the unsanitized recovery bundle/history. No registry is required.
 - Keep all real identities, images, models and deployment calibration out of Git.
   Tests generate synthetic images and use synthetic identities.
-- Keep the legacy cron/Pi option until a supervised HA pilot succeeds. The HA app
-  uses a serial Python loop, with capture and MQTT disabled on first installation.
+- HA is the supported runtime; the standalone cron/Pi runner has been retired.
+  The app uses a serial Python loop, with capture and MQTT disabled on first installation.
 - Configure runtime settings in HA's standard app form, not .env or uploaded code.
 - Use MQTT discovery for one stable device and an Occupant sensor. States are a
   configured identity, empty, unknown, or HA unavailable for stale observations.
@@ -138,8 +139,9 @@ works. Do not deploy as part of that milestone.
   Captures use `empty/`, `unknown/`, and `<identity>/unreviewed/` directly below
   `captures/`; standalone/offline tools also use `pending/` and optionally `eggs/`.
   Migrate existing data explicitly without reading .env or contacting hardware.
-- Finish deployment preparation before running the requested local batch review
-  of current images. Do not invoke HA retention to purge the local review dataset.
+- Keep local reviewed originals and split-diagnostic datasets outside HA retention.
+  The root-level `references/` is a non-production archive of images absent from
+  canonical at cleanup time, not another production reference source.
 
 See DOCS.md for executable setup instructions, security limits, and the distinction
 between local tests, configured CI, and pending Green validation. Developing

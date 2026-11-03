@@ -64,6 +64,11 @@ produced each egg.
   are production. Local edits are not deployed until explicitly pushed and
   confirmed; do not claim they match HA without verification. Never commit its
   private contents. See `DOCS.md` for upload commands and deletion limitations.
+- The root-level `references/` folder is a non-production archive of reviewed
+  images absent by SHA256 from the canonical production folder when last cleaned.
+  It is flat, not versioned. Do not automatically import or deploy this archive.
+  Obsolete standalone Pi/cron, migration/import, and batch-review utilities have
+  been removed; shared modules required by HA and split diagnostics remain.
 - Use appearance, not nest position, to identify the configured hens. Reference
   images do not necessarily cover every hen in every position. Never infer
   identity from that missing coverage.

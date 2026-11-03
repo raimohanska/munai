@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — developer cleanup
+
+- Remove the obsolete standalone Pi/cron MQTT runner, its dependency file,
+  local layout/import/batch-review tools, and their dedicated tests and guides.
+  Keep HA's shared capture/recognition modules and split-specific diagnostics.
+- Document the old root-level references folder as a non-production archive;
+  use only `local-data/production/references/` for production corrections.
+  No HA runtime behavior or app release version changes.
+
 ## 0.1.13
 
 - Add explicit `push --replace --yes` to validate and atomically replace the

@@ -129,8 +129,8 @@ must be configured and discovery enabled.
 
 ## 5. Enable capture
 
-Disable any old cron capture schedule using the same camera before enabling HA
-capture. Keep the old setup available for rollback.
+Disable any old external capture schedule using the same camera before enabling
+HA capture. The standalone Pi/cron runner is no longer maintained or included.
 
 In Munai's HA **Configuration**, set:
 
@@ -230,5 +230,4 @@ references; uninstalling can remove the app's data.
 | Reference rejected | Check the image, empty references and recognition settings. References need measurable hen/background detail. |
 | No MQTT device or fresh state | Check broker host format, credentials, HA's MQTT integration, and Munai's logs. |
 
-[Advanced settings, storage, backups and offline tools](DOCS.md) ·
-[Legacy Pi/cron instructions](LEGACY.md)
+[Advanced settings, storage, backups and offline diagnostics](DOCS.md)
