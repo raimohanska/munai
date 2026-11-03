@@ -94,15 +94,17 @@ the reserved `unknown/` directory, preventing automatic predictions (including
 unknown hens) from silently becoming identity references. After visual review,
 copy selected images into an explicitly reviewed import folder and run
 `tools/import_references.py --apply` as documented in [DOCS.md](DOCS.md).
-Never edit managed reference versions directly. Existing local data can be
+Use the canonical editable production folder for deployment corrections. Existing local data can be
 reorganized using the explicit, dry-run-first layout migration in that guide.
 
 ### Run and discover
 
-Reviewed references live in `references/versions/<version>/<identity>/`, with
-`references/state.json` selecting the active version, exactly as on HA. The
-default `--references` is the managed `references/` root beside these scripts.
-An explicit flat reviewed import folder remains accepted for compatibility.
+Reviewed references now live directly in `references/<identity>/`, exactly as on
+HA, without version history or a state pointer. The default `--references` is
+still the workspace `references/` beside these scripts, not the canonical editable
+production source at `local-data/production/references/`. Pass the latter explicitly
+when testing production corrections. Legacy versioned sources remain readable for
+migration; HA/local service startup migrates them to a flat folder.
 
 ```bash
 python3 /home/pi/munai/chicken_device.py

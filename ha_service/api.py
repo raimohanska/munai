@@ -8,10 +8,11 @@ import socket
 import ssl
 import subprocess
 import threading
+import tempfile
 from urllib.parse import unquote, urlsplit
 
 from .options import AppError
-from .storage import Conflict, MAX_FILE_BYTES, digest
+from .storage import Conflict, MAX_FILE_BYTES, MAX_ARCHIVE_BYTES, digest
 
 
 def tls_context(root):
@@ -179,8 +180,23 @@ class Handler(BaseHTTPRequestHandler):
                                     self.headers.get('If-Match', ''), overwrite == 'true',
                                     self.server.validate_reference)
             self.response(200, {'revision': revision})
-        elif self.command == 'POST' and path == '/v1/references/rollback':
-            revision = store.rollback(self.headers.get('If-Match', ''))
+        elif self.command == 'POST' and path == '/v1/references/replace':
+            length = self.headers.get('Content-Length', '')
+            if (self.headers.get('Transfer-Encoding') or not length.isdecimal()
+                    or not 1 <= int(length) <= MAX_ARCHIVE_BYTES):
+                raise AppError('Replacement requires a bounded Content-Length.')
+            store.require_space(int(length))
+            with tempfile.TemporaryFile(dir=str(store.root / 'scratch')) as archive:
+                remaining = int(length)
+                while remaining:
+                    chunk = self.rfile.read(min(remaining, 1024 * 1024))
+                    if not chunk:
+                        raise AppError('Incomplete replacement; references unchanged.')
+                    archive.write(chunk)
+                    remaining -= len(chunk)
+                revision = store.replace_references(archive, self.headers.get('X-Content-SHA256', ''),
+                                                    self.headers.get('If-Match', ''),
+                                                    self.server.validate_reference)
             self.response(200, {'revision': revision})
         else:
             self.response(404, {'error': 'API endpoint not found.'})

@@ -1,5 +1,6 @@
-"""Bounded private storage and immutable, atomically activated reference sets."""
+"""Bounded private storage and a single atomically replaced reference folder."""
 from contextlib import contextmanager
+import ctypes
 import hashlib
 import io
 import json
@@ -10,8 +11,9 @@ import shutil
 import tempfile
 import threading
 import time
-import uuid
+import stat
 import warnings
+import zipfile
 
 from PIL import Image
 
@@ -22,6 +24,7 @@ from .options import AppError
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_REFERENCE_BYTES = 128 * 1024 * 1024
 MAX_REFERENCES = 500
+MAX_ARCHIVE_BYTES = MAX_REFERENCE_BYTES + 1024 * 1024
 MAX_PIXELS = 16_000_000
 VERSION_ID = re.compile(r'^[a-f0-9]{32}$')
 
@@ -85,6 +88,18 @@ def sync_directory(path):
         os.close(descriptor)
 
 
+def exchange_directories(first, second):
+    """Linux rename exchange: neither readers nor crashes see a missing folder."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(libc, 'renameat2', None)
+    if rename is None:
+        raise AppError('Atomic directory exchange is unavailable on this system.')
+    rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    rename.restype = ctypes.c_int
+    if rename(-100, os.fsencode(str(first)), -100, os.fsencode(str(second)), 2) != 0:
+        raise AppError('Cannot atomically replace references; original references are unchanged.')
+
+
 class Store:
     def __init__(self, root, options):
         self.root = Path(root).absolute()
@@ -93,24 +108,37 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.options = options
         self.lock = threading.RLock()
-        for name in ('references', 'references/versions', 'references/staging', 'captures', 'results', 'scratch', 'tls'):
+        for name in ('references', 'captures', 'results', 'scratch', 'tls'):
             safe_path(self.root, name).mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.state_path = self.root / 'references' / 'state.json'
-        self.state = {'active': None, 'previous': None}
-        if self.state_path.is_symlink():
+        state_path = self.root / 'references' / 'state.json'
+        if state_path.is_symlink():
             raise AppError('Reference state must not be a symlink.')
-        if self.state_path.exists():
+        if state_path.exists():
             try:
-                self.state = json.loads(self.state_path.read_text())
-                if set(self.state) != {'active', 'previous'}:
+                state = json.loads(state_path.read_text())
+                if set(state) != {'active', 'previous'}:
                     raise ValueError()
-                for version in self.state.values():
+                for version in state.values():
                     if version is not None and (not isinstance(version, str) or not VERSION_ID.fullmatch(version)
                                                 or not safe_path(self.root / 'references' / 'versions', version).is_dir()):
                         raise ValueError()
             except Exception:
                 raise AppError('Reference state is invalid; restore the app backup.') from None
-        self._prune_versions()
+            # One-time migration: preserve the active images, discard old versions.
+            with tempfile.TemporaryDirectory(prefix='job-', dir=str(self.root / 'scratch')) as temporary:
+                stage = Path(temporary) / 'references'
+                if state['active'] is None:
+                    stage.mkdir()
+                else:
+                    source = safe_path(self.root / 'references' / 'versions', state['active'])
+                    if any(p.is_symlink() for p in source.rglob('*')):
+                        raise AppError('Symlinks are not allowed in reference storage.')
+                    self.require_space(sum(p.stat().st_size for p in source.rglob('*') if p.is_file()))
+                    shutil.copytree(str(source), str(stage))
+                self._activate(stage)
+        elif (self.root / 'references' / 'versions').exists():
+            raise AppError('Legacy references have no state; restore the app backup.')
+        self._revision = self._content_revision()
         # A power loss can leave incomplete atomic-write files. Only remove our
         # exact generated temporary-file names, never reviewed data or symlinks.
         for name in ('captures', 'results', 'references'):
@@ -125,15 +153,19 @@ class Store:
                     raise AppError('Invalid temporary entry in managed storage.')
                 item.unlink()
         # These roots contain only application-created, disposable scratch data.
-        for name in ('references/staging', 'scratch'):
-            for item in (self.root / name).iterdir():
-                if item.name.startswith('job-') and item.is_dir() and not item.is_symlink():
-                    shutil.rmtree(str(item))
+        for item in (self.root / 'scratch').iterdir():
+            if item.name.startswith('job-') and item.is_dir() and not item.is_symlink():
+                shutil.rmtree(str(item))
         self.last_success = None
 
     @property
     def revision(self):
-        return self.state['active'] or 'none'
+        # A cache/concurrency checksum, not a stored version or rollback target.
+        return self._revision
+
+    def _content_revision(self, items=None):
+        items = self.files('references') if items is None else items
+        return digest(json.dumps(items, sort_keys=True).encode('utf-8'))[:32] if items else 'none'
 
     def require_space(self, size=0):
         reserve = self.options['minimum_free_mb'] * 1024 * 1024
@@ -141,9 +173,7 @@ class Store:
             raise AppError('Storage reserve reached; free disk space or reduce capture retention.', 'low_storage')
 
     def reference_root(self):
-        if self.state['active'] is None:
-            return None
-        return safe_path(self.root / 'references' / 'versions', self.state['active'])
+        return self.root / 'references'
 
     def files(self, kind):
         if kind not in ('references', 'captures', 'results'):
@@ -151,6 +181,9 @@ class Store:
         root = self.reference_root() if kind == 'references' else self.root / kind
         if root is None:
             return []
+        return self._files(root, kind)
+
+    def _files(self, root, kind):
         items = []
         for path in sorted(root.rglob('*')):
             relative = path.relative_to(root).as_posix()
@@ -209,7 +242,7 @@ class Store:
         image_valid(data)
         with self.lock:
             if expected_revision != self.revision:
-                raise Conflict('Reference version changed; refresh status and retry.')
+                raise Conflict('References changed; refresh status and retry.')
             manifest = self.files('references')
             existing = next((item for item in manifest if item['path'] == relative), None)
             if existing and existing['sha256'] == expected_hash:
@@ -221,8 +254,9 @@ class Store:
             if count > MAX_REFERENCES or size > MAX_REFERENCE_BYTES:
                 raise AppError('Reference limit reached (500 files / 128 MiB).', 'reference_limit')
             self.require_space(size + len(data))
-            with tempfile.TemporaryDirectory(prefix='job-', dir=str(self.root / 'references' / 'staging')) as staging:
-                stage = Path(staging)
+            with tempfile.TemporaryDirectory(prefix='job-', dir=str(self.root / 'scratch')) as staging:
+                stage = Path(staging) / 'references'
+                stage.mkdir()
                 for item in manifest:
                     if item['path'] == relative:
                         continue
@@ -237,35 +271,84 @@ class Store:
                     handle.flush()
                     os.fsync(handle.fileno())
                 validate_reference(target)
-                for directory in [p for p in stage.iterdir() if p.is_dir()] + [stage]:
-                    sync_directory(directory)
-                version = uuid.uuid4().hex
-                destination = self.root / 'references' / 'versions' / version
-                os.replace(str(stage), str(destination))
-                sync_directory(destination.parent)
-                updated = {'active': version, 'previous': self.state['active']}
-                atomic_json(self.state_path, updated)
-                self.state = updated
-            self._prune_versions()
+                self._activate(stage)
             return self.revision
 
-    def rollback(self, expected_revision):
+    def _activate(self, stage):
+        checksum = self._content_revision(self._files(stage, 'references'))
+        for path in stage.rglob('*'):
+            if path.is_file():
+                with path.open('rb') as handle:
+                    os.fsync(handle.fileno())
+        for directory in [p for p in stage.iterdir() if p.is_dir()] + [stage]:
+            sync_directory(directory)
+        sync_directory(stage.parent)
+        exchange_directories(stage, self.reference_root())
+        self._revision = checksum
+        sync_directory(self.root)
+        sync_directory(stage.parent)
+        # The old folder is now disposable transaction scratch, not history.
+
+    def replace_references(self, archive, expected_hash, expected_revision, validate_reference):
+        """Validate a complete stored ZIP, then exchange directories exactly once."""
+        checksum = hashlib.sha256()
+        size = 0
+        archive.seek(0)
+        while True:
+            chunk = archive.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_ARCHIVE_BYTES:
+                raise AppError('Reference archive exceeds the transfer limit.', 'reference_limit')
+            checksum.update(chunk)
+        if checksum.hexdigest() != expected_hash:
+            raise AppError('Reference archive checksum does not match.')
+        archive.seek(0)
         with self.lock:
             if expected_revision != self.revision:
-                raise Conflict('Reference version changed; refresh status and retry.')
-            if self.state['previous'] is None:
-                raise Conflict('No previous reference version is available.')
-            updated = {'active': self.state['previous'], 'previous': self.state['active']}
-            atomic_json(self.state_path, updated)
-            self.state = updated
+                raise Conflict('References changed; refresh status and retry.')
+            try:
+                with zipfile.ZipFile(archive) as bundle:
+                    entries = bundle.infolist()
+                    if not 1 <= len(entries) <= MAX_REFERENCES:
+                        raise AppError('Reference count exceeds limits.', 'reference_limit')
+                    paths = [entry.filename for entry in entries]
+                    if len(set(paths)) != len(paths):
+                        raise AppError('Duplicate reference archive paths.')
+                    total = sum(entry.file_size for entry in entries)
+                    if total > MAX_REFERENCE_BYTES:
+                        raise AppError('Reference set exceeds limits.', 'reference_limit')
+                    for entry in entries:
+                        mode = stat.S_IFMT(entry.external_attr >> 16)
+                        if (not self.valid_file('references', entry.filename)
+                                or entry.compress_type != zipfile.ZIP_STORED
+                                or entry.flag_bits & 1 or mode not in (0, stat.S_IFREG)
+                                or not 1 <= entry.file_size <= MAX_FILE_BYTES):
+                            raise AppError('Invalid reference archive entry.')
+                    identities = {path.split('/')[0] for path in paths} - {'empty'}
+                    if len(identities) < 2 or not any(p.startswith('empty/') for p in paths):
+                        raise AppError('Replacement requires empty references and at least two hen identities.')
+                    self.require_space(total)
+                    with tempfile.TemporaryDirectory(prefix='job-', dir=str(self.root / 'scratch')) as temporary:
+                        stage = Path(temporary) / 'references'
+                        stage.mkdir()
+                        for entry in entries:
+                            data = bundle.read(entry)
+                            image_valid(data)
+                            target = safe_path(stage, entry.filename)
+                            target.parent.mkdir(exist_ok=True)
+                            target.write_bytes(data)
+                        # All background images must exist before hen validation.
+                        for relative in sorted(paths):
+                            validate_reference(stage / relative)
+                        desired = [{'path': path, 'bytes': (stage / path).stat().st_size,
+                                    'sha256': digest((stage / path).read_bytes())} for path in sorted(paths)]
+                        if desired != self.files('references'):
+                            self._activate(stage)
+            except (zipfile.BadZipFile, RuntimeError, NotImplementedError):
+                raise AppError('Invalid reference ZIP archive.') from None
             return self.revision
-
-    def _prune_versions(self):
-        for path in (self.root / 'references' / 'versions').iterdir():
-            if VERSION_ID.fullmatch(path.name) and path.name not in self.state.values():
-                if path.is_symlink() or not path.is_dir():
-                    raise AppError('Invalid reference version directory.')
-                shutil.rmtree(str(path))
 
     @contextmanager
     def job(self):

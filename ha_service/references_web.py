@@ -44,13 +44,13 @@ def render(store, page=0, base=''):
              '<p><a href="{}references">Refresh references</a></p>'.format(base),
              '<p>These are the server’s currently active reviewed references, not local candidates, '
              'unreviewed captures, or journal predictions.</p>',
-             '<p>Active reference version: <code>{}</code><br>Configured box split: <strong>{}</strong></p>'.format(
+              '<p>Reference content checksum: <code>{}</code><br>Configured box split: <strong>{}</strong></p>'.format(
                  escape(revision), escape(layout)),
              '<p>{} identity photos across {} hens · {} full-frame empty calibration photos</p>'.format(
                  sum(counts[label] for label in identities), len(identities), counts['empty']),
              '<p class="muted">Recognition may still be unavailable if these references are incompatible '
              'with the configured layout. Listing them does not validate recognition accuracy. '
-             'Reference version is separate from the app release version.</p>']
+              'Only the current reference set is stored; no version history or rollback is retained.</p>']
     if identities:
         parts.append('<p>' + ' · '.join('{} ({})'.format(escape(label), counts[label]) for label in identities) + '</p>')
     parts.append('</header><main>')

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.13
+
+- Add explicit `push --replace --yes` to validate and atomically replace the
+  complete production reference set, including removals and corrected identities.
+  Preview counts with `--replace --dry-run`; verify remote paths and checksums
+  after replacement. Failed validation or stale uploads leave references unchanged.
+- Store one flat reference folder, with no retained versions or rollback API/CLI.
+  Migrate the former active version on startup, preserving its images and removing
+  version history. Use temporary staging and Linux atomic directory exchange;
+  content checksums remain only for concurrency and cache invalidation.
+
 ## 0.1.12
 
 - Make Status the default HA Ingress page and add a shared MunAI sidebar with

@@ -81,23 +81,22 @@ class ReferenceGalleryTests(unittest.TestCase):
         self.assertIn(b'href="../journal">Journal', page)
         self.assertIn(('../references/' + revision + '/hen_a/').encode(), page)
 
-    def test_only_active_version_no_staging_previous_or_predictions(self):
+    def test_only_current_folder_no_staging_or_predictions(self):
         first = self.upload()
         second = self.upload('hen_b/20000101T120000_000001Z.jpg')
-        self.store.rollback(second)
-        stage = self.store.root / 'references' / 'staging' / 'hen_staged'
-        stage.mkdir()
+        stage = self.store.root / 'scratch' / 'job-test' / 'hen_staged'
+        stage.mkdir(parents=True)
         (stage / NAME).write_bytes(self.image)
         predicted = self.store.root / 'captures' / 'hen_predicted' / 'unreviewed'
         predicted.mkdir(parents=True)
         (predicted / NAME.replace('-left', '')).write_bytes(self.image)
         page = render(self.store)
-        self.assertIn(first.encode(), page)
-        for excluded in (second.encode(), b'hen_b', b'hen_staged', b'hen_predicted'):
+        self.assertIn(second.encode(), page)
+        for excluded in (first.encode(), b'hen_staged', b'hen_predicted'):
             self.assertNotIn(excluded, page)
-        self.assertEqual(self.request('/references/' + second + '/hen_b/20000101T120000_000001Z.jpg')[0], 409)
+        self.assertEqual(self.request('/references/' + first + '/hen_a/' + NAME)[0], 409)
 
-    def test_version_changes_never_silently_replace_a_displayed_photo(self):
+    def test_content_changes_never_silently_replace_a_displayed_photo(self):
         old = self.upload()
         stream = io.BytesIO()
         Image.new('RGB', (64, 64), (150, 100, 80)).save(stream, 'JPEG')

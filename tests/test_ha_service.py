@@ -5,10 +5,13 @@ import json
 import logging
 from pathlib import Path
 import shutil
+import stat
 import tempfile
 import threading
 import time
 import unittest
+import zipfile
+import warnings
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -39,6 +42,16 @@ def synthetic_empty():
     pixels = np.random.default_rng(7).integers(70, 180, size=(360, 640), dtype=np.uint8)
     stream = io.BytesIO()
     Image.fromarray(pixels).save(stream, format='JPEG', quality=95)
+    return stream.getvalue()
+
+
+def reference_archive(entries):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, 'w', compression=zipfile.ZIP_STORED) as bundle:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            for relative, data in entries:
+                bundle.writestr(relative, data)
     return stream.getvalue()
 
 
@@ -94,6 +107,8 @@ class OptionsTests(unittest.TestCase):
         from ha_service import VERSION
         config = json.loads((Path(__file__).resolve().parent.parent / 'config.json').read_text())
         self.assertEqual(config['version'], VERSION)
+        dockerfile = (Path(__file__).resolve().parent.parent / 'Dockerfile').read_text()
+        self.assertIn('io.hass.version="{}"'.format(VERSION), dockerfile)
         self.assertLessEqual(set(config['options']), set(config['schema']))
         missing = set(config['schema']) - set(config['options'])
         self.assertEqual(missing, {'transfer_token_sha256', 'transfer_tokens'})
@@ -136,6 +151,128 @@ class StorageFixture(unittest.TestCase):
 
 
 class StorageTests(StorageFixture):
+    def replacement(self, entries=None, revision=None, validator=None):
+        entries = entries if entries is not None else [
+            ('hen_b/' + NAME, synthetic_jpeg(200)),
+            ('hen_c/' + NAME, self.image), ('empty/' + NAME, synthetic_empty())]
+        data = reference_archive(entries)
+        return self.store.replace_references(io.BytesIO(data), digest(data),
+                                             self.store.revision if revision is None else revision,
+                                             validator or self.runtime.validate_reference)
+
+    def test_replace_removes_old_labels_and_is_idempotent_without_history(self):
+        self.upload()
+        checksum = self.replacement()
+        self.assertEqual({item['path'] for item in self.store.files('references')},
+                         {'hen_b/' + NAME, 'hen_c/' + NAME, 'empty/' + NAME})
+        self.assertEqual(self.replacement(), checksum)
+        self.assertFalse((self.store.reference_root() / 'versions').exists())
+        self.assertEqual(list((self.store.root / 'scratch').iterdir()), [])
+        self.assertEqual(Store(self.store.root, self.options).revision, checksum)
+
+    def test_replacement_failure_and_stale_checksum_preserve_original(self):
+        original = self.upload()
+        for entries in ([], [('hen_b/' + NAME, self.image)],
+                        [('../escape.jpg', self.image)],
+                        [('hen_a/' + NAME, self.image)] * 2,
+                        [('hen_b/' + NAME, b'invalid'), ('hen_c/' + NAME, self.image),
+                         ('empty/' + NAME, synthetic_empty())]):
+            with self.assertRaises(AppError):
+                self.replacement(entries)
+            self.assertEqual(self.store.revision, original)
+        with self.assertRaises(Conflict):
+            self.replacement(revision='none')
+        with self.assertRaises(AppError):
+            self.store.replace_references(io.BytesIO(b'invalid'), '0' * 64, original, lambda p: None)
+        with self.assertRaises(AppError):
+            self.store.replace_references(io.BytesIO(b'invalid'), digest(b'invalid'), original, lambda p: None)
+        with self.assertRaises(AppError):
+            self.replacement(validator=Mock(side_effect=AppError('Synthetic validation failure')))
+        with patch('ha_service.storage.exchange_directories', side_effect=AppError('Synthetic exchange failure')):
+            with self.assertRaises(AppError):
+                self.replacement()
+        self.assertEqual(self.store.revision, original)
+        self.assertEqual(self.store.read('references', 'hen_a/' + NAME), self.image)
+
+    def test_replacement_limits_and_disk_reserve(self):
+        original = self.upload()
+        for setting in ('MAX_REFERENCES', 'MAX_REFERENCE_BYTES', 'MAX_ARCHIVE_BYTES'):
+            with patch('ha_service.storage.' + setting, 1):
+                with self.assertRaises(AppError):
+                    self.replacement()
+        usage = shutil.disk_usage(str(self.root))
+        with patch('ha_service.storage.shutil.disk_usage', return_value=usage._replace(free=0)):
+            with self.assertRaises(AppError):
+                self.replacement()
+        self.assertEqual(self.store.revision, original)
+
+    def test_replacement_rejects_compression_links_and_path_traversal(self):
+        original = self.upload()
+        for kind in ('compressed', 'symlink', 'traversal'):
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, 'w') as bundle:
+                for identity in ('empty', 'hen_b', 'hen_c'):
+                    entry = zipfile.ZipInfo(identity + '/' + NAME)
+                    if identity == 'hen_c':
+                        if kind == 'compressed':
+                            entry.compress_type = zipfile.ZIP_DEFLATED
+                        elif kind == 'symlink':
+                            entry.external_attr = (stat.S_IFLNK | 0o777) << 16
+                        else:
+                            entry.filename = '../hen_c/' + NAME
+                    bundle.writestr(entry, self.image)
+            data = stream.getvalue()
+            with self.assertRaises(AppError):
+                self.store.replace_references(io.BytesIO(data), digest(data), original, lambda path: None)
+            self.assertEqual(self.store.revision, original)
+
+    def test_replacement_waits_for_recognition_and_uses_complete_staged_background(self):
+        errors = []
+        entered = threading.Event()
+
+        def replace():
+            entered.set()
+            try:
+                self.replacement()
+            except Exception as error:
+                errors.append(error)
+
+        with self.store.job():
+            thread = threading.Thread(target=replace)
+            thread.start()
+            self.assertTrue(entered.wait(2))
+            time.sleep(0.03)
+            self.assertEqual(self.store.revision, 'none')
+        thread.join(10)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertTrue(self.runtime.status()['references_ready'])
+
+    def test_restart_cleans_discarded_swap_folder_without_touching_current_set(self):
+        self.upload()
+        stage = self.store.root / 'scratch' / 'job-interrupted' / 'references'
+        (stage / 'hen_old').mkdir(parents=True)
+        (stage / 'hen_old' / NAME).write_bytes(self.image)
+        checksum = self.store.revision
+        restarted = Store(self.store.root, self.options)
+        self.assertEqual(restarted.revision, checksum)
+        self.assertFalse(stage.exists())
+        self.assertEqual(restarted.read('references', 'hen_a/' + NAME), self.image)
+
+    def test_migrate_legacy_active_images_and_discard_version_history(self):
+        legacy = self.root / 'legacy'
+        active, previous = 'a' * 32, 'b' * 32
+        for version, identity in ((active, 'hen_a'), (previous, 'hen_old')):
+            folder = legacy / 'references' / 'versions' / version / identity
+            folder.mkdir(parents=True)
+            (folder / NAME).write_bytes(self.image)
+        (legacy / 'references' / 'state.json').write_text(json.dumps({'active': active, 'previous': previous}))
+        migrated = Store(legacy, self.options)
+        self.assertEqual([item['path'] for item in migrated.files('references')], ['hen_a/' + NAME])
+        self.assertFalse((legacy / 'references' / 'versions').exists())
+        self.assertFalse((legacy / 'references' / 'state.json').exists())
+        self.assertEqual(Store(legacy, self.options).revision, migrated.revision)
+
     def test_predict_counts_eggs_only_without_a_hen(self):
         from recognize_chickens import References
         path = self.root / NAME
@@ -215,7 +352,7 @@ class StorageTests(StorageFixture):
             with self.assertRaises(AppError):
                 self.upload(data=data)
         self.assertEqual(self.store.revision, 'none')
-        self.assertEqual(list((self.store.root / 'references' / 'versions').iterdir()), [])
+        self.assertEqual(list(self.store.reference_root().iterdir()), [])
 
     def test_image_dimensions_are_checked_before_decode(self):
         with patch('ha_service.storage.MAX_PIXELS', 100):
@@ -229,15 +366,15 @@ class StorageTests(StorageFixture):
             self.upload(data=stream.getvalue())
         self.assertEqual(self.store.revision, 'none')
 
-    def test_no_silent_overwrite_and_atomic_rollback(self):
+    def test_no_silent_overwrite_and_no_history(self):
         first = self.upload()
         with self.assertRaises(Conflict):
             self.upload(data=synthetic_jpeg(200))
         second = self.upload(data=synthetic_jpeg(200), overwrite=True)
         self.assertNotEqual(first, second)
-        self.assertEqual(self.store.rollback(second), first)
-        self.assertEqual(self.store.read('references', 'hen_a/' + NAME), self.image)
-        self.assertEqual(self.store.rollback(first), second)
+        self.assertEqual(self.store.read('references', 'hen_a/' + NAME), synthetic_jpeg(200))
+        self.assertFalse((self.store.reference_root() / 'versions').exists())
+        self.assertFalse(hasattr(self.store, 'rollback'))
 
     def test_stale_revision_rejected_and_identical_upload_is_idempotent(self):
         revision = self.upload()
@@ -246,11 +383,13 @@ class StorageTests(StorageFixture):
             self.store.upload('hen_b/' + NAME, self.image, digest(self.image), 'none', False,
                               self.runtime.validate_reference)
 
-    def test_only_current_and_previous_versions_are_retained(self):
+    def test_only_one_flat_reference_folder_is_retained(self):
         self.upload()
         self.upload('hen_b/' + NAME, synthetic_jpeg(200))
         self.upload('hen_b/' + SECOND, synthetic_jpeg(190))
-        self.assertEqual(len(list((self.store.root / 'references' / 'versions').iterdir())), 2)
+        self.assertEqual(len(self.store.files('references')), 3)
+        self.assertEqual(list((self.store.root / 'scratch').iterdir()), [])
+        self.assertFalse((self.store.reference_root() / 'state.json').exists())
 
     def test_limit_and_disk_reserve_fail_without_activation(self):
         with patch('ha_service.storage.MAX_REFERENCES', 0):
@@ -322,13 +461,13 @@ class StorageTests(StorageFixture):
 
     def test_failed_activation_preserves_previous_state_on_disk(self):
         revision = self.upload()
-        with patch('ha_service.storage.atomic_json', side_effect=OSError('synthetic failure')):
+        with patch('ha_service.storage.exchange_directories', side_effect=OSError('synthetic failure')):
             with self.assertRaises(OSError):
                 self.upload('hen_b/' + NAME, synthetic_jpeg(200))
         self.assertEqual(self.store.revision, revision)
         restarted = Store(self.store.root, self.options)
         self.assertEqual(restarted.revision, revision)
-        self.assertEqual(len(list((self.store.root / 'references' / 'versions').iterdir())), 1)
+        self.assertEqual(len(restarted.files('references')), 1)
 
     def test_retention_enforces_file_count_limit(self):
         from data_layout import MAX_HISTORY_FILES
@@ -542,6 +681,41 @@ class APITests(StorageFixture):
             pull(self.remote, 'references', destination)
         self.assertEqual((destination / 'hen_a' / NAME).read_bytes(), self.image)
         self.assertTrue(self.remote.request('GET', '/v1/status')['references_ready'])
+
+    def test_https_replace_exact_set_preview_confirmation_and_no_rollback(self):
+        self.upload()
+        source = self.root / 'corrected'
+        for identity, data in (('hen_b', synthetic_jpeg(200)), ('hen_c', self.image),
+                               ('empty', synthetic_empty())):
+            folder = source / identity
+            folder.mkdir(parents=True)
+            (folder / NAME).write_bytes(data)
+        original = self.store.revision
+        with redirect_stdout(io.StringIO()):
+            push(self.remote, source, dry_run=True, replace=True)
+            self.assertEqual(self.store.revision, original)
+            with self.assertRaises(RemoteError):
+                push(self.remote, source, replace=True)
+            push(self.remote, source, replace=True, yes=True)
+        self.assertEqual(len(self.store.files('references')), 3)
+        self.assertFalse((self.store.reference_root() / 'hen_a').exists())
+        self.assertTrue(self.runtime.status()['references_ready'])
+        with self.assertRaises(RemoteError):
+            self.remote.request('POST', '/v1/references/rollback', b'')
+        self.tokens[0]['scope'] = 'read'
+        data = reference_archive([])
+        with self.assertRaises(RemoteError):
+            self.remote.request('POST', '/v1/references/replace', data,
+                                headers={'X-Content-SHA256': digest(data), 'If-Match': self.store.revision})
+
+    def test_replace_rejects_bad_checksum_and_unbounded_body(self):
+        data = reference_archive([('hen_a/' + NAME, self.image)])
+        for headers in ({'X-Content-SHA256': '0' * 64, 'If-Match': 'none'},
+                        {'Content-Length': '0'}, {'Transfer-Encoding': 'chunked'},
+                        {'Content-Length': str(130 * 1024 * 1024)}):
+            with self.assertRaises(RemoteError):
+                self.remote.request('POST', '/v1/references/replace', data, headers=headers)
+        self.assertEqual(self.store.revision, 'none')
 
     def test_download_conflict_requires_explicit_overwrite(self):
         self.upload()

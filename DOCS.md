@@ -79,20 +79,20 @@ format, so a downgrade also requires restoring the matching pre-upgrade backup.
 ## Active references page (0.1.11+)
 
 In Munai's **Open Web UI**, select **References** in the MunAI sidebar. The
-page shows the active reference version on the server, configured box split,
+page shows the reference content checksum on the server, configured box split,
 counts for each identity, and the original reference photos grouped by hen.
 Reviewed full-frame empty-nest calibration is shown separately. Photos are
 paginated (20 per page), lazy-loaded and linked to their full-size JPEGs; their
 filenames are visible so you can report a specific reference.
 
-This reads the server's active immutable reference directory, not the devcontainer's
-candidate set, previous versions, staging uploads or capture predictions. The
-reference version is separate from the app release version. An active set can
+This reads the server's current reference directory, not the devcontainer's
+candidate set, staging uploads or capture predictions. No reference version
+history is retained. An active set can
 still be incompatible with the configured recognition layout: listing it is not
 proof of readiness or accuracy. Recognition picks up activated references on its
 next round.
 
-Image links include the active reference version. If an upload/rollback changes
+Image links include the reference content checksum. If an upload changes
 the active set while a page is open, old image requests ask you to refresh rather
 than silently displaying new content under an old label. All links remain behind
 HA Ingress; there is no public `/local` gallery or additional host port.
@@ -214,7 +214,7 @@ egg count. Counts remain frozen when hens obscure the nest.
 1. Back up the app data, disable capture, and install the new release.
 2. Prepare **half-frame identity crops** for all hens. A divider hen uses the
    centered half-width/half-height view, not a separate identity. Preserve original
-   full-frame references for review/rollback. Review clipped crops: too little
+   full-frame references for review/backup. Review clipped crops: too little
    measurable plumage is not a usable reference, even with a correct human label.
 3. Keep **full-frame reviewed empty references**, not half crops, in `empty/`.
    A full frame whose two halves were explicitly reviewed as empty is suitable;
@@ -290,7 +290,7 @@ The default output is a new, ignored `reports/eggs-<UTC timestamp>/` directory:
   Captions appear below the original frame, not on top of bottom-edge eggs.
 - `sheet-001.jpg`, etc.: paginated contact sheets for visual review.
 
-Reviewed `empty/` images in the active reference version are required; use
+Reviewed `empty/` images in the current reference folder are required; use
 `--references PATH` for a different reference root. Their background mask is used
 only by the existing hen-presence heuristic. Egg detection itself does not use
 that mask: an egg visible in an empty reference must not be masked away.
@@ -345,7 +345,7 @@ exception in the path check. Review independent real images locally as well:
 synthetic regression success is not a field-accuracy measurement.
 
 Offline tests exercise real local HTTPS, synthetic reference upload/download,
-authorization, pinning, rollback, persistence, retention, MQTT payloads, and CLI
+authorization, pinning, atomic replacement, persistence, retention, MQTT payloads, and CLI
 behavior with synthetic owner-only credential files. They do not access real
 credential files, `.env`, cameras, brokers, or HA. CI builds both ARM64 and AMD64
 images and smoke-tests them without networking. **A configured workflow is not
@@ -461,18 +461,20 @@ a hen. Recognition no longer reads `camera-profile.json` or offers manual masks.
 Re-review empty references if the camera moves or the background changes materially;
 this texture heuristic is not a general-purpose object detector.
 
-The same relative layout is used on this machine (the checkout is the data root)
-and HA (the data root is `/data`):
+The same flat reference layout is used locally and on HA (data root `/data`).
+The canonical editable local folder is `local-data/production/references/`;
+the older checkout-root `references/` is a separate local tool workspace, not
+the production source. Some legacy tools still default to that workspace; pass
+`--references local-data/production/references` where supported. Do not delete
+the old workspace without checking for unique reviewed images first.
 
 ```text
 <data-root>/
   references/
-    state.json                         # active and previous version IDs
-    versions/<version>/
-      hen_a/20000101T120000_000000Z.jpg
-      hen_b/20000101T120100_000000Z.jpg
-      empty/20000101T120200_000000Z.jpg  # reviewed no-hen background, eggs allowed
-    staging/
+    hen_a/20000101T120000_000000Z.jpg
+    hen_b/20000101T120100_000000Z.jpg
+    empty/20000101T120200_000000Z.jpg    # reviewed no-hen background, eggs allowed
+  scratch/                             # disposable upload/activation staging
   captures/
     pending/                           # unclassified standalone/offline frames
     empty/
@@ -523,10 +525,9 @@ paths, stages the change, and atomically activates it **between recognition
 rounds**. Readiness requires reviewed **empty images and two hen identities**.
 Include varied appearances/poses; missing nest positions are never identity evidence.
 
-`push references` resolves only the active local snapshot from `state.json`; it
-does not upload previous versions, staging files, or any captured predictions.
-A flat directory of explicitly reviewed identity and `empty/` folders can also be used as an
-import source, but is not the managed data layout.
+Uploads read only JPEGs directly inside reviewed identity and `empty/` folders,
+never nested predictions. Legacy versioned import sources are still readable for
+migration, but new managed stores are flat and have no state pointer or history.
 
 ### Canonical editable production references
 
@@ -538,17 +539,27 @@ Keep it separate from report candidates and the working managed `references/`.
 Local corrections are not deployed automatically. Preview and explicitly upload:
 
 ```bash
-python munai_remote.py push local-data/production/references --dry-run --overwrite
-python munai_remote.py push local-data/production/references --overwrite
+python munai_remote.py push local-data/production/references --replace --dry-run
+python munai_remote.py push local-data/production/references --replace --yes
 python munai_remote.py remote status
 ```
 
-`--overwrite` permits replacing differing files with the same path. Push adds or
-updates files but **never deletes remote references**: deleting or moving a local
-image alone does not remove its old remote copy. Handle remote removals explicitly
-before claiming the corrected set matches production. HA still manages its own
-internal versions for safe activation; this folder has no local versioning.
-Never commit these private images or assume pending edits are already on HA.
+`--replace` makes production exactly match this folder, including removals and
+relabeled images. Review the preview counts, then confirm with `--yes`. All
+JPEGs are checked against the complete staged set before one atomic directory
+exchange, between recognition rounds. Upload or validation failure before exchange
+leaves production unchanged. Concurrent edits cause a checksum conflict. The CLI
+verifies the resulting remote paths and file checksums. Replacement needs reviewed
+empty references and at least two hen identities. HA 0.1.13 or later is required.
+
+There is no local or production reference versioning and no rollback operation.
+Temporary old data is discarded after the swap (or cleaned on restart after a
+crash). Export a backup before major edits if you need to undo them. Startup
+automatically migrates old managed stores, keeping only their active images.
+The API's legacy `revision` field now means a content checksum for concurrency
+and cache invalidation, not a saved version. Ordinary push without `--replace`
+still adds/updates one file at a time and never removes remote-only files.
+Never commit private images or assume pending local edits are already on HA.
 
 ### Migrate existing local images before deployment
 
@@ -560,7 +571,7 @@ In the devcontainer, preview the old layout migration, then explicitly apply it:
 ```
 
 It imports reviewed images from the old named `captures/chicken/` folders into
-validated versioned references, moves raw root JPEGs into `captures/pending/`,
+validated flat references, moves raw root JPEGs into `captures/pending/`,
 flattens unknown/predicted captures, and preserves CSV manifests under
 `reports/legacy/`. Existing empty/egg captures are unchanged. It checks conflicts
 before moving anything, never overwrites differing files, verifies every reference
@@ -578,10 +589,10 @@ as `local-data/reviewed/<identity>/` or `local-data/reviewed/empty/`, then run:
 /tmp/opencode/munai-ha-venv/bin/python tools/import_references.py local-data/reviewed --apply
 ```
 
-This preserves source images, validates them, and activates local reference versions
+This preserves source images, validates them, and updates the local working store
 between locked updates. Different contents under an existing name require explicit
-`--overwrite`. Then run the `push references` command above. Never modify the
-immutable files under `versions/` directly, and never import predictions without
+`--overwrite`. This importer updates the checkout workspace, not the canonical
+production source. Never import predictions without
 review. A reference-only CLI backup/pull is a **flat import folder**; restore it
 using this importer, not by downloading into a live managed `references/` root.
 
@@ -589,12 +600,14 @@ Unchanged files are skipped. No files are deleted. Different contents under an
 existing name require `--overwrite`; inspect the conflict before using it. Each
 file is an atomic change, **not an all-or-nothing batch**: an interrupted push may
 have activated earlier files. Rerun it safely to finish. Concurrent changes cause
-a version conflict instead of overwriting another upload.
+a checksum conflict instead of overwriting another upload. For all-or-nothing
+replacement including deletions, use `--replace` as described above.
 
 Limits: **8 MiB per JPEG, 16 million decoded pixels, 8192 per dimension, 500
-references and 128 MiB per reference set**. The current and previous reference
-versions are preserved, with immutable shared files. An interrupted unactivated
-version is cleaned at the next startup. Keep originals on this machine too.
+references and 128 MiB per reference set**. Replacement uses an uncompressed ZIP
+bounded to 129 MiB; compressed/encrypted entries, links, duplicate paths and unsafe
+paths are rejected. Only the current set is stored. Interrupted temporary staging
+is cleaned at startup. Keep originals on this machine too.
 
 ## 4. Configure MQTT, then capture
 
@@ -735,7 +748,7 @@ An in-progress FFmpeg call may finish or hit its bounded timeout before shutdown
 Reference features are cached until the active version changes. OpenCV/BLAS use
 one worker thread. Training and continuous video processing are not included.
 
-## Storage, downloads, and rollback
+## Storage and downloads
 
 `store_captures` defaults to false. Recognition still uses a temporary JPEG that
 is removed after the round. When enabled, images are saved atomically under:
@@ -794,7 +807,7 @@ pass or treating reference review copies as new input:
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 nice -n 19 /tmp/opencode/munai-ha-venv/bin/python tools/review_images.py --apply --cpu-percent 10 --resume reports/review-RUN_ID
 ```
 
-Resume checks the saved reference version, recognition settings, allowed paths,
+Resume checks the saved reference content checksum, recognition settings, allowed paths,
 and every checksum. It accepts originals already safely relocated, never repeats
 prediction, and skips rewriting identical results. Stale predictions or differing
 destination contents fail without overwriting anything.
@@ -812,14 +825,10 @@ require `--overwrite`; no local files are deleted. A download during reference
 changes or capture retention may fail safely; rerun it. For a consistent full
 backup, disable capture and avoid uploads, or use HA's cold app backup.
 
-```bash
-python munai_remote.py rollback --yes
-```
-
-Rollback switches to the version before the **last uploaded file**, not necessarily
-the beginning of an entire push. It can be reversed by running rollback again.
-Export reviewed references before major changes. There is deliberately no remote
-delete, arbitrary file/configuration upload, archive extraction or executable
+There is no reference rollback or retained version history. Export reviewed
+references before major changes; restore by explicitly replacing the set from
+that backup. There is no arbitrary remote file deletion, file/configuration
+upload, unrestricted archive extraction or executable
 model loading. Runtime settings belong in HA's form; model transfer is deferred
 because this recognizer uses references, not trained models.
 
@@ -827,9 +836,9 @@ because this recognizer uses references, not trained models.
 
 - Include Munai in an encrypted **HA backup before updates or uninstalling**.
   Backups are cold: HA stops the app to capture consistent `/data`. They include
-  reviewed versions, optional captures, results, TLS keys, and private options.
+  current reviewed references, optional captures, results, TLS keys, and private options.
 - Updates rebuild the app locally and preserve `/data`. To roll back code, restore
-  the known-good app backup; reference rollback does not roll back code or options.
+  the known-good app backup, which also restores that backup's reference set.
 - **Uninstalling can remove all `/data`**, including references and TLS identity.
   Local CLI exports contain references/captures/results, **not** options, tokens or
   TLS keys, so they supplement rather than replace an HA backup. Restoring only

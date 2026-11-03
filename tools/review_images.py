@@ -64,7 +64,7 @@ def validate_plan(store, plan):
         safe_path(store.root, source)
         safe_path(store.root, destination)
         if item['reference_original']:
-            prefix = 'references/versions/' + store.revision + '/'
+            prefix = 'references/'
             valid_source = source.startswith(prefix) and Store.valid_file('references', source[len(prefix):])
         else:
             valid_source = source.startswith('captures/') and Store.valid_file('captures', source[len('captures/'):])

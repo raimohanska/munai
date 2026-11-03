@@ -94,7 +94,7 @@ Preserve the legacy Pi/Python 3.5 capture path; isolate modern add-on tooling.
   a hen is present. Named predictions remain in `unreviewed/`; never promote them
   automatically. Exclude reserved categories and nested predictions from references.
 - Test API authorization, malicious paths, upload limits, partial transfers,
-  atomic activation/rollback, retention, redaction, and CLI behavior using local
+   atomic whole-set replacement, retention, redaction, and CLI behavior using local
   fixtures. Follow `AGENTS.md`: no automated camera-capture tests.
 - Demonstrate upload/download round trips and restart persistence locally with
   dummy credentials. Verify unauthorized access fails and secrets are not logged.
@@ -123,16 +123,18 @@ works. Do not deploy as part of that milestone.
   HTTPS terminates inside the app using a persistent generated certificate. Pair
   its exact public fingerprint from trusted HA logs before sending any token.
   No host SSL mount or HA/Supervisor API permission is needed.
-- Start with individually validated JPEG transfers, checksum manifests, explicit
-  overwrite, and atomic per-file activation between rounds. Preserve the previous
-  reference version; a push is resumable but is not an atomic whole-batch update.
+- Support individually validated JPEG transfers and explicit atomic whole-set
+  replacement with checksum conflicts and confirmation of remote removals.
+  Stage the complete set and atomically exchange directories between rounds;
+  retain no reference version history or rollback target.
 - Export references/captures/results. Defer arbitrary configuration/model uploads:
   runtime configuration belongs in HA's form, and executable model formats are
   neither needed nor accepted. Back up private configuration/TLS identity via HA.
 - Logs show changes, actionable failures and recovery; identical failures are
   suppressed for 15 minutes. Never log secrets or raw external exceptions.
 - Use the same relative data layout locally and on HA. Reviewed references live
-  in `references/versions/<version>/<identity>/`, selected by `references/state.json`.
+  directly in `references/<identity>/`, with no version history or state pointer.
+  The canonical editable deployment source is `local-data/production/references/`.
   Captures use `empty/`, `unknown/`, and `<identity>/unreviewed/` directly below
   `captures/`; standalone/offline tools also use `pending/` and optionally `eggs/`.
   Migrate existing data explicitly without reading .env or contacting hardware.

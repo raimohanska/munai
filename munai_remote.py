@@ -13,6 +13,7 @@ import ssl
 import stat
 import sys
 import tempfile
+import zipfile
 from urllib.parse import quote, urlsplit
 
 from data_layout import RESERVED, STAMP, REFERENCE_STAMP, MAX_HISTORY_FILES, reference_directory
@@ -199,12 +200,52 @@ def local_references(root):
     return items
 
 
-def push(remote, root, dry_run=False, overwrite=False):
+def push(remote, root, dry_run=False, overwrite=False, replace=False, yes=False):
+    if replace and not dry_run and not yes:
+        raise RemoteError('Replacement removes remote-only references; preview --replace --dry-run, then pass --yes.')
     items = local_references(root)
     listing = remote.request('GET', '/v1/files/references')
     revision = listing['revision']
     existing = {item['path']: item['sha256'] for item in listing['files']}
     changed = [item for item in items if existing.get(item[0]) != item[2]]
+    if replace:
+        identities = {relative.split('/')[0] for relative, path, sha in items}
+        if 'empty' not in identities or len(identities - {'empty'}) < 2:
+            raise RemoteError('Replacement requires empty references and at least two hen identities.')
+        removed = set(existing) - {item[0] for item in items}
+        print('{} complete set: {} references, {} added/changed, {} removed.'.format(
+            'Would replace' if dry_run else 'Replacing', len(items), len(changed), len(removed)))
+        if dry_run or (not changed and not removed):
+            return
+        # Keep the bounded archive on disk rather than holding the set in RAM.
+        with tempfile.TemporaryFile() as archive:
+            with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
+                for relative, path, expected_hash in items:
+                    if path.is_symlink() or path.stat().st_size > MAX_BYTES:
+                        raise RemoteError('Local reference changed; retry after review.')
+                    data = path.read_bytes()
+                    if sha256(data) != expected_hash:
+                        raise RemoteError('Local reference changed; retry after review.')
+                    bundle.writestr(relative, data)
+            length = archive.tell()
+            archive.seek(0)
+            checksum = hashlib.sha256()
+            while True:
+                chunk = archive.read(1024 * 1024)
+                if not chunk:
+                    break
+                checksum.update(chunk)
+            archive.seek(0)
+            result = remote.request('POST', '/v1/references/replace', data=archive,
+                                    headers={'Content-Length': str(length),
+                                             'X-Content-SHA256': checksum.hexdigest(), 'If-Match': revision})
+        verified = remote.request('GET', '/v1/files/references')
+        desired = {relative: sha for relative, path, sha in items}
+        if (verified['revision'] != result['revision']
+                or {item['path']: item['sha256'] for item in verified['files']} != desired):
+            raise RemoteError('Replacement sent, but production verification differs; refresh and inspect before retrying.')
+        print('Replacement complete; production paths and checksums exactly match the uploaded set.')
+        return
     if not overwrite and any(item[0] in existing for item in changed):
         raise RemoteError('A different remote reference has the same filename; inspect it and use --overwrite explicitly.')
     print('{} {} reference(s); {} unchanged. No remote files will be deleted.'.format(
@@ -321,8 +362,9 @@ def parser():
         transfer.add_argument('directory', type=Path)
         transfer.add_argument('--dry-run', action='store_true')
         transfer.add_argument('--overwrite', action='store_true')
-    rollback = sub.add_parser('rollback')
-    rollback.add_argument('--yes', action='store_true', help='Confirm activation of the previous reference version')
+        if command == 'push':
+            transfer.add_argument('--replace', action='store_true', help='Atomically replace the entire set, removing remote-only files')
+            transfer.add_argument('--yes', action='store_true', help='Confirm complete replacement; no rollback is retained')
     return result
 
 
@@ -362,18 +404,13 @@ def main(argv=None):
             value = history_summary(remote) if arguments.remote_command == 'history' else remote.request('GET', '/v1/status')
             print(json.dumps(value, indent=2))
         elif arguments.command == 'push':
-            push(remote, arguments.directory, arguments.dry_run, arguments.overwrite)
+            push(remote, arguments.directory, arguments.dry_run, arguments.overwrite,
+                 arguments.replace, arguments.yes)
         elif arguments.command == 'pull':
             pull(remote, arguments.kind, arguments.directory, arguments.dry_run, arguments.overwrite)
         elif arguments.command == 'export':
             for kind in ('references', 'captures', 'results'):
                 pull(remote, kind, arguments.directory / kind, arguments.dry_run, arguments.overwrite)
-        elif arguments.command == 'rollback':
-            if not arguments.yes:
-                raise RemoteError('Review app status and pass --yes to activate the previous reference version.')
-            revision = remote.request('GET', '/v1/status')['reference_revision']
-            result = remote.request('POST', '/v1/references/rollback', data=b'', headers={'If-Match': revision})
-            print('Activated previous reference version: ' + result['revision'])
         return 0
     except RemoteError as error:
         print('Munai: ' + str(error), file=sys.stderr)
