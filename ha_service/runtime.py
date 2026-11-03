@@ -17,6 +17,7 @@ from data_layout import RESERVED, prediction_category
 from . import VERSION
 from .mqtt import occupant
 from .nest import NestState, valid_hen
+from .journal import Journal
 from .options import AppError
 from .schedule import capture_paused
 from .storage import MAX_FILE_BYTES, atomic_json, image_valid, safe_path
@@ -59,6 +60,9 @@ class Runtime:
         self.last_occupant = None
         # Prediction-only callers may omit storage; they never advance events.
         self.nest = NestState(store.root) if store is not None else None
+        self.journal = Journal(store) if store is not None else None
+        if self.journal:
+            self.journal.flush(self.nest)
         self.events = EventLog()
 
     def measurement(self, path, mask=None):
@@ -141,11 +145,13 @@ class Runtime:
             self.store.require_space(MAX_FILE_BYTES * 2)
             stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%fZ')
             predictions = []
+            evidence = []
 
             def process(path):
                 source = Path(path)
                 prediction = self.predict(source, references)
                 predictions.append(prediction)
+                evidence.append(self.journal.save_frame(source, prediction))
                 if self.options['store_captures']:
                     category = '/'.join(prediction_category(prediction['label']))
                     destination = safe_path(self.store.root / 'captures', category + '/' + stamp + '.jpg')
@@ -168,12 +174,15 @@ class Runtime:
                 raise AppError(str(error)) from None  # CaptureError contains only fixed summaries.
             if not predictions:
                 raise AppError('Capture did not complete; check the camera and overlap lock.')
-            self.observe(stamp, predictions[0])
+            self.observe(stamp, predictions[0], evidence[0])
 
-    def observe(self, stamp, prediction):
+    def observe(self, stamp, prediction, evidence=None):
         """Commit and publish the same confirmed state for a successful prediction."""
-        for event in self.nest.observe(prediction['label'], prediction['egg_count']):
+        self.journal.flush(self.nest)
+        for event in self.nest.observe(prediction['label'], prediction['egg_count'], evidence):
             LOG.info('Latest event: %s.', event)
+        self.journal.flush(self.nest)
+        self.journal.cleanup_pending(self.nest)
         state = self.nest.snapshot()
         observation = dict(state, timestamp=stamp,
                            distance=prediction['distance'], margin=prediction['margin'],
@@ -214,6 +223,7 @@ class Runtime:
             previous_observation = self.last_observation
             try:
                 self.store.retain()
+                self.journal.retain(self.nest)
                 self.update_daily()
                 self.publish_daily()
                 paused = capture_paused(self.options)

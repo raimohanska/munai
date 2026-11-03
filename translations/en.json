@@ -22,6 +22,7 @@
     "transfer_tokens": {"name": "Additional transfer clients (optional)", "description": "Usually leave empty. For multiple clients, add a text row per client: name|read-or-write|SHA256. No brackets or JSON."},
     "store_captures": {"name": "Save captured images", "description": "Optional. Named predictions stay under unreviewed and never become references automatically."},
     "retention_days": {"name": "Capture/result retention (days)"},
+    "journal_retention_days": {"name": "Journal retention (days)", "description": "Independent event/photo archive, default 365 days. Works with Save captured images off. Back up app data; younger entries are not discarded to meet the capture cap."},
     "capture_storage_mb": {"name": "Combined capture/result storage cap (MiB)", "description": "Oldest files are removed first. Reviewed references are not removed by retention."},
     "minimum_free_mb": {"name": "Minimum free disk space (MiB)", "description": "New captures and uploads stop before consuming this reserve."},
     "chicken_area": {"name": "Minimum hen area", "description": "Presence heuristic in the 640×360 processing frame, not an identity feature."},

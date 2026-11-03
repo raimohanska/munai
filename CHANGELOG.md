@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.7
+
+- Add a read-only, newest-first journal through authenticated HA Ingress, with
+  paginated events, local timestamps, lazy-loaded full-size photos and evidence
+  captions. No extra host port, transfer token or public /local files required.
+- Archive the actual three-frame confirmation sequences, before-visit counts,
+  confirmed identities and delayed post-departure counts independently of normal
+  capture storage. Preserve active visit evidence across restarts; never promote
+  predictions to reviewed references.
+- Commit journal events through a durable nest-state outbox with idempotent crash
+  recovery. Migrate existing nest state without inventing historical evidence.
+- Default journal retention to 365 days, separately configurable from capture
+  rotation. Share archived photos, discard superseded pending frames promptly,
+  and show archive usage/low-storage warnings without silently shortening retention.
+
 ## 0.1.6
 
 - Add a dated, retained daily egg-count MQTT object for Influx bridges, with

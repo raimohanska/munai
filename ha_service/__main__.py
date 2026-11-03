@@ -11,6 +11,7 @@ from .mqtt import MQTT
 from .options import AppError, read_options
 from .runtime import Runtime
 from .storage import Store
+from .journal_web import JournalServer
 
 LOG = logging.getLogger('munai')
 
@@ -21,6 +22,7 @@ def main():
                         format='%(asctime)s %(levelname)s: %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S %z')
     server = None
+    journal_server = None
     publisher = None
     stop = threading.Event()
     lock = None
@@ -42,6 +44,10 @@ def main():
         if options['mqtt_enabled']:
             publisher = MQTT(options)
         runtime = Runtime(options, store, publisher)
+        runtime.journal.retain(runtime.nest, force=True)
+        journal_server = JournalServer(('0.0.0.0', 8099), runtime.journal)
+        threading.Thread(target=journal_server.serve_forever, name='journal', daemon=True).start()
+        LOG.info('Journal ready through Home Assistant Ingress.')
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda signum, frame: stop.set())
         if options['transfer_enabled']:
@@ -68,6 +74,9 @@ def main():
         LOG.error('App startup failed; check dependencies, Configuration, HTTPS files and storage permissions.')
         return 1
     finally:
+        if journal_server:
+            journal_server.shutdown()
+            journal_server.server_close()
         if server:
             server.shutdown()
             server.server_close()

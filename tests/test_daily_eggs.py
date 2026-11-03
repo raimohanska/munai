@@ -146,6 +146,7 @@ class DailyEggTests(unittest.TestCase):
         self.shots('no_chicken', 2)
         state = dict(self.nest.state)
         del state['daily_eggs']
+        del state['journal']
         state['version'] = 2
         self.nest.path.write_text(json.dumps(state))
         self.restart()

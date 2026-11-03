@@ -10,6 +10,50 @@ Docker's explicit allowlist excludes Git history, `.env`, references, and local
 camera calibration. The legacy Pi/cron entry points remain available unchanged
 in usage; do not retire them until the HA pilot works.
 
+## Event journal
+
+From the Munai app page in HA, choose **Open Web UI**. Enable **Show in sidebar**
+for a persistent journal link. HA Ingress authenticates access; there is no new
+host port or journal password. The existing HTTPS transfer API remains separate.
+
+Entries appear newest first, with browser-local confirmation timestamps and the
+actual contributing photos. Click a photo for the original; pages contain at
+most 20 events and the latest page refreshes every minute. A confirmation time is
+not an exact laying time. Identity/count predictions remain experimental and
+are not human-reviewed labels.
+
+Arrival/departure decisions retain their three confirming frames. Laying entries
+also retain the before-visit egg baseline and identity evidence; delayed egg
+confirmation retains the departure evidence too, including across restarts.
+Collection entries show the previous count and the three zero-count frames.
+Pre-upgrade evidence cannot be reconstructed; existing visit state is preserved
+but incomplete journal evidence is identified on the page.
+
+`journal_retention_days` defaults to **365** (range 1–3650). This is independent
+of `retention_days`, `capture_storage_mb`, and `store_captures`: you can leave
+ordinary capture storage off and still get the journal. Full JPEG copies live in
+`/data/journal/images/`, event JSON in `/data/journal/entries/`; active decision
+evidence and an event outbox are saved atomically with `/data/nest-state.json`.
+The same journal-owned image may support multiple entries. These files are never
+loaded as recognition references or exposed through public HA `/local/` URLs.
+
+Hourly cleanup removes expired entries, then unreferenced photos. A bounded set
+of active baseline/visit evidence can outlive the configured retention until that
+decision is resolved. Superseded candidate frames are discarded after successful
+rounds. The page shows archive usage at the last cleanup and warns about low disk
+space. The journal has no aggressive size cap: if the disk reserve is reached,
+new observations stop rather than silently deleting younger entries. Reduce
+retention or free space before that happens. As a rough estimate, 20 events/day ×
+6 unique photos × 200 KB is about 8.8 GB/year; resolution and shared photos change
+this substantially. Include Munai app data in HA backups; a one-year retention
+setting is not itself a backup. Journal data is private and must not be committed.
+
+The journal stores new events only; it does not backfill the old latest-event
+sensor or reinterpret historical captures. No MQTT, recognition thresholds or
+appearance-based identity rules change.
+Back up app data before upgrading: older releases cannot read the new nest-state
+format, so a downgrade also requires restoring the matching pre-upgrade backup.
+
 ## Overnight capture pause
 
 All HA service log messages include a local timestamp and UTC offset, for

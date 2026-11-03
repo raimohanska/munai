@@ -5,6 +5,7 @@ from datetime import date, datetime
 from data_layout import LABEL, RESERVED
 from .options import AppError
 from .storage import atomic_json, safe_path
+from .journal import empty_evidence, evolve, valid_evidence
 
 
 def valid_hen(value):
@@ -35,10 +36,11 @@ class NestState:
     def __init__(self, root, today=None):
         self.today = today or date.today
         self.path = safe_path(root, 'nest-state.json')
-        self.state = {'version': 3, 'hen': None, 'eggs': None,
+        self.state = {'version': 4, 'hen': None, 'eggs': None,
                       'baseline': None, 'latest_event': None, 'confirmed': False,
                       'pending_hen': None, 'pending_baseline': None,
-                      'daily_eggs': {'date': None, 'counts': {'unknown': 0}}}
+                      'daily_eggs': {'date': None, 'counts': {'unknown': 0}},
+                      'journal': empty_evidence()}
         if self.path.exists():
             try:
                 if not self.path.is_file() or self.path.stat().st_size > 65536:
@@ -50,11 +52,15 @@ class NestState:
                     state.update(version=2, confirmed=(state['hen'] is not None or
                                                       state['eggs'] is not None),
                                  pending_hen=None, pending_baseline=None)
-                if (isinstance(state, dict) and set(state) == set(self.state) - {'daily_eggs'}
+                if (isinstance(state, dict) and set(state) == set(self.state) - {'daily_eggs', 'journal'}
                         and type(state['version']) is int and state['version'] == 2):
                     state.update(version=3, daily_eggs={'date': None, 'counts': {'unknown': 0}})
+                if (isinstance(state, dict) and set(state) == set(self.state) - {'journal'}
+                        and type(state['version']) is int and state['version'] == 3):
+                    state.update(version=4, journal=empty_evidence())
                 if (not isinstance(state, dict) or set(state) != set(self.state)
-                        or type(state['version']) is not int or state['version'] != 3
+                        or type(state['version']) is not int or state['version'] != 4
+                        or not valid_evidence(state['journal'])
                         or not valid_daily(state['daily_eggs'])
                         or type(state['confirmed']) is not bool
                         or (state['hen'] is not None and not valid_hen(state['hen']))
@@ -83,6 +89,8 @@ class NestState:
         self.streak = 0
         self.egg_candidate = None
         self.egg_streak = 0
+        self.state['journal']['presence'] = []
+        self.state['journal']['count'] = []
 
     def _dated_state(self, identities=()):
         """Copy counters too: failed writes must never mutate live totals."""
@@ -103,6 +111,8 @@ class NestState:
     def _commit(self, state):
         if not valid_daily(state['daily_eggs']):
             raise AppError('Invalid daily egg totals; no state committed.')
+        if not valid_evidence(state['journal']):
+            raise AppError('Invalid journal evidence; no state committed.')
         safe_path(self.path.parent, self.path.name)
         atomic_json(self.path, state)
         self.state = state
@@ -125,7 +135,7 @@ class NestState:
                 'egg_count': self.state['eggs'],
                 'latest_event': self.state['latest_event']}
 
-    def observe(self, label, eggs):
+    def observe(self, label, eggs, evidence=None):
         if label != 'no_chicken' and not valid_hen(label):
             raise AppError('Invalid nest observation.')
         if label == 'no_chicken' and (not count(eggs) or eggs is None):
@@ -192,6 +202,8 @@ class NestState:
             state['pending_baseline'] = None
         if events:
             state['latest_event'] = events[-1]
+        if evidence is not None:
+            evolve(self.state, state, evidence, streak, egg_streak, events)
         # Persist before changing memory or publishing. Failed writes cannot consume
         # a transition. atomic_json fsyncs both file and directory; no pickle input.
         self._commit(state)
