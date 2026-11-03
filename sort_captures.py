@@ -18,7 +18,7 @@ import numpy as np
 
 
 CATEGORIES = ('empty', 'unknown', 'eggs')
-CAPTURE_NAME = re.compile(r'^\d{8}T\d{6}_\d{6}Z\.jpg$')
+CAPTURE_NAME = re.compile(r'^\d{8}T\d{6}_\d{6}Z(?:-(?:left|right|top|bottom|center))?\.jpg$')
 
 
 def capture_files(directory):

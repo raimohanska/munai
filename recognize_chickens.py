@@ -34,11 +34,11 @@ class References(list):
         self.background_mask = background_mask
 
 
-def image_statistics(path):
-    image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+def image_statistics(path, size=(640, 360)):
+    image = path if isinstance(path, np.ndarray) else cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise ValueError('Cannot decode image: ' + str(path))
-    gray = cv2.resize(image, (640, 360), interpolation=cv2.INTER_AREA)
+    gray = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
     pixels = gray.astype(np.float32)
     mean = cv2.blur(pixels, (7, 7))
     std = np.sqrt(np.maximum(0, cv2.blur(pixels * pixels, (7, 7)) - mean * mean))
@@ -69,8 +69,8 @@ def background_mask(directory, texture_threshold=8):
     return mask
 
 
-def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None):
-    gray, pixels, std = image_statistics(path)
+def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None, size=(640, 360)):
+    gray, pixels, std = image_statistics(path, size)
     valid = np.full(gray.shape, 255, np.uint8)
     if background_mask is not None:
         valid[background_mask] = 0

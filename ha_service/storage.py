@@ -15,7 +15,7 @@ import warnings
 
 from PIL import Image
 
-from data_layout import LABEL, RESERVED, STAMP, MAX_HISTORY_FILES
+from data_layout import LABEL, RESERVED, STAMP, REFERENCE_STAMP, MAX_HISTORY_FILES, MAX_CAPTURE_FILES
 
 from .options import AppError
 
@@ -183,7 +183,7 @@ class Store:
         if kind == 'references':
             return (len(parts) == 2 and bool(LABEL.fullmatch(parts[0]))
                     and (parts[0] not in RESERVED or parts[0] == 'empty')
-                    and bool(re.fullmatch(STAMP + r'\.jpg', parts[1])))
+                    and bool(re.fullmatch(REFERENCE_STAMP + r'\.jpg', parts[1])))
         if kind == 'results':
             return bool(re.fullmatch(STAMP + r'\.json', relative))
         return (bool(re.fullmatch(r'(?:empty|unknown|pending|eggs)/' + STAMP + r'\.jpg', relative))
@@ -280,6 +280,7 @@ class Store:
             maximum = self.options['capture_storage_mb'] * 1024 * 1024
             age = self.options['retention_days'] * 86400
             files = []
+            counts = {'captures': 0, 'results': 0}
             for kind in ('captures', 'results'):
                 root = self.root / kind
                 for path in root.rglob('*'):
@@ -289,14 +290,17 @@ class Store:
                     if checked.is_file():
                         if not self.valid_file(kind, path.relative_to(root).as_posix()):
                             raise AppError('Unexpected file in managed storage.')
-                        files.append((checked.stat().st_mtime, checked.stat().st_size, checked))
+                        files.append((checked.stat().st_mtime, checked.stat().st_size, checked, kind))
+                        counts[kind] += 1
             total = sum(item[1] for item in files)
             removed = 0
-            for modified, size, path in sorted(files):
-                if now - modified <= age and total <= maximum and len(files) - removed <= MAX_HISTORY_FILES:
-                    break
+            for modified, size, path, kind in sorted(files):
+                limit = MAX_CAPTURE_FILES if kind == 'captures' else MAX_HISTORY_FILES
+                if now - modified <= age and total <= maximum and counts[kind] <= limit:
+                    continue
                 path.unlink()
                 total -= size
+                counts[kind] -= 1
                 removed += 1
             return removed
 

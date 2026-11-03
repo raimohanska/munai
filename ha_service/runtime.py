@@ -1,10 +1,7 @@
 """Serial recognition rounds around the unchanged appearance-based algorithm."""
 from datetime import datetime, timezone
 import logging
-import os
 from pathlib import Path
-import shutil
-import tempfile
 import time
 
 import cv2
@@ -12,13 +9,16 @@ import cv2
 from capture import CaptureError, capture
 from count_eggs import detect_eggs
 from recognize_chickens import background_mask, identify, load_references, measure
-from data_layout import RESERVED, prediction_category
+from data_layout import RESERVED
 
 from . import VERSION
 from .mqtt import occupant
 from .nest import NestState, valid_hen
 from .journal import Journal
 from .options import AppError
+from .photo_archive import PhotoArchive
+from .split_nest import SplitNest
+from . import split_recognition
 from .schedule import capture_paused
 from .storage import MAX_FILE_BYTES, atomic_json, image_valid, safe_path
 
@@ -59,23 +59,41 @@ class Runtime:
         self.last_observation = None
         self.last_occupant = None
         # Prediction-only callers may omit storage; they never advance events.
-        self.nest = NestState(store.root) if store is not None else None
+        self.nest = None
         self.journal = Journal(store) if store is not None else None
+        if store is not None:
+            if options['box_split'] == 'none':
+                if safe_path(store.root, 'nest-layout.json').exists():
+                    raise AppError('Split state exists; restore a matching whole-box backup before disabling split mode.')
+                self.nest = NestState(store.root)
+            else:
+                legacy = NestState(store.root)
+                self.journal.flush(legacy)
+                self.nest = SplitNest(store.root, options['box_split'], carry=legacy.daily_snapshot())
         if self.journal:
             self.journal.flush(self.nest)
         self.events = EventLog()
+        self.photos = PhotoArchive(store) if store is not None else None
 
     def measurement(self, path, mask=None):
         return measure(path, self.options['chicken_area'], self.options['texture_threshold'],
-                       mask)
+                       mask, split_recognition.measurement_size(self.options['box_split'])
+                       if self.options['box_split'] != 'none' else (640, 360))
 
     def validate_reference(self, path):
         try:
             # Empty images are explicitly reviewed background, not hen identities.
             if Path(path).parent.name == 'empty':
+                if self.options['box_split'] != 'none':
+                    split_recognition.validate_empty(path)
                 background_mask(Path(path).parent.parent, self.options['texture_threshold'])
                 return
-            mask = background_mask(Path(path).parent.parent, self.options['texture_threshold'])
+            if self.options['box_split'] != 'none':
+                root = Path(path).parent.parent
+                split_recognition.validate_half(path, root, self.options['box_split'])
+                unused_full, mask = split_recognition.calibration(root, self.options)
+            else:
+                mask = background_mask(Path(path).parent.parent, self.options['texture_threshold'])
             if self.measurement(path, mask)['features'] is None:
                 raise ValueError()
         except Exception:
@@ -88,6 +106,8 @@ class Runtime:
             raise AppError('Image exceeds 8 MiB; lower the camera resolution.')
         image_valid(path.read_bytes())
         references = self._references() if references is None else references
+        if self.options['box_split'] != 'none':
+            return split_recognition.predict(path, references, self.options)
         mask = getattr(references, 'background_mask', None)
         if mask is None:
             raise AppError('Upload reviewed empty-nest references before recognition.')
@@ -114,14 +134,23 @@ class Runtime:
             identities = len({item['path'].split('/')[0] for item in references
                               if item['path'].split('/')[0] not in RESERVED})
             empty_count = sum(item['path'].startswith('empty/') for item in references)
+            compatible = True
+            if self.options['box_split'] != 'none':
+                try:
+                    self._references()
+                except AppError:
+                    compatible = False
             return {'version': VERSION, 'capture_enabled': self.options['capture_enabled'],
                     'mqtt_enabled': self.options['mqtt_enabled'],
                     'mqtt_connected': bool(self.publisher and self.publisher.connected.is_set()),
                     'reference_revision': self.store.revision, 'reference_count': len(references),
                     'identity_count': identities, 'empty_reference_count': empty_count,
-                    'references_ready': identities >= 2 and empty_count > 0,
+                    'references_ready': identities >= 2 and empty_count > 0 and compatible,
+                    'reference_layout_compatible': compatible,
                     'last_observation': self.last_observation,
                     'latest_event': self.nest.state['latest_event'],
+                    'box_split': self.options['box_split'],
+                    'zones': self.nest.snapshot().get('zones', {}),
                     'daily_eggs': self.nest.daily_snapshot()}
 
     def _references(self):
@@ -130,8 +159,10 @@ class Runtime:
             raise AppError('Upload reviewed reference JPEGs for at least two identities before enabling capture.')
         if self.reference_revision != self.store.revision:
             try:
-                self.references = load_references(root, self.options['chicken_area'],
-                                                  self.options['texture_threshold'])
+                self.references = (split_recognition.load(root, self.options)
+                                   if self.options['box_split'] != 'none' else
+                                   load_references(root, self.options['chicken_area'],
+                                                   self.options['texture_threshold']))
             except Exception:
                 raise AppError('References are not usable with these settings; review hen and empty references.') from None
             self.reference_revision = self.store.revision
@@ -151,21 +182,8 @@ class Runtime:
                 source = Path(path)
                 prediction = self.predict(source, references)
                 predictions.append(prediction)
-                evidence.append(self.journal.save_frame(source, prediction))
-                if self.options['store_captures']:
-                    category = '/'.join(prediction_category(prediction['label']))
-                    destination = safe_path(self.store.root / 'captures', category + '/' + stamp + '.jpg')
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    descriptor, temporary = tempfile.mkstemp(prefix='.pending-', dir=str(destination.parent))
-                    try:
-                        with os.fdopen(descriptor, 'wb') as handle, source.open('rb') as incoming:
-                            shutil.copyfileobj(incoming, handle)
-                            handle.flush()
-                            os.fsync(handle.fileno())
-                        os.replace(temporary, str(destination))
-                    finally:
-                        if os.path.exists(temporary):
-                            os.unlink(temporary)
+                evidence.append(self.journal.save_frame(source, prediction, stamp=stamp))
+                self.photos.save(source, stamp, prediction)
 
             try:
                 capture(self.options['camera_url'], str(scratch), '/usr/bin/ffmpeg',
@@ -179,15 +197,20 @@ class Runtime:
     def observe(self, stamp, prediction, evidence=None):
         """Commit and publish the same confirmed state for a successful prediction."""
         self.journal.flush(self.nest)
-        for event in self.nest.observe(prediction['label'], prediction['egg_count'], evidence):
+        events = (self.nest.observe_zones(prediction['zones'], evidence) if 'zones' in prediction else
+                  self.nest.observe(prediction['label'], prediction['egg_count'], evidence))
+        for event in events:
             LOG.info('Latest event: %s.', event)
         self.journal.flush(self.nest)
         self.journal.cleanup_pending(self.nest)
         state = self.nest.snapshot()
         observation = dict(state, timestamp=stamp,
                            distance=prediction['distance'], margin=prediction['margin'],
-                           raw_prediction={'occupant': occupant(prediction),
-                                           'egg_count': prediction['egg_count']})
+                            raw_prediction={'occupant': occupant(prediction),
+                                            'egg_count': prediction['egg_count']})
+        if 'zones' in prediction:
+            observation['raw_prediction']['zones'] = prediction['zones']
+            observation['raw_prediction']['ambiguous'] = prediction['ambiguous']
         atomic_json(self.store.root / 'results' / (stamp + '.json'), observation)
         self.last_observation = observation
         if self.last_occupant != observation['occupant']:

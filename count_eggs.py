@@ -58,9 +58,10 @@ def split_region(mask):
             for label in range(len(centers))]
 
 
-def detect_eggs(gray, texture_threshold=8, min_area=950, max_area=3500):
+def detect_eggs(gray, texture_threshold=8, min_area=950, max_area=3500, size=(640, 360)):
     """Find smooth, convex, egg-sized ellipses; never use nest position."""
-    gray = cv2.resize(gray, (640, 360), interpolation=cv2.INTER_AREA)
+    gray = cv2.resize(gray, size, interpolation=cv2.INTER_AREA)
+    width, height = size
     pixels = gray.astype(np.float32)
     mean = cv2.blur(pixels, (7, 7))
     std = np.sqrt(np.maximum(0, cv2.blur(pixels * pixels, (7, 7)) - mean * mean))
@@ -80,7 +81,7 @@ def detect_eggs(gray, texture_threshold=8, min_area=950, max_area=3500):
         region = np.zeros((h + 2, w + 2), np.uint8)
         local_contour = contour - np.array([[[x - 1, y - 1]]], np.int32)
         cv2.drawContours(region, [local_contour], -1, 255, -1)
-        border = x == 0 or y == 0 or x + w == 640 or y + h == 360
+        border = x == 0 or y == 0 or x + w == width or y + h == height
         # A wall may have many distance peaks. Never manufacture individual
         # eggs by splitting a border-connected component into smaller pieces.
         for part in ([region] if border else split_region(region)):
@@ -108,8 +109,8 @@ def detect_eggs(gray, texture_threshold=8, min_area=950, max_area=3500):
             # jagged without changing the egg's outer shape. Fit the envelope,
             # not those inward nicks; retain a solidity check against straw.
             points = hull.reshape(-1, 2)
-            visible = ((points[:, 0] > 0) & (points[:, 0] < 639) &
-                       (points[:, 1] > 0) & (points[:, 1] < 359))
+            visible = ((points[:, 0] > 0) & (points[:, 0] < width - 1) &
+                       (points[:, 1] > 0) & (points[:, 1] < height - 1))
             clipped = not bool(np.all(visible))
             curved = points[visible] if clipped else points
             if len(curved) < 5:

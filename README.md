@@ -11,6 +11,12 @@ timeline with the photos behind each decision. Enable **Show in sidebar** for
 easy access. Journal photos have their own **365-day retention**, even with
 ordinary capture storage off. See [journal storage and evidence](DOCS.md#event-journal).
 
+**0.1.10:** ordinary stored photos are deduplicated with 15-minute heartbeats;
+recognition and journal evidence still use every observation. Experimental
+left/right or top/bottom nests, divider occupancy and zone-labelled journal/MQTT
+output are available through `box_split`. Prepare compatible references and back
+up state before enabling it: [split-nest migration](DOCS.md#split-nests-and-divider-occupancy-experimental-0110).
+
 **Already installed and paired?** Continue with [upload references](#3-upload-references),
 then [enable MQTT](#4-enable-mqtt) and [enable capture](#5-enable-capture).
 

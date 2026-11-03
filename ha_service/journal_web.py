@@ -19,7 +19,13 @@ h3 { font-size: 1rem; margin-bottom: 8px; } p, figcaption { line-height: 1.5; }
 a { color: light-dark(#235e45,#a0d6b3); } .muted, time { opacity: .8; font-size: .9rem; }
 .photos { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; }
 figure { margin: 0; } img { width: 100%; height: auto; border-radius: 8px; }
+.frame { position: relative; } .frame img { display: block; }
+.zone { position: absolute; border: 3px solid #ffb72b; box-sizing: border-box; pointer-events: none; }
+.vertical-left { inset: 0 50% 0 0; } .vertical-right { inset: 0 0 0 50%; }
+.vertical-center { inset: 0 25%; } .horizontal-top { inset: 0 0 50% 0; }
+.horizontal-bottom { inset: 50% 0 0 0; } .horizontal-center { inset: 25% 0; }
 figcaption { font-size: .85rem; overflow-wrap: anywhere; }
+.photo-id { display: block; font-size: .75rem; margin-top: 6px; user-select: all; }
 nav { display: flex; justify-content: space-between; padding: 16px; }
 .notice { border-left: 4px solid #c99b40; padding-left: 12px; }
 @media(max-width: 500px) { body { padding: 10px; } header,article { padding: 16px; } }
@@ -83,11 +89,17 @@ def render(journal, page):
             for frame in group['frames']:
                 source = 'images/' + frame['id'] + '.jpg'
                 caption = ('Empty nest · {} eggs detected'.format(frame['egg_count'])
-                           if frame['label'] == 'no_chicken' else 'Identity prediction: ' + frame['label'])
+                            if frame['label'] == 'no_chicken' else 'Identity prediction: ' + frame['label'])
+                if 'zone' in entry:
+                    caption = entry['zone'].capitalize() + ' view · ' + caption
+                overlay = ('<span class="zone {}-{}" aria-hidden="true"></span>'.format(
+                    entry['layout'], entry['zone']) if 'zone' in entry else '')
                 parts.append('<figure><a href="{0}" target="_blank" rel="noopener">'
-                             '<img src="{0}" loading="lazy" alt="{1}"></a>'
-                             '<figcaption>{2}<br>{1}</figcaption></figure>'.format(
-                                 source, escape(caption, quote=True), time_html(frame['id'])))
+                             '<div class="frame"><img src="{0}" loading="lazy" alt="{1}">{3}</div></a>'
+                             '<figcaption>{2}<br>{1}<span class="photo-id">Photo ID: '
+                             '<code>{4}</code></span></figcaption></figure>'.format(
+                                  source, escape(caption, quote=True), time_html(frame['id']), overlay,
+                                  escape(frame['id'])))
             parts.append('</div>')
         present_roles = {group['role'] for group in entry['evidence'] if group['frames']}
         required = ({'Before visit / previous count', 'Identity confirmation', 'Egg count confirmation'}

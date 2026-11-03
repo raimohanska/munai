@@ -202,6 +202,7 @@ class DailyEggTests(unittest.TestCase):
         publisher.options = validate({})
         publisher.base = 'munai/synthetic'
         publisher.daily_configs = {}
+        publisher.zone_configs = {}
         publisher.send = Mock(side_effect=AppError('synthetic failure'))
         with self.assertRaises(AppError):
             publisher.publish_daily(self.nest.daily_snapshot())

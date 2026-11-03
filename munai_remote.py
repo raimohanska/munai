@@ -15,7 +15,7 @@ import sys
 import tempfile
 from urllib.parse import quote, urlsplit
 
-from data_layout import RESERVED, STAMP, MAX_HISTORY_FILES, reference_directory
+from data_layout import RESERVED, STAMP, REFERENCE_STAMP, MAX_HISTORY_FILES, reference_directory
 
 MAX_BYTES = 8 * 1024 * 1024
 DEFAULT_CONFIG = Path(__file__).resolve().parent / '.munai-remote.json'
@@ -187,7 +187,7 @@ def local_references(root):
             raise RemoteError('Identity folders must use 1-48 lowercase letters, digits, underscores or hyphens.')
         # Deliberately nonrecursive: predictions in unreviewed/ NEVER qualify.
         for path in sorted(folder.iterdir()):
-            if re.fullmatch(STAMP + r'\.jpg', path.name):
+            if re.fullmatch(REFERENCE_STAMP + r'\.jpg', path.name):
                 if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= MAX_BYTES:
                     raise RemoteError('References must be regular JPEG files of at most 8 MiB.')
                 data = path.read_bytes()

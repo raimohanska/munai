@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.10
+
+- Deduplicate ordinary HA photo storage after recognition, while retaining raw
+  label/count changes, split-zone changes and a configurable 15-minute heartbeat.
+  Compare with the last successfully saved frame; suppress small detail noise
+  without camera-specific exclusion coordinates. Failed comparisons retain photos.
+  Every observation and actual journal confirmation frame remains processed.
+- Restore the 1,000-photo ceiling, separate from the 10,000-result JSON ceiling.
+  Keep age, combined byte budget and disk reserve protections; photo deduplication
+  does not guarantee full-day photo coverage during continuous activity.
+- Add opt-in vertical (left/right) and horizontal (top/bottom) split recognition,
+  with shared half-frame appearance references and separate divider presence.
+  Preserve measurement scale; retain full-frame reviewed empty calibration and
+  accept reference filename view suffixes as provenance, never identity features.
+- Track each nest's visits, egg baselines, confirmation and daily production
+  separately. Divider/ambiguous observations freeze hidden nest counts and
+  invalidate unsafe attribution. Establish fresh split baselines without
+  recounting existing eggs; preserve the whole-box daily totals as a dated carry.
+  Fail closed on incompatible layout changes instead of mapping old baselines.
+- Journal split events with explicit zones, zone-specific confirmation evidence,
+  highlighted views, visible stable photo IDs and shared full-frame photos. Recover each region's durable
+  outbox idempotently; retain active evidence from every region independently of
+  ordinary photo rotation. Discover split occupant/count MQTT sensors.
+- Use reviewed empty-background change checks conservatively to pause counting
+  for patterned/occluding bodies missed by the smooth-region heuristic. Unknown
+  and obscured remain valid outcomes; new bedding/lighting can require refreshed
+  empty calibration. This remains an experimental recognition pilot.
+
 ## 0.1.9
 
 - Raise the combined capture/result file ceiling from 1,000 to 10,000, and align

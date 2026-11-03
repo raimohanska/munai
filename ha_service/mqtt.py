@@ -39,6 +39,15 @@ def occupant(prediction):
     return 'empty' if label == 'no_chicken' else 'unknown' if label == 'unknown' else label.capitalize()
 
 
+def zone_discovery(options, zone, sensor):
+    config = discovery(options, sensor)
+    config.update(name=zone.capitalize() + ' ' + config['name'].lower(),
+                  unique_id=options['device_id'] + '_' + zone + '_' + sensor,
+                  value_template="{{ value_json.zones['" + zone + "']['" + sensor +
+                  "'] if value_json.zones['" + zone + "']['" + sensor + "'] is not none else 'unknown' }}")
+    return config
+
+
 def daily_discovery(options, identity=None):
     if identity is not None and (not isinstance(identity, str) or not LABEL.fullmatch(identity)
                                  or (identity in RESERVED and identity != 'unknown')):
@@ -68,6 +77,11 @@ class MQTT:
         self.egg_config = discovery(options, 'egg_count')
         self.event_config = discovery(options, 'latest_event')
         self.daily_configs = {'daily_eggs': daily_discovery(options)}
+        sides = (('left', 'right') if options.get('box_split') == 'vertical' else
+                 ('top', 'bottom') if options.get('box_split') == 'horizontal' else ())
+        self.zone_configs = {zone + '_' + sensor: zone_discovery(options, zone, sensor)
+                             for zone in sides + (('center',) if sides else ())
+                             for sensor in (('occupant',) if zone == 'center' else ('occupant', 'egg_count'))}
         self.base = 'munai/' + options['device_id']
         self.discovery_topic = 'homeassistant/sensor/' + options['device_id'] + '/occupant/config'
         self.egg_discovery_topic = 'homeassistant/sensor/' + options['device_id'] + '/egg_count/config'
@@ -99,6 +113,9 @@ class MQTT:
         client.publish(self.discovery_topic, json.dumps(self.config), qos=1, retain=True)
         client.publish(self.egg_discovery_topic, json.dumps(self.egg_config), qos=1, retain=True)
         client.publish(self.event_discovery_topic, json.dumps(self.event_config), qos=1, retain=True)
+        for suffix, config in self.zone_configs.items():
+            client.publish('homeassistant/sensor/' + self.options['device_id'] + '/' + suffix + '/config',
+                           json.dumps(config), qos=1, retain=True)
         # Reconnect callbacks run on the MQTT thread; recognition can discover
         # another identity concurrently on the scheduling thread.
         for suffix, config in self.daily_configs.copy().items():
@@ -133,7 +150,11 @@ class MQTT:
         self.send(self.base + '/latest_event', state['latest_event'] or 'No events yet', True)
         # Expiring state MUST NOT be retained. Availability alone is insufficient
         # to present an occupant after a restart or an extended capture failure.
-        self.send(self.base + '/state', json.dumps({'occupant': state['occupant'], 'egg_count': eggs}), False)
+        payload = {'occupant': state['occupant'], 'egg_count': eggs}
+        if 'zones' in state:
+            payload['zones'] = state['zones']
+            payload['layout'] = state['layout']
+        self.send(self.base + '/state', json.dumps(payload), False)
         self.send(self.base + '/availability', 'online', True)
 
     def offline(self):

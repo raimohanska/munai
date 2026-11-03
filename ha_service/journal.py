@@ -14,6 +14,7 @@ from .options import AppError
 from .storage import MAX_FILE_BYTES, atomic_json, safe_path, sync_directory
 
 ID = re.compile(r'^[0-9]{8}T[0-9]{6}_[0-9]{6}Z_[a-f0-9]{32}$')
+ZONES = ('left', 'right', 'top', 'bottom', 'center')
 
 
 def empty_evidence():
@@ -36,7 +37,8 @@ def valid_evidence(value):
 
 def valid_frames(frames, limit=3):
     return (isinstance(frames, list) and len(frames) <= limit and all(
-        isinstance(frame, dict) and set(frame) == {'id', 'label', 'egg_count'}
+        isinstance(frame, dict) and set(frame) in ({'id', 'label', 'egg_count'}, {'id', 'label', 'egg_count', 'zone'})
+        and ('zone' not in frame or frame['zone'] in ZONES)
         and isinstance(frame['id'], str) and ID.fullmatch(frame['id'])
         and isinstance(frame['label'], str) and len(frame['label']) <= 80
         and (frame['egg_count'] is None or
@@ -57,7 +59,11 @@ def valid_groups(groups):
 
 
 def valid_entry(entry):
-    return (isinstance(entry, dict) and set(entry) == {'id', 'text', 'evidence'}
+    return (isinstance(entry, dict) and set(entry) in (
+            {'id', 'text', 'evidence'}, {'id', 'text', 'evidence', 'zone', 'layout'})
+            and ('zone' not in entry or (entry['zone'] in
+                 (('left', 'right', 'center') if entry['layout'] == 'vertical' else ('top', 'bottom', 'center'))
+                 and entry['layout'] in ('vertical', 'horizontal')))
             and isinstance(entry['id'], str) and ID.fullmatch(entry['id'])
             and isinstance(entry['text'], str) and 1 <= len(entry['text']) <= 256
             and valid_groups(entry['evidence']))
@@ -108,7 +114,7 @@ def evolve(before, after, frame, streak, egg_streak, events):
 
 def frame_ids(value):
     if isinstance(value, dict):
-        if set(value) == {'id', 'label', 'egg_count'}:
+        if {'id', 'label', 'egg_count'} <= set(value) <= {'id', 'label', 'egg_count', 'zone'}:
             yield value['id']
         else:
             for child in value.values():
@@ -130,9 +136,13 @@ class Journal:
         self.archived = set()
         self.transient = set()
 
-    def save_frame(self, source, prediction):
+    def save_frame(self, source, prediction, stamp=None):
         self.store.require_space(MAX_FILE_BYTES * 2)
-        identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%fZ') + '_' + uuid.uuid4().hex
+        if stamp is None:
+            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%fZ')
+        if not isinstance(stamp, str) or not re.fullmatch(r'[0-9]{8}T[0-9]{6}_[0-9]{6}Z', stamp):
+            raise AppError('Invalid journal frame timestamp.')
+        identifier = stamp + '_' + uuid.uuid4().hex
         destination = safe_path(self.root / 'images', identifier + '.jpg')
         self.transient.add(identifier)
         descriptor, temporary = tempfile.mkstemp(prefix='.pending-', dir=str(destination.parent))

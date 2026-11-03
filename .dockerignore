@@ -8,5 +8,6 @@
 !data_layout.py
 !recognize_chickens.py
 !sort_captures.py
+!box_split.py
 !ha_service/
 !ha_service/*.py

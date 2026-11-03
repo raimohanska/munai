@@ -77,9 +77,27 @@ unchanged.
 ## Capture history and a 24-hour review window
 
 Normal capture/result retention applies the configured age and combined byte
-budget, plus a 10,000-file safety ceiling. Both an image and its result JSON
-consume a file slot. Before 0.1.9 that ceiling was 1,000, which could clip a
-minute-by-minute history to about eight hours even with days of retention set.
+budget. From 0.1.10 there are separate ceilings: **1,000 photos** and **10,000
+result JSONs**. Results still record every successful observation; photo
+deduplication does not shorten that timeline. Before 0.1.9 both kinds shared
+a 1,000-file cap, which could clip minutely observations to about eight hours.
+
+`capture_deduplicate: true` skips similar ordinary photos. Comparison uses
+320×180 grayscale pixels, brightness differences above 15, and a 0.1% changed
+pixel threshold after suppressing isolated/thin detail. There are no hardcoded
+camera-specific masks. Small timestamp/noise changes are usually ignored, but
+large overlays or exposure changes may still save a frame. Identity/egg-count
+changes (including per-zone changes), restarts, and missing comparison baselines
+always save. A `capture_heartbeat_seconds: 900` default retains a photo at least
+every 15 minutes while the camera loop is running. Compare with the last saved
+photo, not the last observed one, so gradual changes accumulate. Failed
+comparisons retain photos; failed writes do not advance the baseline.
+
+Recognition, confirmation streaks, result JSONs and journal evidence still use
+every successful observation. This is lossy ordinary-photo storage: not every
+subtle visual change is guaranteed a photo. Set `capture_deduplicate: false` to
+retain every frame, subject to retention limits. Journal evidence is never
+deduplicated by this policy and never depends on an ordinary photo remaining.
 
 For a review window of at least a day, start with:
 
@@ -110,37 +128,94 @@ snapshots even after HA rotates them. No download can recover already deleted
 captures. History summaries show oldest/newest UTC timestamps, counts and bytes;
 they do not prove uninterrupted coverage between those endpoints.
 
-## Offline split-box presence prototype
+## Split nests and divider occupancy (experimental, 0.1.10+)
 
-`box_split.py` and `tools/review_box_split.py` are offline development tools, not
-an enabled HA split-box feature. They preserve the full-frame 640×360 measurement
-scale, detect multiple presence components, and distinguish candidate side and
-divider occupancy without using position as an identity feature.
+Set HA `box_split` to `none` (default), `vertical` (left/right), or `horizontal`
+(top/bottom). This is an HA app option, not a setting in the legacy Pi `.env`.
+Splits are fixed 50/50. Detection also considers the center/divider. Identity
+always comes from a shared appearance reference pool, never from the side, body
+orientation, or missing positional coverage. Half-frame processing preserves
+the original 640×360 scale (320×360 for vertical, 640×180 for horizontal), rather
+than stretching every crop back to a full frame.
+
+Each side has its own durable visit, egg baseline, three-frame arrival/count and
+five-frame departure confirmation. Center visits have presence/identity events
+but no egg production. A divider hen or ambiguous merged/multiple bodies pauses
+hidden-side observations and invalidates unsafe laying attribution; no empty
+observation or collection is fabricated. Patterned bodies missed by smooth
+regions can pause counting through reviewed-empty background-change checks.
+New bedding/lighting can cause conservative unknown/obscured outcomes and may
+need refreshed reviewed empty calibration. A working assumption that divider
+hens are alone does not override contradictory observations.
+
+The journal prefixes events with their zone and outlines the corresponding view
+on shared full-frame evidence photos. The outline is a view, not an exact body
+boundary. Each event retains its own real confirmation/baseline frames; simultaneous
+events may share one physical JPEG. All region outboxes replay idempotently after
+crashes, and active evidence from all regions is protected from archive cleanup.
+Every caption exposes the stable full Photo ID: use **Photo ID plus zone** when
+reporting a wrong identity. This release is read-only: correction selectors and
+reviewed-reference import are not implemented. A future correction should preserve
+the original prediction, explicitly label the chosen zone, and require a separate
+reference-promotion decision. Copy a reviewed crop into an immutable reference
+version; never move/delete the shared journal original or silently rewrite egg totals.
+MQTT discovers side occupant/egg-count sensors plus a center occupant sensor;
+the original whole-device state includes a zone summary and combined confirmed
+egg count. Counts remain frozen when hens obscure the nest.
+
+### References and safe migration
+
+1. Back up the app data, disable capture, and install the new release.
+2. Prepare **half-frame identity crops** for all hens. A divider hen uses the
+   centered half-width/half-height view, not a separate identity. Preserve original
+   full-frame references for review/rollback. Review clipped crops: too little
+   measurable plumage is not a usable reference, even with a correct human label.
+3. Keep **full-frame reviewed empty references**, not half crops, in `empty/`.
+   A full frame whose two halves were explicitly reviewed as empty is suitable;
+   never use a prediction or divider hen as empty calibration. Background masks
+   are shared neutrally for appearance, not used to assign identities.
+4. Set `box_split` while capture remains off. Upload the complete prepared set,
+   explicitly overwriting old full-frame identity files. Preserve their original
+   filenames for replacements. New reference names may append `-left`, `-right`,
+   `-top`, `-bottom` or `-center` after the UTC timestamp; these are provenance
+   only. Check `remote status` reports compatible/ready references before capture.
+5. First split counts establish fresh baselines without crediting existing eggs
+   as new production. Today's whole-box production totals carry forward once,
+   independently of new side counters. Whole-box visit baselines are never copied
+   into either side.
+
+Split persistence lives under `/data/nests/<layout>/<zone>/`, with dated carry
+and latest-event metadata in `/data/nest-layout.json`. Changing split axis or
+returning to whole-box mode fails closed if incompatible split state exists.
+Restore the matching configuration/state backup rather than deleting arbitrary
+files or mapping old baselines. Reference geometry and state must match the mode.
+
+Validate on held-out reviewed footage before enabling a supervised pilot.
+Adjacent frames from a reference visit and self-included reference predictions
+are not independent accuracy measurements. Unknown is preferable to an invented
+identity; synthetic mechanics tests cannot guarantee field accuracy.
+
+### Offline review and replay
 
 ```bash
 python tools/review_box_split.py captures/pending --references references \
   --split vertical --output reports/split-presence-review
 ```
 
-Vertical means left/right; horizontal means top/bottom. A divider-spanning body
-blocks egg-count eligibility on both sides. Separate divider/side bodies,
-multiple bodies assigned to one zone, and unusually broad merged bodies are
-ambiguous. The working assumption that a divider hen is alone must never erase
-contradictory evidence. Presence components can still merge or be missed, and a
-crossing hen is not necessarily perching: overlays require human review.
+That first tool shows presence geometry only, not the complete app pipeline.
+Replay original timestamped full-frame photos through the complete split pipeline
+into a new private local results/journal directory:
 
-Use reviewed full-frame empty references for this prototype. Keep centered
-identity references intact; half-frame side references and full-frame divider
-references need explicit geometry metadata and consistent feature extraction
-before HA activation. No automatic prediction may become a reviewed reference.
+```bash
+python tools/replay_split.py captures --references PATH_TO_PREPARED_SPLIT_REFERENCES \
+  --split vertical --output reports/split-replay
+```
 
-Before an HA split-box pilot, complete shared-pool appearance recognition,
-separate half-nest visit/count state, divider-only presence tracking, conservative
-occlusion handling, zone-labelled journal/MQTT output, and safe layout migration.
-Validate sequences on held-out reviewed footage, including simultaneous side
-occupants, crossings, divider perching and eggs after departure. Adjacent frames
-from the same reference visit are not independent accuracy evidence. The offline
-prototype alone is not a claim that the split-box service is ready for deployment.
+Open `reports/split-replay/journal/index.html` to review reconstructed events.
+Raw and confirmed per-zone observations are in `reports/split-replay/results/`.
+This is a new algorithm replay, not recovery of historical decisions. Sources,
+labels, active references, HA and MQTT are untouched. All generated data stays
+private under `reports/`; do not commit it.
 
 ## Offline egg counting
 

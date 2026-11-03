@@ -1,5 +1,6 @@
 """Conservative visit/collection tracking, independent of image capture."""
 import json
+import copy
 from datetime import date, datetime
 
 from data_layout import LABEL, RESERVED
@@ -37,7 +38,10 @@ def valid_daily(value):
 
 
 class NestState:
-    def __init__(self, root, today=None):
+    def __init__(self, root, today=None, zone=None, layout=None, count_initial_eggs=True):
+        self.zone = zone
+        self.layout = layout
+        self.count_initial_eggs = count_initial_eggs
         self.today = today or date.today
         self.path = safe_path(root, 'nest-state.json')
         self.state = {'version': 5, 'hen': None, 'eggs': None,
@@ -144,6 +148,19 @@ class NestState:
         daily = self.state['daily_eggs']
         return {'date': daily['date'], 'counts': dict(daily['counts'])}
 
+    def obscure(self):
+        """No empty observation is implied by a hidden/ambiguous nest."""
+        self.reset_confirmation()
+        state = copy.deepcopy(self.state)
+        state.update(baseline=None, pending_hen=None, pending_baseline=None, pending_settled=False)
+        state['journal']['baseline'] = []
+        state['journal']['pending'] = []
+        for group in state['journal']['visit']:
+            if group['role'] == 'Before visit / previous count':
+                group['frames'] = []
+        if state != self.state:
+            self._commit(state)
+
     def snapshot(self):
         """Public live fields from one committed state, never raw predictions."""
         hen = self.state['hen']
@@ -207,6 +224,9 @@ class NestState:
             # A stable partial decrease can be occlusion, not collection. Rebounds
             # must not count the same eggs again; only a confirmed zero resets it.
             increase = eggs - (state['egg_high_water'] or 0)
+            if self.state['eggs'] is None and not self.count_initial_eggs:
+                # New split geometry establishes a baseline, not new production.
+                increase = 0
             if (state['pending_hen'] is not None and state['pending_baseline'] is not None
                     and eggs > state['pending_baseline'] and increase > 0):
                 laying_hen = state['pending_hen']
@@ -237,6 +257,11 @@ class NestState:
             state['latest_event'] = events[-1]
         if evidence is not None:
             evolve(self.state, state, evidence, streak, egg_streak, events)
+            if self.zone is not None:
+                for entry in state['journal']['outbox']:
+                    if 'zone' not in entry:
+                        entry.update(zone=self.zone, layout=self.layout,
+                                     text=self.zone.capitalize() + ': ' + entry['text'])
         # Persist before changing memory or publishing. Failed writes cannot consume
         # a transition. atomic_json fsyncs both file and directory; no pickle input.
         self._commit(state)

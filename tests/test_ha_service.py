@@ -337,7 +337,7 @@ class StorageTests(StorageFixture):
         self.assertEqual(self.store.retain(), 1)
         self.assertEqual(len(self.store.files('results')), MAX_HISTORY_FILES)
 
-    def test_one_day_of_minutely_history_survives_and_is_exportable(self):
+    def test_result_day_survives_independently_of_thousand_photo_ceiling(self):
         folder = self.store.root / 'captures' / 'empty'
         folder.mkdir()
         # Synthetic storage entries only: no camera, image decode or capture.
@@ -345,8 +345,8 @@ class StorageTests(StorageFixture):
             name = '20000101T120000_%06dZ' % index
             (folder / (name + '.jpg')).write_bytes(b'synthetic history')
             (self.store.root / 'results' / (name + '.json')).write_text('{}')
-        self.assertEqual(self.store.retain(), 0)
-        self.assertEqual(len(self.store.files('captures')), 1440)
+        self.assertEqual(self.store.retain(), 440)
+        self.assertEqual(len(self.store.files('captures')), 1000)
         self.assertEqual(len(self.store.files('results')), 1440)
 
     def test_retention_enforces_combined_byte_cap(self):
@@ -471,6 +471,7 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         publisher.event_config = discovery(options, 'latest_event')
         publisher.options = options
         publisher.daily_configs = {'daily_eggs': daily_discovery(options)}
+        publisher.zone_configs = {}
         client = Mock()
         publisher.on_connect(client, None, None, 0, None)
         self.assertTrue(publisher.connected.is_set())

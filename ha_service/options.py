@@ -36,7 +36,7 @@ def validate(raw):
         raise AppError('Unknown or invalid app options; check the HA Configuration tab.')
     options = dict(defaults, **OPTIONAL_DEFAULTS)
     options.update({key: value for key, value in raw.items() if key not in RETIRED_MASK_OPTIONS})
-    for key in ('capture_enabled', 'mqtt_enabled', 'mqtt_tls', 'transfer_enabled', 'store_captures'):
+    for key in ('capture_enabled', 'mqtt_enabled', 'mqtt_tls', 'transfer_enabled', 'store_captures', 'capture_deduplicate'):
         if type(options[key]) is not bool:
             raise AppError('Enable/disable options must be booleans.')
     for key in ('capture_pause_start', 'capture_pause_end'):
@@ -46,6 +46,7 @@ def validate(raw):
         if not isinstance(options[key], str) or len(options[key]) > 2048 or '\x00' in options[key]:
             raise AppError('Invalid text option; check camera and MQTT configuration.')
     ranges = {'capture_interval': (30, 86400), 'capture_timeout': (1, 60),
+              'capture_heartbeat_seconds': (60, 86400),
               'expire_after': (60, 172800), 'mqtt_port': (1, 65535),
               'retention_days': (1, 365), 'capture_storage_mb': (16, 4096),
               'journal_retention_days': (1, 3650),
@@ -57,6 +58,8 @@ def validate(raw):
             raise AppError('Invalid numeric option: ' + key + '.')
     if options['egg_min_area'] > options['egg_max_area']:
         raise AppError('egg_min_area must not exceed egg_max_area.')
+    if options['box_split'] not in ('none', 'vertical', 'horizontal'):
+        raise AppError('box_split must be none, vertical or horizontal.')
     for key, low in (('max_distance', 0.01), ('min_margin', 0)):
         value = options[key]
         if type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= 10:

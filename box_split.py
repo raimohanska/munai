@@ -96,7 +96,7 @@ def assign_regions(masks, split, fragment_gap=24):
                                  if name not in blocked]}
 
 
-def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8):
+def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8, novelty_mask=None):
     """Find every accepted presence component, then assign spatial occupancy.
 
     Reviewed full-frame empty calibration is required. No identity reference or
@@ -126,4 +126,32 @@ def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8)
                                                         region, chicken_area)
         if hen:
             masks.append(region != 0)
+    if novelty_mask is not None:
+        # Broad changes relative to reviewed empty backgrounds catch patterned
+        # bodies whose smooth feather patches are individually too fragmented.
+        novel = (novelty_mask & (~background_mask)).astype(np.uint8) * 255
+        novel = cv2.morphologyEx(novel, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
+        distance = cv2.distanceTransform(novel, cv2.DIST_L2, 5)
+        for contour in cv2.findContours(novel, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]:
+            if cv2.contourArea(contour) < chicken_area:
+                continue
+            region = np.zeros(gray.shape, np.uint8)
+            cv2.drawContours(region, [contour], -1, 255, -1)
+            inside = region != 0
+            if float(distance[inside].max()) >= 22:
+                masks.append(inside)
+        # Two methods may describe the same body. Never count overlapping masks
+        # as separate hens; genuinely merged bodies still fail ambiguity checks.
+        merged = []
+        for mask in masks:
+            changed = True
+            while changed:
+                changed = False
+                for index, existing in enumerate(merged):
+                    if np.any(mask & existing):
+                        mask = mask | merged.pop(index)
+                        changed = True
+                        break
+            merged.append(mask)
+        masks = merged
     return assign_regions(masks, split)
