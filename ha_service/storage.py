@@ -15,7 +15,7 @@ import warnings
 
 from PIL import Image
 
-from data_layout import LABEL, RESERVED, STAMP
+from data_layout import LABEL, RESERVED, STAMP, MAX_HISTORY_FILES
 
 from .options import AppError
 
@@ -163,7 +163,7 @@ class Store:
                 raise AppError('Invalid data entry.')
             if not self.valid_file(kind, relative):
                 raise AppError('Unexpected file in managed storage.')
-            if len(items) >= (MAX_REFERENCES if kind == 'references' else 2000):
+            if len(items) >= (MAX_REFERENCES if kind == 'references' else MAX_HISTORY_FILES):
                 raise AppError('Too many files in managed storage.')
             if checked.stat().st_size > MAX_FILE_BYTES:
                 raise AppError('Stored file exceeds the transfer size limit.')
@@ -293,7 +293,7 @@ class Store:
             total = sum(item[1] for item in files)
             removed = 0
             for modified, size, path in sorted(files):
-                if now - modified <= age and total <= maximum and len(files) - removed <= 1000:
+                if now - modified <= age and total <= maximum and len(files) - removed <= MAX_HISTORY_FILES:
                     break
                 path.unlink()
                 total -= size

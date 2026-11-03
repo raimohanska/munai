@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.9
+
+- Raise the combined capture/result file ceiling from 1,000 to 10,000, and align
+  transfer listing/client limits so a full day of minute-by-minute observations
+  can be retained and exported when the byte budget and retention age allow.
+- Increase the new-install capture storage default from 256 to 2,048 MiB. Existing
+  configured limits remain unchanged; increase them explicitly in HA. Age, byte
+  and disk reserve limits still apply; 24-hour coverage is not guaranteed on a
+  full disk or with unusually large images.
+- Add read-only `remote history` coverage/size summaries to the transfer CLI.
+- Add an offline-only split-box presence prototype and visual review tool. It
+  detects candidate side/divider occupancy and flags conflicting/merged bodies;
+  it does not yet change HA recognition, references, MQTT, events or egg counts.
+
 ## 0.1.8
 
 - Require five consecutive chicken-free observations to confirm departure; retain

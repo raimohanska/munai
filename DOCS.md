@@ -74,6 +74,74 @@ No overnight observations are fabricated or replayed: live sensors expire
 normally until fresh morning observations arrive. Legacy Pi/cron commands are
 unchanged.
 
+## Capture history and a 24-hour review window
+
+Normal capture/result retention applies the configured age and combined byte
+budget, plus a 10,000-file safety ceiling. Both an image and its result JSON
+consume a file slot. Before 0.1.9 that ceiling was 1,000, which could clip a
+minute-by-minute history to about eight hours even with days of retention set.
+
+For a review window of at least a day, start with:
+
+```yaml
+store_captures: true
+capture_interval: 60
+retention_days: 2
+capture_storage_mb: 2048
+```
+
+The 2,048 MiB default is for new installations; upgrades do not override an
+explicit existing limit. Change the byte budget in HA Configuration too. These
+settings are a target, not a storage guarantee: image sizes, free disk space,
+scheduled pauses and failed observations affect coverage. Do not disable the
+free-space reserve to extend history. Archived journal evidence has separate
+retention and is not a complete capture archive.
+
+Inspect retained coverage without changing HA:
+
+```bash
+python munai_remote.py remote history
+python munai_remote.py pull captures reports/my-private-history/captures
+python munai_remote.py pull results reports/my-private-history/results
+```
+
+Downloads do not remove older local files, so repeated pulls preserve earlier
+snapshots even after HA rotates them. No download can recover already deleted
+captures. History summaries show oldest/newest UTC timestamps, counts and bytes;
+they do not prove uninterrupted coverage between those endpoints.
+
+## Offline split-box presence prototype
+
+`box_split.py` and `tools/review_box_split.py` are offline development tools, not
+an enabled HA split-box feature. They preserve the full-frame 640×360 measurement
+scale, detect multiple presence components, and distinguish candidate side and
+divider occupancy without using position as an identity feature.
+
+```bash
+python tools/review_box_split.py captures/pending --references references \
+  --split vertical --output reports/split-presence-review
+```
+
+Vertical means left/right; horizontal means top/bottom. A divider-spanning body
+blocks egg-count eligibility on both sides. Separate divider/side bodies,
+multiple bodies assigned to one zone, and unusually broad merged bodies are
+ambiguous. The working assumption that a divider hen is alone must never erase
+contradictory evidence. Presence components can still merge or be missed, and a
+crossing hen is not necessarily perching: overlays require human review.
+
+Use reviewed full-frame empty references for this prototype. Keep centered
+identity references intact; half-frame side references and full-frame divider
+references need explicit geometry metadata and consistent feature extraction
+before HA activation. No automatic prediction may become a reviewed reference.
+
+Before an HA split-box pilot, complete shared-pool appearance recognition,
+separate half-nest visit/count state, divider-only presence tracking, conservative
+occlusion handling, zone-labelled journal/MQTT output, and safe layout migration.
+Validate sequences on held-out reviewed footage, including simultaneous side
+occupants, crossings, divider perching and eggs after departure. Adjacent frames
+from the same reference visit are not independent accuracy evidence. The offline
+prototype alone is not a claim that the split-box service is ready for deployment.
+
 ## Offline egg counting
 
 Run the experimental OpenCV counter in the devcontainer:

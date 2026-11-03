@@ -14,5 +14,5 @@ COPY ha_service/ ./ha_service/
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENCV_LOG_LEVEL=OFF
 LABEL io.hass.name="Munai" io.hass.description="MQTT nest occupant recognizer" \
-    io.hass.type="addon" io.hass.version="0.1.7" io.hass.arch="aarch64|amd64"
+    io.hass.type="addon" io.hass.version="0.1.9" io.hass.arch="aarch64|amd64"
 CMD ["python", "-m", "ha_service"]

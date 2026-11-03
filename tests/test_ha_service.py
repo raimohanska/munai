@@ -331,10 +331,23 @@ class StorageTests(StorageFixture):
         self.assertEqual(len(list((self.store.root / 'references' / 'versions').iterdir())), 1)
 
     def test_retention_enforces_file_count_limit(self):
-        for index in range(1001):
+        from data_layout import MAX_HISTORY_FILES
+        for index in range(MAX_HISTORY_FILES + 1):
             (self.store.root / 'results' / ('20000101T120000_%06dZ.json' % index)).write_text('{}')
         self.assertEqual(self.store.retain(), 1)
-        self.assertEqual(len(self.store.files('results')), 1000)
+        self.assertEqual(len(self.store.files('results')), MAX_HISTORY_FILES)
+
+    def test_one_day_of_minutely_history_survives_and_is_exportable(self):
+        folder = self.store.root / 'captures' / 'empty'
+        folder.mkdir()
+        # Synthetic storage entries only: no camera, image decode or capture.
+        for index in range(1440):
+            name = '20000101T120000_%06dZ' % index
+            (folder / (name + '.jpg')).write_bytes(b'synthetic history')
+            (self.store.root / 'results' / (name + '.json')).write_text('{}')
+        self.assertEqual(self.store.retain(), 0)
+        self.assertEqual(len(self.store.files('captures')), 1440)
+        self.assertEqual(len(self.store.files('results')), 1440)
 
     def test_retention_enforces_combined_byte_cap(self):
         self.upload()

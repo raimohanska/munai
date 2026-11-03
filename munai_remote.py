@@ -15,7 +15,7 @@ import sys
 import tempfile
 from urllib.parse import quote, urlsplit
 
-from data_layout import RESERVED, STAMP, reference_directory
+from data_layout import RESERVED, STAMP, MAX_HISTORY_FILES, reference_directory
 
 MAX_BYTES = 8 * 1024 * 1024
 DEFAULT_CONFIG = Path(__file__).resolve().parent / '.munai-remote.json'
@@ -240,7 +240,7 @@ def download_path(root, relative):
 
 def pull(remote, kind, root, dry_run=False, overwrite=False):
     listing = remote.request('GET', '/v1/files/' + kind)
-    if len(listing['files']) > 2000:
+    if len(listing['files']) > MAX_HISTORY_FILES:
         raise RemoteError('Remote file count exceeds the transfer limit.')
     pending = []
     for item in listing['files']:
@@ -280,6 +280,28 @@ def pull(remote, kind, root, dry_run=False, overwrite=False):
                 os.unlink(name)
 
 
+def history_summary(remote):
+    """Read-only retention coverage; never access camera configuration or logs."""
+    summary = {}
+    for kind, suffix in (('captures', 'jpg'), ('results', 'json')):
+        files = remote.request('GET', '/v1/files/' + kind)['files']
+        if len(files) > MAX_HISTORY_FILES:
+            raise RemoteError('Remote file count exceeds the transfer limit.')
+        stamps = []
+        size = 0
+        for item in files:
+            name = item['path'].rsplit('/', 1)[-1]
+            if (not re.fullmatch(STAMP + r'\.' + suffix, name)
+                    or type(item['bytes']) is not int or not 0 <= item['bytes'] <= MAX_BYTES):
+                raise RemoteError('Invalid history listing.')
+            stamps.append(name.rsplit('.', 1)[0])
+            size += item['bytes']
+        summary[kind] = {'files': len(files), 'bytes': size,
+                         'oldest_utc': min(stamps) if stamps else None,
+                         'newest_utc': max(stamps) if stamps else None}
+    return summary
+
+
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument('--profile', default='green')
@@ -290,6 +312,7 @@ def parser():
     pair.add_argument('url')
     pair.add_argument('--fingerprint', required=True)
     remote.add_parser('status')
+    remote.add_parser('history', help='Show retained capture/result counts, sizes and UTC coverage')
     remote.add_parser('logout', help='Remove local token/profile, NOT server-side revocation')
     for command in ('push', 'pull', 'export'):
         transfer = sub.add_parser(command)
@@ -336,7 +359,8 @@ def main(argv=None):
             raise RemoteError('Profile has no valid local token; revoke the old digest in HA, log out locally and pair again.')
         remote = Remote(profile, token)
         if arguments.command == 'remote':
-            print(json.dumps(remote.request('GET', '/v1/status'), indent=2))
+            value = history_summary(remote) if arguments.remote_command == 'history' else remote.request('GET', '/v1/status')
+            print(json.dumps(value, indent=2))
         elif arguments.command == 'push':
             push(remote, arguments.directory, arguments.dry_run, arguments.overwrite)
         elif arguments.command == 'pull':

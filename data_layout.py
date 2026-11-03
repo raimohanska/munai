@@ -4,6 +4,9 @@ from pathlib import Path
 import re
 
 STAMP = r'\d{8}T\d{6}_\d{6}Z'
+# Combined capture/result ceiling: a minute-by-minute day uses 2,880 files.
+# Transfer listings use the same bound so retained files remain exportable.
+MAX_HISTORY_FILES = 10000
 RESERVED = frozenset(('unknown', 'unreviewed', 'empty', 'eggs', 'pending',
                       'no_chicken', 'unavailable', 'versions', 'staging', 'state'))
 LABEL = re.compile(r'^[a-z0-9][a-z0-9_-]{0,47}$')
