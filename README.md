@@ -11,6 +11,11 @@ timeline with the photos behind each decision. Enable **Show in sidebar** for
 easy access. Journal photos have their own **365-day retention**, even with
 ordinary capture storage off. See [journal storage and evidence](DOCS.md#event-journal).
 
+**Active reference gallery (0.1.11+):** select **References** in that same Web UI
+to see the photos currently active on the server, grouped by hen, with empty-nest
+calibration separately. The gallery is read-only; journal-to-reference promotion
+will be added separately.
+
 **0.1.10:** ordinary stored photos are deduplicated with 15-minute heartbeats;
 recognition and journal evidence still use every observation. Experimental
 left/right or top/bottom nests, divider occupancy and zone-labelled journal/MQTT

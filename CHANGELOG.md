@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.11
+
+- Add a read-only References page linked from the HA Ingress journal, showing
+  the server's active reference version, configured split mode, per-hen counts,
+  paginated identity photos and separate full-frame empty calibration images.
+  Show filenames and full-size original links; exclude staging, previous versions,
+  local candidates and unreviewed predictions.
+- Pin reference image URLs to their active version. If references change while
+  a page is open, require a refresh instead of silently substituting a different
+  photo. Retain Ingress-only access and the journal's security headers. Gallery
+  metadata does not hash or decode all reference photos on each page load.
+- Keep reference editing and journal-to-reference promotion out of this release;
+  no labels, recognition settings, reference activation or historical totals change.
+
 ## 0.1.10
 
 - Deduplicate ordinary HA photo storage after recognition, while retaining raw

@@ -55,6 +55,31 @@ appearance-based identity rules change.
 Back up app data before upgrading: older releases cannot read the new nest-state
 format, so a downgrade also requires restoring the matching pre-upgrade backup.
 
+## Active references page (0.1.11+)
+
+In Munai's **Open Web UI**, select **References** next to the journal links. The
+page shows the active reference version on the server, configured box split,
+counts for each identity, and the original reference photos grouped by hen.
+Reviewed full-frame empty-nest calibration is shown separately. Photos are
+paginated (20 per page), lazy-loaded and linked to their full-size JPEGs; their
+filenames are visible so you can report a specific reference.
+
+This reads the server's active immutable reference directory, not the devcontainer's
+candidate set, previous versions, staging uploads or capture predictions. The
+reference version is separate from the app release version. An active set can
+still be incompatible with the configured recognition layout: listing it is not
+proof of readiness or accuracy. Recognition picks up activated references on its
+next round.
+
+Image links include the active reference version. If an upload/rollback changes
+the active set while a page is open, old image requests ask you to refresh rather
+than silently displaying new content under an old label. All links remain behind
+HA Ingress; there is no public `/local` gallery or additional host port.
+
+The page is read-only. Editing labels, approving journal photos as references,
+and reference promotion remain separate future work. Browsing does not modify
+active references, predictions, events or daily egg totals.
+
 ## Overnight capture pause
 
 All HA service log messages include a local timestamp and UTC offset, for

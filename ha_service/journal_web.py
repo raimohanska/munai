@@ -6,7 +6,8 @@ import shutil
 from urllib.parse import parse_qs, urlsplit
 
 from .journal import ID
-from .storage import MAX_FILE_BYTES, safe_path
+from .storage import MAX_FILE_BYTES, VERSION_ID, safe_path
+from .references_web import render as render_references
 
 PAGE_SIZE = 20
 CSS = '''
@@ -68,7 +69,7 @@ def render(journal, page):
                  len(paths), journal.store.options['journal_retention_days'], usage),
              '<p class="muted">Times are shown in your browser’s timezone. Event times indicate confirmation, '
              'not the exact moment of laying. Predictions are not reviewed identities.</p>',
-             '<a href="./">Latest entries</a> · <a href="">Refresh</a>']
+             '<a href="./">Latest entries</a> · <a href="references">References</a> · <a href="">Refresh</a>']
     if free < low_space + 16:
         parts.append('<p class="notice">Storage is low. New observations may stop to protect the disk reserve. '
                      'Back up the archive and free space; younger journal entries are not automatically discarded.</p>')
@@ -169,18 +170,34 @@ class JournalHandler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             if parsed.scheme or parsed.netloc or parsed.fragment:
                 raise ValueError()
-            if parsed.path in ('/', '/index.html'):
+            if parsed.path in ('/', '/index.html', '/references', '/references/'):
                 query = parse_qs(parsed.query, strict_parsing=True) if parsed.query else {}
                 if set(query) - {'page'} or len(query.get('page', ['0'])) != 1:
                     raise ValueError()
                 page = query.get('page', ['0'])[0]
                 if not page.isdigit() or len(page) > 8:
                     raise ValueError()
-                self.response(200, render(self.server.journal, int(page)), 'text/html; charset=utf-8')
+                data = (render_references(self.server.journal.store, int(page),
+                                          base='../' if parsed.path.endswith('/') else '')
+                        if parsed.path in ('/references', '/references/') else
+                        render(self.server.journal, int(page)))
+                self.response(200, data, 'text/html; charset=utf-8')
             elif parsed.path == '/journal.css' and not parsed.query:
                 self.response(200, CSS.encode('utf-8'), 'text/css; charset=utf-8')
             elif parsed.path == '/journal.js' and not parsed.query:
                 self.response(200, JS.encode('utf-8'), 'text/javascript; charset=utf-8')
+            elif parsed.path.startswith('/references/') and not parsed.query:
+                parts = parsed.path[len('/references/'):].split('/', 1)
+                store = self.server.journal.store
+                if (len(parts) != 2 or not VERSION_ID.fullmatch(parts[0])
+                        or not store.valid_file('references', parts[1])):
+                    raise ValueError()
+                with store.lock:
+                    if store.revision != parts[0]:
+                        self.response(409, b'References changed; refresh the References page.', 'text/plain')
+                        return
+                    data = store.read('references', parts[1])
+                self.response(200, data, 'image/jpeg')
             elif parsed.path.startswith('/images/') and not parsed.query:
                 name = parsed.path[len('/images/'):]
                 if not name.endswith('.jpg') or not ID.fullmatch(name[:-4]):
