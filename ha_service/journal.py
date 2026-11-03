@@ -25,7 +25,7 @@ def valid_evidence(value):
     if not isinstance(value, dict) or set(value) != set(empty_evidence()):
         return False
     for key in ('baseline', 'presence', 'count'):
-        if not valid_frames(value[key]):
+        if not valid_frames(value[key], 5 if key == 'presence' else 3):
             return False
     for key in ('visit', 'pending'):
         if not valid_groups(value[key]):
@@ -34,8 +34,8 @@ def valid_evidence(value):
             and all(valid_entry(entry) for entry in value['outbox']))
 
 
-def valid_frames(frames):
-    return (isinstance(frames, list) and len(frames) <= 3 and all(
+def valid_frames(frames, limit=3):
+    return (isinstance(frames, list) and len(frames) <= limit and all(
         isinstance(frame, dict) and set(frame) == {'id', 'label', 'egg_count'}
         and isinstance(frame['id'], str) and ID.fullmatch(frame['id'])
         and isinstance(frame['label'], str) and len(frame['label']) <= 80
@@ -51,7 +51,9 @@ ROLES = ('Before visit / previous count', 'Identity confirmation',
 def valid_groups(groups):
     return (isinstance(groups, list) and len(groups) <= 4 and all(
         isinstance(group, dict) and set(group) == {'role', 'frames'}
-        and group['role'] in ROLES and valid_frames(group['frames']) for group in groups))
+        and group['role'] in ROLES
+        and valid_frames(group['frames'], 5 if group['role'] == ROLES[2] else 3)
+        for group in groups))
 
 
 def valid_entry(entry):
@@ -68,7 +70,7 @@ def group(role, frames):
 def evolve(before, after, frame, streak, egg_streak, events):
     """Use the state machine's actual streaks, never a parallel decision rule."""
     evidence = copy.deepcopy(before['journal'])
-    evidence['presence'] = (evidence['presence'] if streak > 1 else [])[-2:] + [frame]
+    evidence['presence'] = (evidence['presence'] if streak > 1 else [])[-4:] + [frame]
     evidence['count'] = ((evidence['count'] if egg_streak > 1 else [])[-2:] + [frame]
                          if egg_streak else [])
     presence, counts = evidence['presence'], evidence['count']
@@ -82,7 +84,9 @@ def evolve(before, after, frame, streak, egg_streak, events):
         elif text.endswith(' collected'):
             groups = [group(ROLES[0], evidence['baseline']), group(ROLES[3], counts)]
         else:
-            groups = context + [group(ROLES[3] if text.endswith(' laid an Egg')
+            departure = ([group(ROLES[2], presence)]
+                         if text.endswith(' laid an Egg') and before['hen'] is not None else [])
+            groups = context + departure + [group(ROLES[3] if text.endswith(' laid an Egg')
                                       else ROLES[2], counts if text.endswith(' laid an Egg') else presence)]
         evidence['outbox'].append({'id': frame['id'][:23] + '_' + format(index, '02x') + uuid.uuid4().hex[2:],
                                    'text': text, 'evidence': copy.deepcopy(groups)})

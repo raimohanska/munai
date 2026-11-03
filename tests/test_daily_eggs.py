@@ -23,7 +23,9 @@ class DailyEggTests(unittest.TestCase):
     def tearDown(self):
         self.scratch.cleanup()
 
-    def shots(self, label, eggs=0, n=3):
+    def shots(self, label, eggs=0, n=None):
+        if n is None:
+            n = 5 if label == 'no_chicken' and self.nest.state['hen'] is not None else 3
         events = []
         for _ in range(n):
             events.extend(self.nest.observe(label, eggs))
@@ -51,6 +53,7 @@ class DailyEggTests(unittest.TestCase):
         self.shots('unknown')
         self.shots('no_chicken', 2, 2)
         self.assertEqual(self.counts()['hen_a'], 0)
+        self.assertEqual(self.shots('no_chicken', 2, 2), [])
         self.assertEqual(self.shots('no_chicken', 2, 1), ['Hen_a laid an Egg'])
         self.assertEqual(self.counts(), {'hen_a': 2, 'hen_b': 0, 'unknown': 0})
         self.shots('no_chicken', 0)
@@ -80,7 +83,7 @@ class DailyEggTests(unittest.TestCase):
     def test_delayed_attribution_is_atomic_and_not_repeated_after_restart(self):
         self.shots('no_chicken', 0)
         self.shots('hen_a')
-        for eggs in (1, 2, 1):
+        for eggs in (1, 2, 1, 2, 1):
             self.shots('no_chicken', eggs, 1)
         self.assertEqual(self.counts()['hen_a'], 0)
         self.restart()
@@ -93,7 +96,7 @@ class DailyEggTests(unittest.TestCase):
     def test_interrupted_pending_visit_counts_increase_as_unknown(self):
         self.shots('no_chicken', 0)
         self.shots('hen_a')
-        for eggs in (1, 2, 1):
+        for eggs in (1, 2, 1, 2, 1):
             self.shots('no_chicken', eggs, 1)
         self.shots('hen_b')
         self.shots('no_chicken', 2)
@@ -102,7 +105,7 @@ class DailyEggTests(unittest.TestCase):
     def test_failed_commit_cannot_advance_counters_or_consume_laying(self):
         self.shots('no_chicken', 0)
         self.shots('hen_a')
-        self.shots('no_chicken', 1, 2)
+        self.shots('no_chicken', 1, 4)
         before = self.nest.daily_snapshot()
         with patch('ha_service.nest.atomic_json', side_effect=OSError('synthetic')):
             with self.assertRaises(OSError):
@@ -135,6 +138,22 @@ class DailyEggTests(unittest.TestCase):
         self.shots('no_chicken', 3)
         self.assertEqual(self.counts()['unknown'], 1)
 
+    def test_delayed_attribution_and_high_water_survive_daily_rollover(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.shots('no_chicken', 0)
+        self.day = date(2026, 11, 3)
+        self.restart()
+        self.assertEqual(self.shots('no_chicken', 2), ['Hen_a laid an Egg'])
+        self.assertEqual(self.counts()['hen_a'], 2)
+        self.shots('no_chicken', 1)
+        self.day = date(2026, 11, 4)
+        self.restart()
+        self.assertEqual(self.shots('no_chicken', 2), [])
+        self.assertEqual(sum(self.counts().values()), 0)
+        self.assertEqual(self.shots('no_chicken', 3), ['Hen_a laid an Egg'])
+        self.assertEqual(self.counts()['hen_a'], 1)
+
     def test_backwards_date_fails_closed_instead_of_resetting_totals(self):
         before = self.nest.daily_snapshot()
         self.day = date(2026, 11, 1)
@@ -147,6 +166,8 @@ class DailyEggTests(unittest.TestCase):
         state = dict(self.nest.state)
         del state['daily_eggs']
         del state['journal']
+        del state['pending_settled']
+        del state['egg_high_water']
         state['version'] = 2
         self.nest.path.write_text(json.dumps(state))
         self.restart()

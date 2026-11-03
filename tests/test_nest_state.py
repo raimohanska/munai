@@ -20,7 +20,9 @@ class NestTests(unittest.TestCase):
     def tearDown(self):
         self.scratch.cleanup()
 
-    def shots(self, label, eggs=0, n=3):
+    def shots(self, label, eggs=0, n=None):
+        if n is None:
+            n = 5 if label == 'no_chicken' and self.nest.state['hen'] is not None else 3
         events = []
         for _ in range(n):
             events.extend(self.nest.observe(label, eggs))
@@ -81,6 +83,7 @@ class NestTests(unittest.TestCase):
         self.nest = NestState(self.root)
         self.assertEqual(self.nest.state['latest_event'], 'Hen_a arrived')
         self.assertEqual(self.shots('no_chicken', 2, 2), [])
+        self.assertEqual(self.shots('no_chicken', 2, 2), [])
         self.assertEqual(self.shots('no_chicken', 2, 1), ['Hen_a laid an Egg'])
         self.nest = NestState(self.root)
         self.assertEqual(self.shots('no_chicken', 2), [])
@@ -90,6 +93,120 @@ class NestTests(unittest.TestCase):
         self.nest.reset_confirmation()
         self.assertEqual(self.shots('hen_a', n=2), [])
         self.assertEqual(self.shots('hen_a', n=1), ['Hen_a arrived'])
+
+    def test_departure_requires_five_empty_frames_even_when_eggs_are_stable(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.assertEqual(self.shots('no_chicken', 1, 4), [])
+        self.assertEqual(self.nest.snapshot()['occupant'], 'Hen_a')
+        self.assertEqual(self.nest.snapshot()['egg_count'], 0)
+        self.assertEqual(self.shots('no_chicken', 1, 1), ['Hen_a laid an Egg'])
+
+    def test_hen_frame_and_failed_round_both_restart_departure_confirmation(self):
+        self.shots('hen_a')
+        self.shots('no_chicken', 0, 4)
+        self.shots('unknown', n=1)
+        self.assertEqual(self.shots('no_chicken', 0, 4), [])
+        self.nest.reset_confirmation()
+        self.assertEqual(self.shots('no_chicken', 0, 4), [])
+        self.assertEqual(self.shots('no_chicken', 0, 1), ['Hen_a left'])
+
+    def test_delayed_laying_after_settled_zero_survives_restart(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.assertEqual(self.shots('no_chicken', 0), ['Hen_a left'])
+        self.shots('no_chicken', 0, 12)
+        self.nest = NestState(self.root)
+        self.assertEqual(self.shots('no_chicken', 1, 2), [])
+        self.assertEqual(self.shots('no_chicken', 1, 1), ['Hen_a laid an Egg'])
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 1)
+        self.nest = NestState(self.root)
+        self.assertEqual(self.shots('no_chicken', 1, 8), [])
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 1)
+
+    def test_missed_second_egg_is_attributed_without_recounting_first(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.assertEqual(self.shots('no_chicken', 1), ['Hen_a laid an Egg'])
+        self.assertEqual(self.shots('no_chicken', 2), ['Hen_a laid an Egg'])
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 2)
+
+    def test_new_confirmed_visit_replaces_delayed_attribution(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.shots('no_chicken', 0)
+        self.shots('hen_b')
+        self.assertEqual(self.shots('no_chicken', 0), ['Hen_b left'])
+        self.assertEqual(self.shots('no_chicken', 1), ['Hen_b laid an Egg'])
+        counts = self.nest.daily_snapshot()['counts']
+        self.assertEqual((counts['hen_a'], counts['hen_b']), (0, 1))
+
+    def test_unknown_visit_replaces_known_delayed_attribution(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.shots('no_chicken', 0)
+        self.shots('unknown')
+        self.shots('no_chicken', 0)
+        self.assertEqual(self.shots('no_chicken', 1), ['Unknown laid an Egg'])
+        counts = self.nest.daily_snapshot()['counts']
+        self.assertEqual((counts['hen_a'], counts['unknown']), (0, 1))
+
+    def test_collection_ends_attribution_but_an_initial_zero_does_not(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.shots('no_chicken', 1)
+        self.assertEqual(self.shots('no_chicken', 0), ['1 egg collected'])
+        self.assertEqual(self.shots('no_chicken', 1), [])
+        counts = self.nest.daily_snapshot()['counts']
+        self.assertEqual((counts['hen_a'], counts['unknown']), (1, 1))
+
+    def test_partial_count_dips_do_not_double_count_on_rebound_after_restart(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.shots('no_chicken', 2)
+        self.shots('no_chicken', 1)
+        self.nest = NestState(self.root)
+        self.assertEqual(self.shots('no_chicken', 2), [])
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 2)
+        self.assertEqual(self.shots('no_chicken', 3), ['Hen_a laid an Egg'])
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 3)
+
+    def test_missing_baseline_does_not_invent_a_laying_attribution(self):
+        self.shots('hen_a')
+        self.assertEqual(self.shots('no_chicken', 1), ['Hen_a left'])
+        self.assertEqual(self.shots('no_chicken', 2), [])
+        counts = self.nest.daily_snapshot()['counts']
+        self.assertEqual((counts['hen_a'], counts['unknown']), (0, 2))
+
+    def test_failed_delayed_laying_commit_does_not_consume_attribution(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.shots('no_chicken', 0)
+        self.shots('no_chicken', 1, 2)
+        before = self.nest.daily_snapshot()
+        with patch('ha_service.nest.atomic_json', side_effect=OSError('synthetic')):
+            with self.assertRaises(OSError):
+                self.shots('no_chicken', 1, 1)
+        self.assertEqual(self.nest.daily_snapshot(), before)
+        self.assertEqual(self.shots('no_chicken', 1, 1), ['Hen_a laid an Egg'])
+
+    def test_v4_migration_preserves_pending_visit_and_does_not_parse_event_text(self):
+        self.shots('no_chicken', 0)
+        self.shots('hen_a')
+        self.shots('no_chicken', 0)
+        old = dict(self.nest.state)
+        for key in ('pending_settled', 'egg_high_water'):
+            del old[key]
+        old['version'] = 4
+        self.nest.path.write_text(json.dumps(old))
+        self.nest = NestState(self.root)
+        self.assertEqual(self.shots('no_chicken', 1), ['Hen_a laid an Egg'])
+        old.update(pending_hen=None, pending_baseline=None, eggs=1,
+                   latest_event='Hen_b left')
+        self.nest.path.write_text(json.dumps(old))
+        self.nest = NestState(self.root)
+        self.assertEqual(self.shots('no_chicken', 2), [])
+        self.assertEqual(self.nest.daily_snapshot()['counts']['unknown'], 1)
 
     def test_collection_confirmation_restarts_and_event_is_not_repeated(self):
         self.shots('no_chicken', 1)
@@ -138,6 +255,8 @@ class NestTests(unittest.TestCase):
                dict(good, confirmed=1), dict(good, confirmed=False),
                dict(good, pending_hen='empty'), dict(good, pending_baseline=1),
                dict(good, pending_hen='hen_b'),
+               dict(good, pending_settled=1), dict(good, pending_settled=True),
+               dict(good, egg_high_water=True), dict(good, egg_high_water=-1),
                dict(good, latest_event='bad\ntext'), dict(good, extra=1)]
         for state in bad:
             self.nest.path.write_text(json.dumps(state))
@@ -202,7 +321,7 @@ class NestTests(unittest.TestCase):
     def test_departure_and_laying_confirmation_can_be_separate_and_survive_restart(self):
         self.shots('no_chicken', 2)
         self.shots('hen_a')
-        for eggs in (3, 4):
+        for eggs in (3, 4, 3, 4):
             self.shots('no_chicken', eggs, 1)
         self.assertEqual(self.shots('no_chicken', 3, 1), ['Hen_a left'])
         self.assertEqual(self.nest.snapshot()['occupant'], 'empty')
@@ -216,7 +335,7 @@ class NestTests(unittest.TestCase):
     def test_unsettled_departure_cannot_be_attributed_to_next_hen(self):
         self.shots('no_chicken', 2)
         self.shots('hen_a')
-        for eggs in (3, 4, 3):
+        for eggs in (3, 4, 3, 4, 3):
             self.shots('no_chicken', eggs, 1)
         self.shots('hen_b')
         self.assertIsNone(self.nest.state['baseline'])

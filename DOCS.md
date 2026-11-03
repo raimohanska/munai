@@ -22,7 +22,8 @@ most 20 events and the latest page refreshes every minute. A confirmation time i
 not an exact laying time. Identity/count predictions remain experimental and
 are not human-reviewed labels.
 
-Arrival/departure decisions retain their three confirming frames. Laying entries
+Arrival decisions retain their three confirming frames; departures retain five.
+Laying entries
 also retain the before-visit egg baseline and identity evidence; delayed egg
 confirmation retains the departure evidence too, including across restarts.
 Collection entries show the previous count and the three zero-count frames.
@@ -412,14 +413,21 @@ HA restarts do not replay old identities as fresh. HA's birth message triggers
 rediscovery; the next successful capture supplies a fresh observation.
 
 Egg count shares Occupant's observation, availability and expiry. Occupant uses
-the same three-observation confirmation and unknown-identity handling as events.
+three-observation arrival/identity confirmation and five-observation empty-nest
+departure confirmation, with the same unknown-identity handling as events.
 Egg count changes require three consecutive empty images with the same count,
 including positive counts and zero. Known and unknown hens suppress egg detection
 and preserve the last confirmed count, rather than replacing it with zero.
 Until established, occupant and egg count are unknown (JSON `null`). Departure
 can be confirmed before the count settles; a later confirmed increase can still
-produce a laying event for that visit. A new visit before the count settles
-discards that attribution and starts without a known egg baseline.
+produce a laying event for that visit. The last visitor remains eligible even
+after an unchanged count settles, including a zero that missed the egg. A later
+increase can therefore produce `Hen_a left` followed by `Hen_a laid an Egg`.
+Attribution and its evidence survive restarts, but confirmation streaks restart.
+A new confirmed visit replaces the previous visitor; if it occurs before the
+post-departure count settles, it starts without a known egg baseline. Confirmed
+collection ends the previous attribution window. Missing baselines and ambiguous
+swaps are never resolved by guessing an identity from the latest event text.
 Detection failures fail
 the observation rather than publishing a fabricated zero. Counting works even
 with `store_captures` disabled and never changes capture categories or references.
@@ -466,7 +474,11 @@ do. Counts reset on the first scheduler iteration of a new day, even while captu
 is paused or disabled. An offline service cannot publish a midnight reset; always
 check the payload date rather than assuming a retained payload describes today.
 
-Every confirmed visible-egg **increase** is added once, by its full amount. A
+Every confirmed visible-egg count above the **highest confirmed count since the
+last confirmed zero collection** adds only the excess. This prevents stable partial
+detection dips and rebounds from counting the same egg twice, including across
+restarts and daily rollover. Actual partial collection is unsupported: production
+may be undercounted until the old high-water count is exceeded or zero is confirmed. A
 reliably attributed visit credits the hen; unidentified visits, ambiguous hen
 swaps, increases without an observed visit, and eggs in the first ever confirmed
 empty-nest count credit `unknown`. First-observed eggs may have been laid before
@@ -493,7 +505,7 @@ recovered from this topic. Back up application data as well as InfluxDB.
 
 Counts remain camera-based estimates. Eggs hidden during occupancy, simultaneous
 laying/collection, missed activity during downtime, and persistent detection errors
-cannot be reconstructed reliably. A falsely confirmed decrease followed by an
+cannot be reconstructed reliably. A falsely confirmed zero followed by an
 increase can look like collection followed by new eggs. Confirmation reduces this
 risk but cannot guarantee every physical egg is observed or correctly attributed.
 

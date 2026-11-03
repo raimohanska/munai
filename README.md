@@ -145,7 +145,9 @@ are no hidden eggs. Both live sensors become unavailable if observations go stal
 
 **Latest event** holds messages such as `Hen_a arrived`, `Hen_a laid an Egg`,
 `Hen_a left`, and `2 eggs collected` (synthetic identity shown here).
-Arrivals, departures, and identity changes require **3 consecutive shots**.
+Arrivals and identity changes require **3 consecutive shots**. Departure to an
+empty nest requires **5 consecutive chicken-free shots** (about four minutes from
+the first empty image at a 60-second interval), regardless of egg-count agreement.
 Unknown observations preserve a confirmed hen's identity. A direct hen swap
 reports the old hen leaving and the new hen arriving; the latest sensor shows
 the arrival. Hidden eggs are not attributed across that swap. An initially
@@ -157,6 +159,15 @@ baseline exists yet, only a leaving event is reported. Collection requires **3
 consecutive chicken-free zero-egg shots**, reports the preceding positive count,
 and fires only once. Brief zero readings and occupied-nest zeros never clear the
 baseline. Partial collection is not announced.
+
+The last confirmed visitor remains eligible for delayed attribution even after
+the post-departure count settles: `Hen_a left` can be followed later by
+`Hen_a laid an Egg` when three matching empty images confirm an increase. A new
+confirmed visit replaces that context; confirmed collection ends it. Missing
+baselines and ambiguous hen swaps still produce unknown attribution. These are
+visit-based inferences, not direct observations of laying. Partial count dips and
+rebounds do not recount production: only counts above the highest confirmed count
+since the last confirmed zero add eggs. Actual partial collection is unsupported.
 
 The event text is retained at `munai/<device_id>/latest_event`, separate from
 non-retained live state at `munai/<device_id>/state`. It does not expire between

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.8
+
+- Require five consecutive chicken-free observations to confirm departure; retain
+  three-frame confirmation for arrivals, identity changes and matching egg counts.
+- Retain the last confirmed visitor and pre-visit baseline after a settled count,
+  so a missed egg can produce a later laying event and credit that visitor's daily
+  total. Preserve attribution through restarts; replace it on a new confirmed visit
+  and end it on confirmed collection. Never invent a missing baseline or recover
+  identity from historical event text.
+- Persist the highest confirmed egg count until confirmed zero collection so a
+  partial detection dip/rebound cannot count the same eggs twice. Partial collection
+  remains unsupported; new production must exceed that high-water count.
+- Preserve all five departure photos and later matching-count photos in journal
+  evidence, including delayed laying after an initially settled zero count.
+
 ## 0.1.7
 
 - Add a read-only, newest-first journal through authenticated HA Ingress, with

@@ -7,6 +7,10 @@ from .options import AppError
 from .storage import atomic_json, safe_path
 from .journal import empty_evidence, evolve, valid_evidence
 
+ARRIVAL_FRAMES = 3
+DEPARTURE_FRAMES = 5
+EGG_FRAMES = 3
+
 
 def valid_hen(value):
     return (isinstance(value, str) and
@@ -36,9 +40,10 @@ class NestState:
     def __init__(self, root, today=None):
         self.today = today or date.today
         self.path = safe_path(root, 'nest-state.json')
-        self.state = {'version': 4, 'hen': None, 'eggs': None,
+        self.state = {'version': 5, 'hen': None, 'eggs': None,
                       'baseline': None, 'latest_event': None, 'confirmed': False,
                       'pending_hen': None, 'pending_baseline': None,
+                      'pending_settled': False, 'egg_high_water': None,
                       'daily_eggs': {'date': None, 'counts': {'unknown': 0}},
                       'journal': empty_evidence()}
         if self.path.exists():
@@ -52,14 +57,20 @@ class NestState:
                     state.update(version=2, confirmed=(state['hen'] is not None or
                                                       state['eggs'] is not None),
                                  pending_hen=None, pending_baseline=None)
-                if (isinstance(state, dict) and set(state) == set(self.state) - {'daily_eggs', 'journal'}
+                new_fields = {'pending_settled', 'egg_high_water'}
+                if (isinstance(state, dict) and set(state) == set(self.state) - {'daily_eggs', 'journal'} - new_fields
                         and type(state['version']) is int and state['version'] == 2):
                     state.update(version=3, daily_eggs={'date': None, 'counts': {'unknown': 0}})
-                if (isinstance(state, dict) and set(state) == set(self.state) - {'journal'}
+                if (isinstance(state, dict) and set(state) == set(self.state) - {'journal'} - new_fields
                         and type(state['version']) is int and state['version'] == 3):
                     state.update(version=4, journal=empty_evidence())
+                if (isinstance(state, dict) and set(state) == set(self.state) - new_fields
+                        and type(state['version']) is int and state['version'] == 4):
+                    # Do not infer a visitor from historical event text.
+                    state.update(version=5, pending_settled=False,
+                                 egg_high_water=state['eggs'])
                 if (not isinstance(state, dict) or set(state) != set(self.state)
-                        or type(state['version']) is not int or state['version'] != 4
+                        or type(state['version']) is not int or state['version'] != 5
                         or not valid_evidence(state['journal'])
                         or not valid_daily(state['daily_eggs'])
                         or type(state['confirmed']) is not bool
@@ -67,6 +78,12 @@ class NestState:
                         or (state['pending_hen'] is not None and
                             not valid_hen(state['pending_hen']))
                         or not count(state['pending_baseline'])
+                        or type(state['pending_settled']) is not bool
+                        or (state['pending_settled'] and state['pending_hen'] is None)
+                        or not count(state['egg_high_water'])
+                        or (state['eggs'] is None and state['egg_high_water'] is not None)
+                        or (state['eggs'] is not None and
+                            (state['egg_high_water'] is None or state['egg_high_water'] < state['eggs']))
                         or (state['pending_hen'] is None and state['pending_baseline'] is not None)
                         or (state['pending_hen'] is not None and state['hen'] is not None)
                         or (not state['confirmed'] and any(state[key] is not None for key in
@@ -145,25 +162,28 @@ class NestState:
         # Unknown frames establish presence, but never erase a known identity.
         target = hen if label == 'unknown' and hen is not None else label
         candidate = target
-        streak = min(3, self.streak + 1) if candidate == self.candidate else 1
+        streak = min(DEPARTURE_FRAMES, self.streak + 1) if candidate == self.candidate else 1
         egg_candidate = eggs if label == 'no_chicken' else None
-        egg_streak = (min(3, self.egg_streak + 1)
+        egg_streak = (min(EGG_FRAMES, self.egg_streak + 1)
                       if egg_candidate is not None and egg_candidate == self.egg_candidate
                       else 1 if egg_candidate is not None else 0)
         events = []
         laying_hen = None
-        if streak >= 3:
+        required = DEPARTURE_FRAMES if target == 'no_chicken' and hen is not None else ARRIVAL_FRAMES
+        if streak >= required:
             state['confirmed'] = True
             if target == 'no_chicken' and hen is not None:
                 name = hen.capitalize() if hen != 'unknown' else 'Unknown'
-                laid = (egg_streak >= 3 and state['baseline'] is not None
-                        and eggs > state['baseline'])
+                laid = (egg_streak >= EGG_FRAMES and state['baseline'] is not None
+                        and eggs > state['baseline']
+                        and eggs > (state['egg_high_water'] or 0))
                 if laid:
                     laying_hen = hen
                 events.append(name + (' laid an Egg' if laid else ' left'))
-                if egg_streak < 3:
-                    state['pending_hen'] = hen
-                    state['pending_baseline'] = state['baseline']
+                # A settled but missed egg must not erase the last visitor.
+                state['pending_hen'] = hen
+                state['pending_baseline'] = state['baseline']
+                state['pending_settled'] = False
                 state['hen'] = None
                 state['baseline'] = None
             elif target != 'no_chicken' and target != hen:
@@ -172,7 +192,7 @@ class NestState:
                 # No empty frame between hens means hidden eggs cannot be attributed.
                 if hen is None:
                     # An unsettled post-visit count is not a safe new baseline.
-                    state['baseline'] = (state['eggs'] if state['pending_hen'] is None
+                    state['baseline'] = (state['eggs'] if state['pending_hen'] is None or state['pending_settled']
                                          else None)
                 elif hen != 'unknown':
                     state['baseline'] = None
@@ -180,16 +200,21 @@ class NestState:
                 state['daily_eggs']['counts'].setdefault(target, 0)
                 state['pending_hen'] = None
                 state['pending_baseline'] = None
+                state['pending_settled'] = False
                 events.append(target.capitalize() + ' arrived')
 
-        if label == 'no_chicken' and state['hen'] is None and egg_streak >= 3:
+        if label == 'no_chicken' and state['hen'] is None and egg_streak >= EGG_FRAMES:
+            # A stable partial decrease can be occlusion, not collection. Rebounds
+            # must not count the same eggs again; only a confirmed zero resets it.
+            increase = eggs - (state['egg_high_water'] or 0)
             if (state['pending_hen'] is not None and state['pending_baseline'] is not None
-                    and eggs > state['pending_baseline']):
+                    and eggs > state['pending_baseline'] and increase > 0):
                 laying_hen = state['pending_hen']
-                events.append(state['pending_hen'].capitalize() + ' laid an Egg')
+                event = state['pending_hen'].capitalize() + ' laid an Egg'
+                if event not in events:
+                    events.append(event)
             # Count every confirmed increase exactly once, even without an
             # attributable visit. First-observed eggs have no known identity.
-            increase = eggs - (state['eggs'] if state['eggs'] is not None else 0)
             if increase > 0:
                 identity = laying_hen or 'unknown'
                 counts = state['daily_eggs']['counts']
@@ -198,8 +223,16 @@ class NestState:
                 n = state['eggs']
                 events.append('{} {} collected'.format(n, 'egg' if n == 1 else 'eggs'))
             state['eggs'] = eggs
-            state['pending_hen'] = None
-            state['pending_baseline'] = None
+            state['egg_high_water'] = max(eggs, state['egg_high_water'] or 0)
+            if state['pending_hen'] is not None:
+                state['pending_settled'] = True
+            if eggs == 0 and self.state['eggs'] not in (None, 0):
+                # Collection ends the attribution window. Already-empty frames
+                # after a visit do not: they may simply have missed the new egg.
+                state['egg_high_water'] = 0
+                state['pending_hen'] = None
+                state['pending_baseline'] = None
+                state['pending_settled'] = False
         if events:
             state['latest_event'] = events[-1]
         if evidence is not None:

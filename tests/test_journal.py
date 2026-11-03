@@ -46,7 +46,9 @@ class JournalTests(unittest.TestCase):
             self.journal.cleanup_pending(self.nest)
         return frame, events
 
-    def shots(self, label, eggs=0, n=3):
+    def shots(self, label, eggs=0, n=None):
+        if n is None:
+            n = 5 if label == 'no_chicken' and self.nest.state['hen'] is not None else 3
         return [self.shot(label, eggs)[0] for _ in range(n)]
 
     def entries(self):
@@ -60,7 +62,7 @@ class JournalTests(unittest.TestCase):
         entries = self.entries()
         self.assertEqual([entry['text'] for entry in entries], ['Hen_a laid an Egg', 'Hen_a arrived'])
         self.assertEqual(set(frame_ids(entries[0])), {f['id'] for f in baseline + identity + after})
-        self.assertEqual(len(entries[0]['evidence']), 3)
+        self.assertEqual(len(entries[0]['evidence']), 4)
         for identifier in frame_ids(entries):
             self.assertEqual((self.journal.root / 'images' / (identifier + '.jpg')).read_bytes(), self.source.read_bytes())
         self.assertEqual(list((self.store.root / 'captures').rglob('*.jpg')), [])
@@ -70,7 +72,7 @@ class JournalTests(unittest.TestCase):
     def test_delayed_count_and_visit_evidence_survive_restart(self):
         baseline = self.shots('no_chicken', 1)
         identity = self.shots('hen_a')
-        departure = [self.shot('no_chicken', eggs)[0] for eggs in (2, 3, 2)]
+        departure = [self.shot('no_chicken', eggs)[0] for eggs in (2, 3, 2, 3, 2)]
         self.assertEqual(self.entries()[0]['text'], 'Hen_a left')
         self.nest = NestState(self.store.root)
         self.journal = Journal(self.store)
@@ -91,6 +93,26 @@ class JournalTests(unittest.TestCase):
         self.assertEqual(set(frame_ids(entry)), {f['id'] for f in actual})
         for frame in rejected:
             self.assertFalse((self.journal.root / 'images' / (frame['id'] + '.jpg')).exists())
+
+    def test_settled_missed_egg_keeps_visit_photos_for_later_attribution(self):
+        baseline = self.shots('no_chicken', 0)
+        identity = self.shots('hen_a')
+        departure = self.shots('no_chicken', 0, n=5)
+        entry = self.entries()[0]
+        self.assertEqual(entry['text'], 'Hen_a left')
+        self.assertEqual(entry['evidence'][-1]['frames'], departure)
+        self.shots('no_chicken', 0, n=8)
+        self.nest = NestState(self.store.root)
+        self.journal = Journal(self.store)
+        self.journal.retain(self.nest, force=True)
+        after = self.shots('no_chicken', 1, n=3)
+        entry = self.entries()[0]
+        self.assertEqual(entry['text'], 'Hen_a laid an Egg')
+        self.assertEqual(len(entry['evidence']), 4)
+        self.assertEqual(set(frame_ids(entry)),
+                         {f['id'] for f in baseline + identity + departure + after})
+        for identifier in frame_ids(entry):
+            self.assertTrue((self.journal.root / 'images' / (identifier + '.jpg')).is_file())
 
     def test_restart_resets_streak_frames_but_not_visit(self):
         old = self.shots('hen_a', n=2)
@@ -195,6 +217,8 @@ class JournalTests(unittest.TestCase):
         self.shots('hen_a')
         old = dict(self.nest.state)
         del old['journal']
+        del old['pending_settled']
+        del old['egg_high_water']
         old['version'] = 3
         atomic_json(self.nest.path, old)
         migrated = NestState(self.store.root)
