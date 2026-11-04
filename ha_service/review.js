@@ -36,9 +36,6 @@
       : context.layout !== context.current_layout ? 'Annotation only. This image uses a different recognition layout.'
       : 'Annotation only. Select a half-frame or center view to teach a hen in split mode.';
     get('save').textContent = promotable ? 'Save & use' : 'Save annotation';
-    get('confirm').parentElement.lastChild.textContent = label.value === 'obscured'
-      ? ' I checked this view and want to record it as obscured (annotation only).'
-      : ' I checked this view: no hens for Empty, or one clearly identifiable hen for a hen reference.';
     get('undo').hidden = !record();
     get('save').disabled = busy || !!record();
     const zone = get('zone');
@@ -56,7 +53,6 @@
     if (saved && !Array.from(label.options).some(item => item.value === saved.label))
       label.add(option(saved.label, saved.label), label.options.length - 1);
     label.value = saved ? saved.label : (next.identities.includes(lastLabel) ? lastLabel : 'obscured');
-    get('confirm').checked = false;
     currentButton.dataset.reviewImage = next.image;
     markButtons(next.image, next.records);
     help();
@@ -79,7 +75,6 @@
     context = null;
     region.disabled = true; label.disabled = true;
     get('new-field').hidden = true; get('new').value = '';
-    get('confirm').checked = false;
     source = button.dataset.reviewSource;
     get('image').src = button.parentElement.querySelector('img').src;
     get('filename').textContent = source.split('/').pop();
@@ -103,15 +98,11 @@
       label.value = saved.label;
     }
     message.textContent = saved ? 'Reviewed · ' + saved.status + '. Undo before changing this region.' : '';
-    get('confirm').checked = false;
     help();
   });
-  label.addEventListener('change', () => { get('confirm').checked = false; help(); });
+  label.addEventListener('change', help);
   async function submit(action) {
     if (!context || busy) return;
-    if (action === 'save' && !get('confirm').checked) {
-      message.textContent = 'Check the view and tick the confirmation first.'; return;
-    }
     const chosen = label.value === '__new' ? get('new').value.trim().toLowerCase() : label.value;
     if (label.value === '__new' && (!/^[a-z0-9][a-z0-9_-]{0,47}$/.test(chosen) ||
       ['empty', 'obscured', 'unknown', 'unreviewed', 'eggs', 'pending', 'no_chicken',
@@ -126,7 +117,7 @@
         'Content-Type': 'application/json', 'X-Munai-Review': context.token
       }, body: JSON.stringify({source, image: context.image, layout: context.layout,
         revision: context.revision, references: context.references, region: region.value,
-        label: chosen, action, confirmed: get('confirm').checked})});
+        label: chosen, action})});
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || 'Review failed; reopen and try again.');
       lastRegion = region.value; lastLabel = chosen;

@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.20
+
+- Remove the Review & teach confirmation checkbox and its extra save requirement.
+  Selecting a label and pressing Save now records the review directly.
+
 ## 0.1.19
 
 - Make capture captions truly compact and frame-only: spatially ordered labels

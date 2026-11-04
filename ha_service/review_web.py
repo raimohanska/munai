@@ -21,8 +21,6 @@ def dialog(base=''):
 <input id="review-new" maxlength="48" placeholder="e.g. hen_c" autocomplete="off">
 <small>Lowercase letters, digits, hyphens or underscores.</small></label>
 <p id="review-help" class="muted"></p>
-<label><input type="checkbox" id="review-confirm"> I checked this view: no hens for Empty,
-or one clearly identifiable hen for a hen reference.</label>
 <p id="review-message" role="status" aria-live="polite"></p>
 <div class="review-actions"><button type="button" id="review-undo" hidden>Undo review</button>
 <button type="button" id="review-save">Save &amp; use</button></div>

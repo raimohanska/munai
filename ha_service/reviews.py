@@ -121,8 +121,6 @@ class Reviews:
                 return self.context(request['source'])
             if request.get('action') != 'save' or not isinstance(label, str):
                 raise AppError('Invalid review action.')
-            if request.get('confirmed') is not True:
-                raise AppError('Explicit visual confirmation is required.')
             if label not in ('empty', 'obscured') and (not LABEL.fullmatch(label) or label in RESERVED):
                 raise AppError('Use a hen name of 1–48 lowercase letters, digits, hyphens or underscores.')
             if previous:

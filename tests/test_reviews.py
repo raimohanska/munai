@@ -49,7 +49,7 @@ class ReviewTests(unittest.TestCase):
     def request(self, label='hen_a', region='right', action='save', source=SOURCE, **overrides):
         context = self.reviews.context(source)
         value = {key: context[key] for key in ('image', 'layout', 'revision', 'references')}
-        value.update(source=source, label=label, region=region, action=action, confirmed=True)
+        value.update(source=source, label=label, region=region, action=action)
         value.update(overrides)
         return value
 
@@ -135,6 +135,8 @@ class ReviewTests(unittest.TestCase):
             self.assertIn(b'data-review-source=', page)
             self.assertEqual(page.count(b'id="review-dialog"'), 1)
             self.assertIn(b'src="review.js"', page)
+            self.assertNotIn(b'review-confirm', page)
+            self.assertNotIn(b'I checked this view', page)
         self.assertIn(b'data-review-region="right"', journal_page(self.journal, 0))
 
     def test_validation_failure_does_not_activate_or_mark_success(self):
@@ -184,11 +186,11 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.reviews.context(SOURCE)
 
-    def test_conflicts_invalid_labels_regions_confirmation_and_source(self):
+    def test_conflicts_invalid_labels_regions_and_source(self):
         for value in ('empty/../../private', '<script>', 'unknown', 'obscured_hen!' , 'reviewed/name'):
             with self.assertRaises(AppError):
                 self.save(label=value)
-        for kwargs in ({'region': 'top'}, {'confirmed': False}, {'source': 'references/empty/test.jpg'}):
+        for kwargs in ({'region': 'top'}, {'source': 'references/empty/test.jpg'}):
             with self.assertRaises(AppError):
                 self.reviews.save(self.request(**kwargs))
         for field in ('image', 'layout', 'revision', 'references'):
