@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.24
+
+- Collapse each Journal event's details and pictures into an expandable section,
+  keeping its title and confirmation time visible. Pause automatic refresh while
+  a section is open so reading or reviewing evidence is not interrupted.
+
 ## 0.1.22
 
 - Show zones in spatial order in both Status prediction and confirmed-state

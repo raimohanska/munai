@@ -48,6 +48,8 @@ figure { margin: 0; } img { width: 100%; height: auto; border-radius: 8px; }
 .horizontal-bottom { inset: 50% 0 0 0; } .horizontal-center { inset: 25% 0; }
 figcaption { font-size: .85rem; overflow-wrap: anywhere; }
 .photo-id { display: block; font-size: .75rem; margin-top: 6px; user-select: all; }
+.event-details { margin-top: 16px; }
+.event-details > summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
 nav { display: flex; justify-content: space-between; padding: 16px; }
 .notice { border-left: 4px solid #c99b40; padding-left: 12px; }
 @media(max-width: 700px) { .sidebar { position: static; width: auto; padding: 16px; }
@@ -62,7 +64,7 @@ document.querySelectorAll('time').forEach(node => {
 const active = document.querySelector('a[aria-current="page"]');
 const status = active && active.textContent === 'Status';
 if (status || !new URLSearchParams(location.search).get('page')) {
-  setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]') && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
+  setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open], .event-details[open]') && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
 }
 '''
 
@@ -103,6 +105,7 @@ def render(journal, page, base=''):
     for entry in entries:
         parts.append('<article><p class="muted">Confirmed {}</p><h2>{}</h2>'.format(
             time_html(entry['id']), escape(entry['text'])))
+        parts.append('<details class="event-details"><summary>Details &amp; pictures</summary>')
         has_frames = False
         for group in entry['evidence']:
             if not group['frames']:
@@ -135,7 +138,7 @@ def render(journal, page, base=''):
         if not has_frames or required - present_roles:
             parts.append('<p class="notice">Some evidence predates journal support or is unavailable. '
                          'No historical photos have been fabricated.</p>')
-        parts.append('</article>')
+        parts.append('</details></article>')
     parts.append('</main><nav>')
     if page:
         parts.append('<a href="?page={}">← Newer</a>'.format(page - 1))

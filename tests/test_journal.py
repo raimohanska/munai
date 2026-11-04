@@ -3,6 +3,7 @@
 No camera capture calls, live HA, credentials or real images.
 """
 import copy
+from html.parser import HTMLParser
 import io
 import json
 from pathlib import Path
@@ -53,6 +54,42 @@ class JournalTests(unittest.TestCase):
 
     def entries(self):
         return [self.journal.read_entry(path) for path in self.journal.entries()]
+
+    def test_event_details_are_collapsed_with_titles_outside_and_photos_inside(self):
+        self.shots('hen_a')
+        self.shots('hen_b')
+        tags = []
+
+        class Tags(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                tags.append((tag, dict(attrs)))
+
+            def handle_endtag(self, tag):
+                tags.append(('/' + tag, {}))
+
+        Tags().feed(render(self.journal, 0, base='/ingress/').decode('utf-8'))
+        in_details = False
+        sections = 0
+        photos = 0
+        for tag, attrs in tags:
+            if tag == 'details':
+                self.assertFalse(in_details)
+                self.assertEqual(attrs['class'], 'event-details')
+                self.assertNotIn('open', attrs)
+                in_details = True
+                sections += 1
+            elif tag == '/details':
+                self.assertTrue(in_details)
+                in_details = False
+            elif tag == 'h2':
+                self.assertFalse(in_details)
+            elif tag == 'img' and attrs.get('src', '').startswith('/ingress/images/'):
+                self.assertTrue(in_details)
+                photos += 1
+            elif tag == '/article':
+                self.assertFalse(in_details)
+        self.assertEqual(sections, len(self.entries()))
+        self.assertGreater(photos, 0)
 
     def test_visit_retains_exact_baseline_identity_and_after_frames(self):
         baseline = self.shots('no_chicken', 1)
