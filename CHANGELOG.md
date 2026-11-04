@@ -9,6 +9,15 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.25
+
+- Count eggs independently in each clear side while the other side is occupied
+  or locally obscured. Divider occupancy or ambiguity still blocks hidden nests.
+- Keep the center strictly presence-only, with no egg counts or laying events.
+  Combine side totals by hen identity, regardless of which side she visits.
+- Reset partial egg-count confirmation when a hen appears, so pre-visit shots
+  cannot help confirm a post-visit egg count.
+
 ## 0.1.24
 
 - Collapse each Journal event's details and pictures into an expandable section,

@@ -80,8 +80,8 @@ class SplitNest:
             raise AppError('Split observation has incorrect zones.')
         events = []
         self.blocked = set()
-        count_allowed = all(not item.get('obscured') and item['label'] == 'no_chicken'
-                            for item in observations.values())
+        center = observations['center']
+        center_clear = not center.get('obscured') and center['label'] == 'no_chicken'
         for zone, nest in self.regions.items():
             item = observations[zone]
             if item.get('obscured'):
@@ -92,6 +92,9 @@ class SplitNest:
                 if item.get('obscured_reason') != 'small_body':
                     nest.obscure(pause=True)
                 continue
+            # Only the observed side and divider gate its count. A separate hen
+            # in the other nest does not hide this nest. Center is presence-only.
+            count_allowed = (zone in self.sides and center_clear and item['label'] == 'no_chicken')
             eggs = item['egg_count'] if count_allowed else None
             frame = None if evidence is None else dict(evidence, zone=zone, label=item['label'],
                          egg_count=eggs if item['label'] == 'no_chicken' else None)
@@ -125,6 +128,8 @@ class SplitNest:
         zones = {}
         for zone, nest in self.regions.items():
             zones[zone] = dict(nest.snapshot(), obscured=zone in self.blocked)
+            if zone == 'center':
+                zones[zone]['egg_count'] = None  # Hide legacy placeholder zeros too.
             if zone in self.blocked:
                 zones[zone]['occupant'] = 'obscured'
         counts = [zones[z]['egg_count'] for z in self.sides]

@@ -67,20 +67,20 @@ class SplitJournalTests(unittest.TestCase):
         self.assertIn('Photo ID:', page)
         self.assertIn(frames[0]['id'], page)
 
-    def test_egg_counts_wait_until_both_nests_are_clear(self):
-        baseline = self.shots()
-        visit = self.shots(left=observation('hen_a'), right=observation('hen_b'))
+    def test_clear_side_counts_while_other_hen_stays(self):
+        self.shots()
+        self.shots(left=observation('hen_a'), right=observation('hen_b'))
         after = self.shots(n=5, left=observation(eggs=1), right=observation('hen_b'))
-        self.assertFalse(any('laid an Egg' in e['text'] for e in self.entries()))
-        self.assertEqual(self.nest.regions['left'].state['eggs'], 0)
-        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 0)
+        self.assertEqual(self.nest.regions['left'].state['eggs'], 1)
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 1)
         self.assertEqual(self.nest.daily_snapshot()['counts']['hen_b'], 0)
         self.assertEqual(self.nest.snapshot()['zones']['right']['occupant'], 'Hen_b')
-        clear = self.shots(n=5, left=observation(eggs=1))
         entry = next(e for e in self.entries() if e['text'] == 'Left: Hen_a laid an Egg')
-        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 1)
         count_frames = next(g['frames'] for g in entry['evidence'] if g['role'] == 'Egg count confirmation')
-        self.assertTrue(set(frame_ids(count_frames)) <= {f['id'] for f in clear})
+        self.assertTrue(set(frame_ids(count_frames)) <= {f['id'] for f in after})
+        self.shots(n=5, left=observation(eggs=1), right=observation(eggs=1))
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_b'], 1)
+        self.assertEqual(self.nest.snapshot()['egg_count'], 2)
 
     def test_unknown_presence_keeps_visit_and_laying_is_the_departure_event(self):
         self.shots()
@@ -138,7 +138,7 @@ class SplitJournalTests(unittest.TestCase):
         self.shots()
         clean = self.shots(n=2, left=observation(eggs=1))
         small = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='small_body')
-        skipped = self.shots(n=4, right=small)
+        skipped = self.shots(n=4, left=small)
         self.assertEqual(self.nest.regions['left'].egg_streak, 2)
         self.assertEqual(self.nest.regions['left'].state['eggs'], 0)
         last = self.shot(left=observation(eggs=1))[0]
@@ -146,6 +146,58 @@ class SplitJournalTests(unittest.TestCase):
         evidence = self.nest.regions['left'].state['journal']['baseline']
         self.assertEqual(set(frame_ids(evidence)), {f['id'] for f in clean + [last]})
         self.assertTrue(set(frame_ids(evidence)).isdisjoint({f['id'] for f in skipped}))
+
+    def test_center_never_counts_even_if_supplied_egg_counts(self):
+        self.shots(center=observation(eggs=2))
+        self.shots(center=observation('hen_a'))
+        self.shots(n=5, center=observation(eggs=3))
+        self.shots(center=observation(eggs=0))
+        self.assertIsNone(self.nest.snapshot()['zones']['center']['egg_count'])
+        self.assertEqual(sum(self.nest.daily_snapshot()['counts'].values()), 0)
+        self.assertEqual({e['text'] for e in self.entries()},
+                         {'Center: Hen_a arrived', 'Center: Hen_a left'})
+
+    def test_same_hen_can_score_from_either_side_without_recount_after_restart(self):
+        self.shots()
+        self.shots(left=observation('hen_a'))
+        self.shots(n=5, left=observation(eggs=1))
+        self.shots(left=observation(eggs=1), right=observation('hen_a'))
+        self.shots(n=5, left=observation(eggs=1), right=observation(eggs=1))
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 2)
+        self.nest = SplitNest(self.store.root, 'vertical', today=self.today)
+        self.shots(n=6, left=observation(eggs=1), right=observation(eggs=1))
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 2)
+
+    def test_local_obstruction_does_not_freeze_other_side(self):
+        self.shots()
+        hidden = observation('unknown', eggs=None, obscured=True)
+        self.shots(left=hidden, right=observation(eggs=1))
+        self.assertEqual(self.nest.snapshot()['zones']['right']['egg_count'], 1)
+        self.assertEqual(self.nest.daily_snapshot()['counts']['unknown'], 1)
+
+    def test_visit_breaks_pre_visit_egg_confirmation(self):
+        self.shots()
+        self.shots(n=2, left=observation(eggs=1))
+        self.shots(left=observation('hen_a'))
+        self.shot(left=observation(eggs=1))
+        self.assertEqual(self.nest.regions['left'].egg_streak, 1)
+        self.assertEqual(self.nest.regions['left'].state['eggs'], 0)
+
+    def test_horizontal_sides_count_independently_too(self):
+        root = self.root / 'horizontal-counts'
+        root.mkdir()
+        nest = SplitNest(root, 'horizontal', today=self.today)
+        def shots(top, bottom, n=3):
+            for _ in range(n):
+                nest.observe_zones({'top': top, 'bottom': bottom, 'center': observation()})
+        shots(observation(), observation())
+        shots(observation('hen_a'), observation('hen_b'))
+        shots(observation(eggs=1), observation('hen_b'), n=5)
+        self.assertEqual(nest.daily_snapshot()['counts']['hen_a'], 1)
+        self.assertEqual(nest.snapshot()['zones']['bottom']['occupant'], 'Hen_b')
+        shots(observation(eggs=1), observation(eggs=1), n=5)
+        self.assertEqual(nest.daily_snapshot()['counts']['hen_b'], 1)
+        self.assertEqual(nest.snapshot()['egg_count'], 2)
 
     def test_center_hen_never_implies_laying_or_collection_on_hidden_sides(self):
         self.shots(left=observation(eggs=1))

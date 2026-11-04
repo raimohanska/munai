@@ -197,14 +197,16 @@ def predict(path, references, options):
             zones[zone].update(label='unknown', egg_count=None, obscured=True,
                                obscured_reason='duplicate_identity')
         presence['ambiguous'] = True
-    # Eggs are observable only in a completely clear full frame. A hen or
-    # uncertainty anywhere freezes every side's last confirmed count.
-    if all(not item['obscured'] and item['label'] == 'no_chicken' for item in zones.values()):
+    # Count each clear side independently; the overlapping center view is only
+    # for presence, never an additional egg-counting region.
+    center = zones['center']
+    if not center['obscured'] and center['label'] == 'no_chicken':
         for zone in sides:
+            if zones[zone]['obscured'] or zones[zone]['label'] != 'no_chicken':
+                continue
             zones[zone]['egg_count'] = len(detect_eggs(
                 crop(frame, zone, split), options['texture_threshold'], options['egg_min_area'],
                 options['egg_max_area'], size=measurement_size(split)))
-        zones['center']['egg_count'] = 0
     labels = {item['label'] for item in zones.values() if item['label'] != 'no_chicken'}
     label = next(iter(labels)) if len(labels) == 1 else 'unknown' if labels else 'no_chicken'
     counts = [zones[zone]['egg_count'] for zone in sides]

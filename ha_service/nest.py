@@ -185,7 +185,7 @@ class NestState:
         egg_streak = (min(EGG_FRAMES, self.egg_streak + 1)
                        if egg_candidate is not None and egg_candidate == self.egg_candidate
                        else 1 if egg_candidate is not None else 0)
-        if not count_allowed:
+        if not count_allowed and label == 'no_chicken':
             egg_candidate, egg_streak = self.egg_candidate, self.egg_streak
         events = []
         laying_hen = None

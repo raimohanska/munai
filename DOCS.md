@@ -286,9 +286,14 @@ An obscured shot neither advances nor resets the three/five-shot confirmation
 counters. Small fragments are skipped without changing the visit baseline;
 genuine hidden/ambiguous nests still invalidate unsafe laying attribution.
 
-Egg detection runs only when **every zone is clear and hen-free**. Any hen or
-obscured zone freezes the whole box's egg counts at the last clean confirmed
-values. Uncountable shots do not enter egg-confirmation evidence. Clear presence
+From 0.1.25, egg detection runs independently for each **clear, hen-free side**
+when the divider is clear. A hen or local obstruction freezes only that side;
+divider occupancy or ambiguous whole-frame presence blocks both sides. The center
+is presence-only and never contributes an egg count or laying event. The two
+non-overlapping side counts are summed; any hen can earn eggs from either side
+through that side's confirmed visit and subsequent egg increase. Uncertain
+attribution counts as unknown, not a guessed identity.
+Uncountable shots do not enter egg-confirmation evidence. Clear presence
 observations can still confirm departure while egg counting is frozen; a later
 clean stable count may confirm a pending egg. Failed captures and restarts remain
 separate gaps that reset confirmation. None of these rules backfill past events.

@@ -115,8 +115,10 @@ class SplitRecognitionTests(unittest.TestCase):
                 self.assertTrue(any(body['zone'] == zone for body in result['presence']['bodies']))
                 self.assertNotEqual(result['zones'][zone]['label'], 'no_chicken')
                 self.assertIsNone(result['zones'][zone]['egg_count'])
-                eggs.assert_not_called()  # Any hen freezes the whole box's eggs.
-                self.assertTrue(all(v['egg_count'] is None for v in result['zones'].values()))
+                other = ('right' if zone == 'left' else 'bottom')
+                eggs.assert_called_once()
+                self.assertEqual(result['zones'][other]['egg_count'], 0)
+                self.assertIsNone(result['zones']['center']['egg_count'])
 
     def test_visitor_minimum_is_at_least_ten_maximum_eggs(self):
         presence = {'ambiguous': False, 'center_present': False, 'bodies': []}
@@ -132,10 +134,10 @@ class SplitRecognitionTests(unittest.TestCase):
                     'uncertain_zones': ['left'], 'fragments': [{'zone': 'left', 'pixels': 6000}]}
         with patch('ha_service.split_recognition.detect', return_value=presence), \
                 patch('ha_service.split_recognition.identify') as identity, \
-                patch('ha_service.split_recognition.detect_eggs') as eggs:
+                patch('ha_service.split_recognition.detect_eggs', return_value=[]) as eggs:
             result = split.predict(self.fixtures / 'synthetic_empty_1.jpg', self.refs, self.options)
         identity.assert_not_called()
-        eggs.assert_not_called()
+        eggs.assert_called_once()  # The other side remains observable.
         self.assertEqual(result['zones']['left']['obscured_reason'], 'small_body')
         self.assertTrue(result['zones']['left']['obscured'])
         self.assertIsNone(result['egg_count'])
