@@ -276,6 +276,26 @@ smooth egg piles. These cues establish presence/uncertainty, never identity.
 A working assumption that divider
 hens are alone does not override contradictory observations.
 
+From 0.1.27, a detected body's position is the equal-size side or center view
+containing the most body-mask pixels, not the largest bounding rectangle or an
+identity feature. A side wins a tie with center. Separate bodies are never
+combined just to choose a center position.
+
+A known hen has one confirmed position. Three confirming observations in a new
+zone transfer her position and record e.g. **Hen_a moved to center**, rather than
+another arrival and a later departure from the old zone. Obscured shots pause
+confirmation; failed rounds and restarts reset it. Fresh confirmation also
+reconciles duplicate positions retained by older releases. Two separate bodies
+predicted as the same hen stay uncertain; body size is not an identity tie-breaker.
+Unknown hens cannot be linked across zones by appearance-free assumptions.
+
+A transfer does not prove the former nest empty or make hidden eggs countable.
+Its last clean egg count remains available while presence is reconfirmed, but
+unsafe source/destination laying attribution is discarded. Multi-region decisions
+use `/data/nest-transition.json` for interrupted-write replay, so moves cannot
+persist just one half of a transfer. Existing journal entries and totals are not
+rewritten; include app data in backups before upgrading.
+
 From 0.1.18, the minimum detected visitor surface is
 `max(chicken_area, 10 * egg_max_area)` at the normalized 640×360 scale (35,000
 pixels with default egg settings, with no half-frame stretching). `chicken_area`

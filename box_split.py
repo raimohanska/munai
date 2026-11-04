@@ -42,16 +42,25 @@ def assign_regions(masks, split, fragment_gap=24):
         raise ValueError('Body masks must be nonempty and share a two-dimensional shape')
     side_names = ('left', 'right') if split == 'vertical' else ('top', 'bottom')
 
+    def overlaps(mask):
+        h, w = mask.shape
+        boxes = half_boxes(w, h, split)
+        if split != 'none':
+            boxes['center'] = ((w // 4, 0, w // 4 + w // 2, h) if split == 'vertical'
+                               else (0, h // 4, w, h // 4 + h // 2))
+        return {zone: int(mask[y1:y2, x1:x2].sum())
+                for zone, (x1, y1, x2, y2) in boxes.items()}
+
     def location(mask):
         if split == 'none':
             return 'whole'
-        y, x = np.nonzero(mask)
-        axis, size = (x, mask.shape[1]) if split == 'vertical' else (y, mask.shape[0])
-        fraction = float(np.mean(axis < size // 2))
-        # Substantial area on both sides, not a beak/tail crossing the line.
-        if 0.2 <= fraction <= 0.8 and 0.35 <= float(np.mean(axis)) / size <= 0.65:
+        area = overlaps(mask)
+        # Compare the SAME body in equal-size views, not its bounding rectangle
+        # or the combined area of two independent hens. A tied side keeps its
+        # position rather than moving a hen whose tail merely enters center.
+        if area['center'] > max(area[side] for side in side_names):
             return 'center'
-        return side_names[0 if fraction > 0.5 else 1]
+        return max(side_names, key=lambda side: area[side])
 
     labels = [location(mask) for mask in masks]
     centers = [i for i, label in enumerate(labels) if label == 'center']
@@ -70,7 +79,7 @@ def assign_regions(masks, split, fragment_gap=24):
                 merged |= masks[index]
                 remaining.remove(index)
         masks = [merged] + [masks[i] for i in sorted(remaining)]
-        labels = ['center'] + [labels[i] for i in sorted(remaining)]
+        labels = [location(merged)] + [labels[i] for i in sorted(remaining)]
     zones = {}
     for label in labels:
         zones[label] = zones.get(label, 0) + 1
@@ -80,7 +89,7 @@ def assign_regions(masks, split, fragment_gap=24):
     bodies = []
     for mask, label in zip(masks, labels):
         y, x = np.nonzero(mask)
-        bodies.append({'zone': label, 'pixels': int(mask.sum()),
+        bodies.append({'zone': label, 'pixels': int(mask.sum()), 'overlap_pixels': overlaps(mask),
                        'box': [int(x.min()), int(y.min()),
                                int(x.max() - x.min() + 1), int(y.max() - y.min() + 1)]})
     if split == 'none':

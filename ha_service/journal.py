@@ -83,7 +83,7 @@ def evolve(before, after, frame, streak, egg_streak, events, count_allowed=True)
     presence, counts = evidence['presence'], evidence['count']
     context = evidence['visit'] if before['hen'] is not None else evidence['pending']
     for index, text in enumerate(events):
-        if text.endswith(' arrived'):
+        if text.endswith(' arrived') or ' moved to ' in text:
             baseline = evidence['baseline'] if after['baseline'] is not None else []
             if before['hen'] == 'unknown' and evidence['visit']:
                 baseline = evidence['visit'][0]['frames']

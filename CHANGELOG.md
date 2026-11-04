@@ -9,6 +9,17 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.27
+
+- Assign each detected body to the side or center rectangle with the greatest
+  body-mask overlap, independently of appearance-based identity recognition.
+- Transfer a known hen's confirmed position after three confirming observations;
+  record one “Hen_a moved to center” event instead of leaving her in two zones
+  and later reporting two departures. Apply the same rule on both split axes.
+- Commit multi-zone decisions with restart-safe replay. Keep obscured former
+  positions uncertain, retain clean egg totals, and discard unsafe attribution
+  across moves. Do not rewrite existing journal entries or egg totals.
+
 ## 0.1.26
 
 - Remove explanatory UI filler and disclaimers from Status, Captures, Journal,

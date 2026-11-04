@@ -37,6 +37,36 @@ def valid_daily(value):
             and (day is not None or not any(counts.values())))
 
 
+STATE_KEYS = {'version', 'hen', 'eggs', 'baseline', 'latest_event', 'confirmed',
+              'pending_hen', 'pending_baseline', 'pending_settled', 'egg_high_water',
+              'daily_eggs', 'journal'}
+
+
+def valid_state(state):
+    """Validate region snapshots too, before replaying a split transaction."""
+    return (isinstance(state, dict) and set(state) == STATE_KEYS
+            and type(state['version']) is int and state['version'] == 5
+            and valid_evidence(state['journal']) and valid_daily(state['daily_eggs'])
+            and type(state['confirmed']) is bool
+            and all(state[key] is None or valid_hen(state[key]) for key in ('hen', 'pending_hen'))
+            and all(count(state[key]) for key in ('eggs', 'baseline', 'pending_baseline', 'egg_high_water'))
+            and type(state['pending_settled']) is bool
+            and (not state['pending_settled'] or state['pending_hen'] is not None)
+            and ((state['eggs'] is None and state['egg_high_water'] is None) or
+                 (state['eggs'] is not None and state['egg_high_water'] is not None
+                  and state['egg_high_water'] >= state['eggs']))
+            and (state['pending_hen'] is not None or state['pending_baseline'] is None)
+            and (state['pending_hen'] is None or state['hen'] is None)
+            # Position can become uncertain after a move; retain the clean egg
+            # count independently, never replace it with an invented zero.
+            and (state['confirmed'] or all(state[key] is None for key in
+                 ('hen', 'baseline', 'pending_hen', 'pending_baseline')))
+            and (state['hen'] is not None or state['baseline'] is None)
+            and (state['latest_event'] is None or
+                 (isinstance(state['latest_event'], str) and 1 <= len(state['latest_event']) <= 256
+                  and not any(ord(c) < 32 for c in state['latest_event']))))
+
+
 class NestState:
     def __init__(self, root, today=None, zone=None, layout=None, count_initial_eggs=True):
         self.zone = zone
@@ -73,31 +103,7 @@ class NestState:
                     # Do not infer a visitor from historical event text.
                     state.update(version=5, pending_settled=False,
                                  egg_high_water=state['eggs'])
-                if (not isinstance(state, dict) or set(state) != set(self.state)
-                        or type(state['version']) is not int or state['version'] != 5
-                        or not valid_evidence(state['journal'])
-                        or not valid_daily(state['daily_eggs'])
-                        or type(state['confirmed']) is not bool
-                        or (state['hen'] is not None and not valid_hen(state['hen']))
-                        or (state['pending_hen'] is not None and
-                            not valid_hen(state['pending_hen']))
-                        or not count(state['pending_baseline'])
-                        or type(state['pending_settled']) is not bool
-                        or (state['pending_settled'] and state['pending_hen'] is None)
-                        or not count(state['egg_high_water'])
-                        or (state['eggs'] is None and state['egg_high_water'] is not None)
-                        or (state['eggs'] is not None and
-                            (state['egg_high_water'] is None or state['egg_high_water'] < state['eggs']))
-                        or (state['pending_hen'] is None and state['pending_baseline'] is not None)
-                        or (state['pending_hen'] is not None and state['hen'] is not None)
-                        or (not state['confirmed'] and any(state[key] is not None for key in
-                            ('hen', 'eggs', 'baseline', 'pending_hen', 'pending_baseline')))
-                        or not count(state['eggs']) or not count(state['baseline'])
-                        or (state['hen'] is None and state['baseline'] is not None)
-                        or (state['latest_event'] is not None and
-                            (not isinstance(state['latest_event'], str)
-                             or not 1 <= len(state['latest_event']) <= 256
-                             or any(ord(c) < 32 for c in state['latest_event'])))):
+                if not valid_state(state):
                     raise ValueError()
                 self.state = state
             except Exception:
@@ -170,7 +176,7 @@ class NestState:
                 'egg_count': self.state['eggs'],
                 'latest_event': self.state['latest_event']}
 
-    def observe(self, label, eggs, evidence=None, count_allowed=True):
+    def observe(self, label, eggs, evidence=None, count_allowed=True, arrival_event=None):
         if label != 'no_chicken' and not valid_hen(label):
             raise AppError('Invalid nest observation.')
         if label == 'no_chicken' and (not count(eggs) or (eggs is None and count_allowed)):
@@ -221,7 +227,15 @@ class NestState:
                 state['pending_hen'] = None
                 state['pending_baseline'] = None
                 state['pending_settled'] = False
-                events.append(target.capitalize() + ' arrived')
+                if arrival_event is not None:
+                    # Movement through an obscured area cannot establish a safe
+                    # before-visit count for the destination nest.
+                    state['baseline'] = None
+                events.append(arrival_event or target.capitalize() + ' arrived')
+            elif target != 'no_chicken' and arrival_event is not None:
+                # Reconcile duplicate known positions persisted by an older app.
+                state['baseline'] = None
+                events.append(arrival_event)
 
         if count_allowed and label == 'no_chicken' and state['hen'] is None and egg_streak >= EGG_FRAMES:
             # A stable partial decrease can be occlusion, not collection. Rebounds
@@ -264,7 +278,8 @@ class NestState:
                 for entry in state['journal']['outbox']:
                     if 'zone' not in entry:
                         entry.update(zone=self.zone, layout=self.layout,
-                                     text=self.zone.capitalize() + ': ' + entry['text'])
+                                     text=(entry['text'] if ' moved to ' in entry['text'] else
+                                           self.zone.capitalize() + ': ' + entry['text']))
         # Persist before changing memory or publishing. Failed writes cannot consume
         # a transition. atomic_json fsyncs both file and directory; no pickle input.
         self._commit(state)

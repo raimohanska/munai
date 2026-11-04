@@ -4,9 +4,9 @@ from datetime import date
 import json
 
 from .journal import ID, valid_entry
-from .nest import NestState, valid_daily
+from .nest import ARRIVAL_FRAMES, NestState, valid_daily, valid_state
 from .options import AppError
-from .storage import atomic_json, safe_path
+from .storage import atomic_json, safe_path, sync_directory
 
 
 class SplitNest:
@@ -36,6 +36,8 @@ class SplitNest:
         else:
             atomic_json(self.path, self.metadata)
         self.sides = ('left', 'right') if layout == 'vertical' else ('top', 'bottom')
+        self.transition_path = safe_path(root, 'nest-transition.json')
+        self._recover_transition()
         self.regions = {}
         for zone in self.sides + ('center',):
             folder = safe_path(root, 'nests/' + layout + '/' + zone)
@@ -68,6 +70,7 @@ class SplitNest:
         # region. A crash during acknowledgements replays remaining entries by ID.
         if state['journal']['outbox']:
             raise AppError('Only journal acknowledgement may commit aggregate split state.')
+        self._recover_transition()
         self._refresh_latest()
         for nest in self.regions.values():
             if nest.state['journal']['outbox']:
@@ -75,17 +78,91 @@ class SplitNest:
                 updated['journal']['outbox'] = []
                 nest._commit(updated)
 
+    def _recover_transition(self):
+        """Roll all regions forward after an interrupted multi-region commit."""
+        if not self.transition_path.exists():
+            return
+        try:
+            if self.transition_path.stat().st_size > 262144:
+                raise ValueError()
+            saved = json.loads(self.transition_path.read_text())
+            if (not isinstance(saved, dict) or set(saved) != {'layout', 'regions'}
+                    or saved['layout'] != self.layout or not isinstance(saved['regions'], dict)
+                    or set(saved['regions']) != set(self.sides + ('center',))
+                    or not all(valid_state(state) for state in saved['regions'].values())):
+                raise ValueError()
+        except Exception:
+            raise AppError('Split nest transition is invalid; restore its matching backup.') from None
+        for zone, state in saved['regions'].items():
+            folder = safe_path(self.root, 'nests/' + self.layout + '/' + zone)
+            folder.mkdir(parents=True, exist_ok=True)
+            atomic_json(safe_path(folder, 'nest-state.json'), state)
+        if hasattr(self, 'regions'):
+            for zone, state in saved['regions'].items():
+                self.regions[zone].state = state
+                self.regions[zone].reset_confirmation()
+        self.transition_path.unlink()
+        sync_directory(self.root)
+
     def observe_zones(self, observations, evidence=None):
         if set(observations) != set(self.regions):
             raise AppError('Split observation has incorrect zones.')
+        self._recover_transition()
+        # Stage the whole round: a move must never persist an arrival without
+        # releasing the old position, or vice versa. Region streaks stay in RAM.
+        regions = {}
+        for zone, nest in self.regions.items():
+            staged = copy.copy(nest)
+            staged.state = copy.deepcopy(nest.state)
+            staged._commit = lambda state, target=staged: setattr(target, 'state', state)
+            regions[zone] = staged
+        observations = copy.deepcopy(observations)
+        known = {}
+        for zone, item in observations.items():
+            if not item.get('obscured') and item['label'] not in ('unknown', 'no_chicken'):
+                known.setdefault(item['label'], []).append(zone)
+        for zones in known.values():
+            if len(zones) > 1:
+                # Two independent detections with the same identity are not a
+                # movement. Do not choose the larger hen or invent a new label.
+                for zone in zones:
+                    observations[zone].update(label='unknown', obscured=True,
+                                              obscured_reason='duplicate_identity')
+        moves = {}
+        releases = set()
+        for hen, zones in known.items():
+            if len(zones) != 1:
+                continue
+            zone = zones[0]
+            nest = regions[zone]
+            streak = nest.streak + 1 if nest.candidate == hen else 1
+            origins = [z for z, n in self.regions.items() if z != zone and n.state['hen'] == hen]
+            # A fresh confirmation also repairs duplicate states left by older
+            # releases, without fabricating a historical departure or egg.
+            if origins and streak >= ARRIVAL_FRAMES:
+                moves[zone] = hen.capitalize() + ' moved to ' + zone
+                releases.update(origins)
+        for origin in releases:
+            source = regions[origin]
+            source.state.update(hen=None, confirmed=False, baseline=None,
+                                pending_hen=None, pending_baseline=None, pending_settled=False)
+            for key in ('visit', 'pending', 'baseline'):
+                source.state['journal'][key] = []
+            # Preserve a different hen's two arrival shots during a simultaneous
+            # swap, but discard the departing hen's presence/count candidates.
+            if origin not in moves:
+                source.reset_confirmation()
+            else:
+                source.egg_candidate, source.egg_streak = None, 0
+                source.state['journal']['count'] = []
         events = []
-        self.blocked = set()
+        blocked = set()
         center = observations['center']
         center_clear = not center.get('obscured') and center['label'] == 'no_chicken'
-        for zone, nest in self.regions.items():
+        for zone, nest in regions.items():
             item = observations[zone]
             if item.get('obscured'):
-                self.blocked.add(zone)
+                blocked.add(zone)
                 # Small edge/body fragments are skipped completely. Genuine
                 # hidden/ambiguous nests still invalidate attribution, without
                 # consuming or erasing a confirmation shot or the clean count.
@@ -98,17 +175,29 @@ class SplitNest:
             eggs = item['egg_count'] if count_allowed else None
             frame = None if evidence is None else dict(evidence, zone=zone, label=item['label'],
                          egg_count=eggs if item['label'] == 'no_chicken' else None)
-            for event in nest.observe(item['label'], eggs, frame, count_allowed=count_allowed):
-                events.append(zone.capitalize() + ': ' + event)
+            for event in nest.observe(item['label'], eggs, frame, count_allowed=count_allowed,
+                                      arrival_event=moves.get(zone)):
+                events.append(event if ' moved to ' in event else zone.capitalize() + ': ' + event)
+        states = {zone: nest.state for zone, nest in regions.items()}
+        if not all(valid_state(state) for state in states.values()):
+            raise AppError('Invalid split nest decision; no state committed.')
+        atomic_json(self.transition_path, {'layout': self.layout, 'regions': states})
+        self._recover_transition()
+        # Restore the staged streaks; replay on restart deliberately resets them.
+        for nest in regions.values():
+            del nest._commit
+        self.regions, self.blocked = regions, blocked
         self._refresh_latest()
         return events
 
     def reset_confirmation(self):
+        self._recover_transition()
         for nest in self.regions.values():
             nest.obscure()
         self.blocked = set(self.regions)
 
     def update_day(self, identities=()):
+        self._recover_transition()
         for nest in self.regions.values():
             nest.update_day(identities)
 

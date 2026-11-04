@@ -69,6 +69,29 @@ class SplitTests(unittest.TestCase):
         self.assertEqual(result['bodies'][0]['zone'], 'left')
         self.assertEqual(result['clear_candidates'], ['right'])
 
+    def test_position_uses_largest_body_overlap_on_both_axes(self):
+        for split, mask in (('vertical', body(210, 30, 240, 240)),
+                            ('horizontal', body(20, 110, 300, 140))):
+            result = assign_regions([mask], split)
+            item = result['bodies'][0]
+            self.assertEqual(item['zone'], 'center')
+            self.assertEqual(item['overlap_pixels']['center'], item['pixels'])
+            self.assertEqual(item['zone'], max(item['overlap_pixels'], key=item['overlap_pixels'].get))
+
+    def test_body_mask_not_bounding_box_determines_position(self):
+        # A thin tail extends the bounding rectangle across center, while the
+        # actual body remains overwhelmingly on the left.
+        mask = body(30, 50, 170, 250)
+        mask[170:175, 200:460] = True
+        result = assign_regions([mask], 'vertical')
+        self.assertEqual(result['bodies'][0]['zone'], 'left')
+
+    def test_equal_center_overlap_does_not_steal_a_side_body(self):
+        result = assign_regions([body(180, 60, 100, 240)], 'vertical')
+        item = result['bodies'][0]
+        self.assertEqual(item['overlap_pixels']['left'], item['overlap_pixels']['center'])
+        self.assertEqual(item['zone'], 'left')
+
     def test_large_merged_body_is_ambiguous_even_if_it_spans_center(self):
         result = assign_regions([body(0, 0, 640, 300)], 'vertical')
         self.assertTrue(result['ambiguous'])

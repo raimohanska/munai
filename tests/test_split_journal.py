@@ -1,5 +1,7 @@
 """Synthetic split decisions/journal evidence; no camera or real hen data."""
 from datetime import date
+import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -11,7 +13,7 @@ from ha_service.journal import Journal, frame_ids, valid_entry
 from ha_service.journal_web import render
 from ha_service.options import AppError, validate
 from ha_service.split_nest import SplitNest
-from ha_service.storage import Store
+from ha_service.storage import Store, atomic_json
 from ha_service.runtime import Runtime
 
 
@@ -66,6 +68,168 @@ class SplitJournalTests(unittest.TestCase):
         self.assertIn('vertical-right', page)
         self.assertIn('Photo ID:', page)
         self.assertIn(frames[0]['id'], page)
+
+    def test_move_to_center_releases_old_position_and_retains_real_evidence(self):
+        self.shots()
+        self.shots(right=observation('hen_a'))
+        hidden = observation('unknown', eggs=None, obscured=True)
+        frames = self.shots(n=2, left=hidden, right=hidden, center=observation('hen_a'))
+        self.assertEqual(self.nest.regions['right'].state['hen'], 'hen_a')
+        self.assertIsNone(self.nest.regions['center'].state['hen'])
+        last, events = self.shot(left=hidden, right=hidden, center=observation('hen_a'))
+        self.assertEqual(events, ['Hen_a moved to center'])
+        self.assertIsNone(self.nest.regions['right'].state['hen'])
+        self.assertEqual(self.nest.regions['center'].state['hen'], 'hen_a')
+        self.assertEqual(self.nest.snapshot()['zones']['right']['occupant'], 'obscured')
+        self.assertEqual(self.nest.regions['right'].state['eggs'], 0)
+        self.assertIsNone(self.nest.regions['right'].state['pending_hen'])
+        entry = next(e for e in self.entries() if ' moved to ' in e['text'])
+        self.assertEqual(entry['text'], 'Hen_a moved to center')
+        self.assertEqual(entry['zone'], 'center')
+        self.assertTrue(valid_entry(entry))
+        self.assertEqual(set(frame_ids(entry)), {f['id'] for f in frames + [last]})
+        self.assertTrue(all(f['zone'] == 'center' for g in entry['evidence'] for f in g['frames']))
+        self.assertNotIn('Some evidence is unavailable.', render(self.journal, 0).decode())
+        self.nest = SplitNest(self.store.root, 'vertical', today=self.today)
+        self.shots(n=5)
+        self.assertEqual({e['text'] for e in self.entries()},
+                         {'Right: Hen_a arrived', 'Hen_a moved to center', 'Center: Hen_a left'})
+        self.assertEqual(sum(self.nest.daily_snapshot()['counts'].values()), 0)
+
+    def test_move_to_either_side_does_not_reuse_hidden_egg_baselines(self):
+        for side in ('left', 'right'):
+            with self.subTest(side=side):
+                self.shots()
+                self.shots(center=observation('hen_a'))
+                self.shots(**{side: observation('hen_a')})
+                self.assertEqual(self.nest.regions[side].state['hen'], 'hen_a')
+                self.assertIsNone(self.nest.regions['center'].state['hen'])
+                self.assertIsNone(self.nest.regions[side].state['baseline'])
+                self.assertIn('Hen_a moved to ' + side, {e['text'] for e in self.entries()})
+                self.shots(n=5, **{side: observation(eggs=1)})
+        self.assertFalse(any('laid an Egg' in e['text'] for e in self.entries()))
+
+    def test_side_to_side_move_does_not_emit_old_zone_departure(self):
+        self.shots()
+        self.shots(left=observation('hen_a'))
+        self.shots(n=5, right=observation('hen_a'))
+        self.assertEqual({e['text'] for e in self.entries()},
+                         {'Left: Hen_a arrived', 'Hen_a moved to right'})
+        self.assertIsNone(self.nest.regions['left'].state['hen'])
+
+    def test_simultaneous_swap_is_two_moves_not_departures(self):
+        self.shots()
+        self.shots(left=observation('hen_a'), right=observation('hen_b'))
+        self.shots(left=observation('hen_b'), right=observation('hen_a'))
+        self.assertEqual({e['text'] for e in self.entries()},
+                         {'Left: Hen_a arrived', 'Right: Hen_b arrived',
+                          'Hen_a moved to right', 'Hen_b moved to left'})
+        self.assertEqual(self.nest.regions['left'].state['hen'], 'hen_b')
+        self.assertEqual(self.nest.regions['right'].state['hen'], 'hen_a')
+
+    def test_duplicate_observed_identity_does_not_choose_a_larger_hen(self):
+        self.shots()
+        self.shots(left=observation('hen_a'))
+        self.shots(n=6, left=observation('hen_a'), right=observation('hen_a'))
+        self.assertEqual({e['text'] for e in self.entries()}, {'Left: Hen_a arrived'})
+        self.assertIsNone(self.nest.regions['right'].state['hen'])
+        self.assertEqual(self.nest.blocked, {'left', 'right'})
+
+    def test_unknown_new_position_does_not_steal_known_identity(self):
+        self.shots()
+        self.shots(left=observation('hen_a'))
+        self.shots(n=5, left=observation('unknown', obscured=True), right=observation('unknown'))
+        self.assertEqual(self.nest.regions['left'].state['hen'], 'hen_a')
+        self.assertEqual(self.nest.regions['right'].state['hen'], 'unknown')
+        self.assertFalse(any(' moved to ' in e['text'] for e in self.entries()))
+
+    def test_restart_requires_fresh_move_confirmation(self):
+        self.shots()
+        self.shots(left=observation('hen_a'))
+        hidden = observation('unknown', obscured=True)
+        self.shots(n=2, left=hidden, center=observation('hen_a'))
+        self.nest = SplitNest(self.store.root, 'vertical', today=self.today)
+        self.shots(n=2, left=hidden, center=observation('hen_a'))
+        self.assertFalse(any(' moved to ' in e['text'] for e in self.entries()))
+        self.shot(left=hidden, center=observation('hen_a'))
+        self.assertIsNone(self.nest.regions['left'].state['hen'])
+        self.assertEqual(self.nest.regions['center'].state['hen'], 'hen_a')
+
+    def test_failed_transaction_prepare_does_not_change_live_positions(self):
+        self.shots()
+        self.shots(left=observation('hen_a'))
+        hidden = observation('unknown', obscured=True)
+        self.shots(n=2, left=hidden, center=observation('hen_a'))
+        before = {z: copy.deepcopy(n.state) for z, n in self.nest.regions.items()}
+        with patch('ha_service.split_nest.atomic_json', side_effect=OSError()):
+            with self.assertRaises(OSError):
+                self.shot(left=hidden, center=observation('hen_a'))
+        self.assertEqual({z: n.state for z, n in self.nest.regions.items()}, before)
+        self.assertFalse(self.nest.transition_path.exists())
+        self.shot(left=hidden, center=observation('hen_a'))
+        self.assertEqual(sum(' moved to ' in e['text'] for e in self.entries()), 1)
+
+    def test_partial_multi_region_write_replays_move_exactly_once(self):
+        self.shots()
+        self.shots(right=observation('hen_a'))
+        hidden = observation('unknown', obscured=True)
+        self.shots(n=2, right=hidden, center=observation('hen_a'))
+        def fail_center(path, value):
+            if path.parent.name == 'center':
+                raise OSError()
+            atomic_json(path, value)
+        with patch('ha_service.split_nest.atomic_json', side_effect=fail_center):
+            with self.assertRaises(OSError):
+                self.shot(right=hidden, center=observation('hen_a'))
+        self.assertTrue(self.nest.transition_path.exists())
+        self.nest = SplitNest(self.store.root, 'vertical', today=self.today)
+        self.assertFalse(self.nest.transition_path.exists())
+        self.assertIsNone(self.nest.regions['right'].state['hen'])
+        self.assertEqual(self.nest.regions['center'].state['hen'], 'hen_a')
+        self.journal.flush(self.nest)
+        self.journal.flush(self.nest)
+        self.assertEqual(sum(' moved to ' in e['text'] for e in self.entries()), 1)
+        self.shots(n=5)
+        self.assertEqual(sum(e['text'].endswith(' left') for e in self.entries()), 1)
+
+    def test_invalid_transaction_fails_closed(self):
+        self.nest.transition_path.write_text(json.dumps({'layout': 'vertical', 'regions': {}}))
+        with self.assertRaises(AppError):
+            SplitNest(self.store.root, 'vertical', today=self.today)
+
+    def test_confirmation_repairs_legacy_duplicate_positions(self):
+        self.shots()
+        self.shots(right=observation('hen_a'))
+        # Simulate the old independent trackers retaining the same identity in
+        # two positions, including after an app upgrade/restart.
+        center = self.nest.regions['center']
+        state = copy.deepcopy(center.state)
+        state.update(hen='hen_a', confirmed=True)
+        center._commit(state)
+        self.nest = SplitNest(self.store.root, 'vertical', today=self.today)
+        hidden = observation('unknown', obscured=True)
+        self.shots(right=hidden, center=observation('hen_a'))
+        self.assertIsNone(self.nest.regions['right'].state['hen'])
+        self.assertEqual(self.nest.regions['center'].state['hen'], 'hen_a')
+        self.assertEqual(sum(' moved to ' in e['text'] for e in self.entries()), 1)
+
+    def test_horizontal_movement_uses_same_single_position_rule(self):
+        root = self.root / 'horizontal-move'
+        root.mkdir()
+        nest = SplitNest(root, 'horizontal', today=self.today)
+        def shots(top, bottom, center, n=3):
+            events = []
+            for _ in range(n):
+                events.extend(nest.observe_zones({'top': top, 'bottom': bottom, 'center': center}))
+            return events
+        shots(observation('hen_a'), observation(), observation())
+        hidden = observation('unknown', obscured=True)
+        self.assertEqual(shots(hidden, hidden, observation('hen_a')), ['Hen_a moved to center'])
+        self.assertIsNone(nest.regions['top'].state['hen'])
+        self.assertEqual(shots(observation(), observation('hen_a'), observation()),
+                         ['Hen_a moved to bottom'])
+        self.assertIsNone(nest.regions['center'].state['hen'])
+        self.assertEqual(nest.regions['bottom'].state['hen'], 'hen_a')
 
     def test_clear_side_counts_while_other_hen_stays(self):
         self.shots()
