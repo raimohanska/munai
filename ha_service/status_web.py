@@ -5,6 +5,7 @@ import json
 
 from .web_layout import start, end
 from .captures_web import prediction_layout
+from .training import without_center_eggs
 
 
 def label(value):
@@ -21,11 +22,14 @@ def state_html(state, raw=False):
         occupant = item.get('label') if raw else item.get('occupant')
         if raw and item.get('obscured'):
             occupant = 'obscured'
-        count = item.get('egg_count')
-        eggs = ('{} eggs'.format(count) if count is not None and
-                (not raw or occupant in ('no_chicken', 'empty')) else 'Egg count unavailable')
-        parts.append('<div><dt>{}</dt><dd>{}<br><span class="muted">{}</span></dd></div>'.format(
-            escape(zone.capitalize()), escape(label(occupant)), escape(eggs)))
+        egg_line = ''
+        if zone != 'center':
+            count = item.get('egg_count')
+            eggs = ('{} eggs'.format(count) if count is not None and
+                    (not raw or occupant in ('no_chicken', 'empty')) else 'Egg count unavailable')
+            egg_line = '<br><span class="muted">{}</span>'.format(escape(eggs))
+        parts.append('<div><dt>{}</dt><dd>{}{}</dd></div>'.format(
+            escape(zone.capitalize()), escape(label(occupant)), egg_line))
     parts.append('</dl>')
     return ''.join(parts)
 
@@ -56,7 +60,7 @@ def render(snapshot, base='', confirmations=None):
                          'src="{0}" alt="Latest processed nest capture"></a>'.format(escape(source, quote=True)))
         else:
             parts.append('<p class="notice">The image for this observation is unavailable.</p>')
-        raw = observation['raw_prediction']
+        raw = without_center_eggs(observation['raw_prediction'])
         # Whole-box raw status historically calls its label "occupant".
         if 'zones' not in raw:
             raw = dict(raw, label=raw.get('occupant'))

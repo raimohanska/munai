@@ -9,6 +9,19 @@ MAX_ANNOTATIONS = 10000
 TRAINING_PATH = re.compile(r'^(?:images/[a-f0-9]{64}\.jpg|annotations/[a-f0-9]{64}\.json)$')
 
 
+def without_center_eggs(interpretation, region='whole'):
+    """Center is presence-only, not an egg-counting region."""
+    result = dict(interpretation)
+    if region == 'center':
+        result.pop('egg_count', None)
+    zones = result.get('zones')
+    if zones and 'center' in zones:
+        result['zones'] = dict(zones)
+        result['zones']['center'] = dict(zones['center'])
+        result['zones']['center'].pop('egg_count', None)
+    return result
+
+
 class TrainingArchive:
     def __init__(self, store):
         self.store = store

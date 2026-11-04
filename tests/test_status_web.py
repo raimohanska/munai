@@ -12,7 +12,7 @@ from ha_service.journal_web import JournalHandler
 from ha_service.confirmations import Confirmations
 from ha_service.options import validate
 from ha_service.runtime import Runtime
-from ha_service.status_web import render
+from ha_service.status_web import render, state_html
 from ha_service.storage import Store, MAX_FILE_BYTES
 
 
@@ -130,6 +130,27 @@ class StatusWebTests(unittest.TestCase):
             page = render(snapshot)
             headings = [part.split(b'</dt>', 1)[0] for part in page.split(b'<dt>')[1:]]
             self.assertEqual(headings, [name.encode() for name in expected] * 2)
+
+    def test_center_is_presence_only_in_raw_confirmed_and_diagnostics(self):
+        for sides in (('left', 'right'), ('top', 'bottom')):
+            for count in (None, 999):
+                for raw in (False, True):
+                    state = {'zones': {
+                        sides[0]: {'occupant': 'empty', 'label': 'no_chicken', 'egg_count': 2},
+                        'center': {'occupant': 'empty', 'label': 'no_chicken', 'egg_count': count},
+                        sides[1]: {'occupant': 'unknown', 'label': 'unknown', 'egg_count': None}}}
+                    page = state_html(state, raw=raw)
+                    center = page.split('<dt>Center</dt>', 1)[1].split('</div>', 1)[0]
+                    self.assertEqual(center, '<dd>Empty</dd>')
+                    self.assertIn('2 eggs', page)
+                    self.assertEqual(page.count('Egg count unavailable'), 1)
+        self.observe()
+        snapshot = self.runtime.web_status()
+        snapshot['observation']['raw_prediction']['zones'] = {
+            'center': {'label': 'unknown', 'egg_count': 999}}
+        page = render(snapshot)
+        self.assertNotIn(b'&quot;egg_count&quot;: 999', page)
+        self.assertEqual(snapshot['observation']['raw_prediction']['zones']['center']['egg_count'], 999)
 
     def test_health_states_and_sanitized_errors(self):
         with patch('ha_service.runtime.capture_paused', return_value=False):

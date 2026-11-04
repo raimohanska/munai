@@ -114,7 +114,8 @@ def render(journal, page, base='', confirmations=None):
             parts.append('<h3>{}</h3><div class="photos">'.format(escape(group['role'])))
             for frame in group['frames']:
                 source = base + 'images/' + frame['id'] + '.jpg'
-                caption = ('Empty nest · {} eggs detected'.format(frame['egg_count'])
+                caption = ('Empty' if entry.get('zone') == 'center' and frame['label'] == 'no_chicken' else
+                           'Empty nest · {} eggs detected'.format(frame['egg_count'])
                             if frame['label'] == 'no_chicken' else 'Identity prediction: ' + frame['label'])
                 if 'zone' in entry:
                     caption = entry['zone'].capitalize() + ' view · ' + caption

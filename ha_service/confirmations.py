@@ -13,7 +13,7 @@ from .journal import ID
 from .options import AppError
 from .storage import (Conflict, MAX_FILE_BYTES, VERSION_ID, atomic_json, digest,
                       image_valid, safe_path, sync_directory)
-from .training import MAX_ANNOTATIONS, TrainingArchive
+from .training import MAX_ANNOTATIONS, TrainingArchive, without_center_eggs
 
 MAX_CONFIRMATIONS = MAX_ANNOTATIONS
 MAX_REQUEST_BYTES = 32768
@@ -66,7 +66,8 @@ class Confirmations:
         try:
             with self.store.lock, self.journal.lock:
                 fingerprint, unused = self.image(source)
-                snapshot = dict(source=source, interpretation=interpretation, layout=layout,
+                snapshot = dict(source=source,
+                                interpretation=without_center_eggs(interpretation, region), layout=layout,
                                 region=region, view=view, fingerprint=fingerprint)
                 payload = encoded(snapshot)
                 signature = hmac.new(self.secret, payload, 'sha256').hexdigest()
@@ -105,6 +106,7 @@ class Confirmations:
             image = safe_path(self.root / 'images', checksum + '.jpg')
             record = dict(snapshot)
             record.pop('fingerprint')
+            record['interpretation'] = without_center_eggs(record['interpretation'], record['region'])
             record.update(schema=1, human_confirmed=True, image='images/' + checksum + '.jpg',
                           sha256=checksum, app_version=VERSION,
                           confirmed_at=datetime.now(timezone.utc).isoformat())

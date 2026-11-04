@@ -9,6 +9,13 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.29
+
+- Treat center as presence-only throughout the UI: no egg-count line in either
+  Status section, no center egg field in diagnostics, and no center egg captions
+  in Journal evidence. Omit center egg counts from new training annotations.
+  Keep side-zone counts and existing stored data unchanged.
+
 ## 0.1.28
 
 - Add small Confirm buttons to Status, Captures, Journal evidence, and References.

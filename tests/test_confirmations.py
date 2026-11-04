@@ -45,7 +45,7 @@ class ConfirmationTests(unittest.TestCase):
         path.write_bytes(self.image)
         self.raw = {'occupant': 'unknown', 'egg_count': None, 'ambiguous': False, 'zones': {
             'left': {'label': 'hen_a', 'egg_count': None, 'obscured': False},
-            'center': {'label': 'no_chicken', 'egg_count': None, 'obscured': False},
+            'center': {'label': 'no_chicken', 'obscured': False},
             'right': {'label': 'no_chicken', 'egg_count': 2, 'obscured': False}}}
         self.result = self.store.root / 'results' / (STAMP + '.json')
         self.result.write_text(json.dumps(dict(timestamp=STAMP, raw_prediction=self.raw)))
@@ -130,6 +130,32 @@ class ConfirmationTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.confirmations.save(latest)
         self.assertFalse(self.records())
+
+    def test_center_egg_fields_are_omitted_from_frame_and_region_annotations(self):
+        for count in (None, 999):
+            self.raw['zones']['center']['egg_count'] = count
+            request = self.request()
+            self.assertNotIn('egg_count', request['snapshot']['interpretation']['zones']['center'])
+            self.confirmations.save(request)
+            self.assertEqual(self.raw['zones']['center']['egg_count'], count)
+        record = self.records()[0]
+        self.assertNotIn('egg_count', record['interpretation']['zones']['center'])
+        self.assertEqual(record['interpretation']['zones']['right']['egg_count'], 2)
+        request = self.requests(self.confirmations.button(
+            SOURCE, {'label': 'no_chicken', 'egg_count': None}, 'vertical', 'center', 'journal'))[0]
+        self.confirmations.save(request)
+        record = next(record for record in self.records() if record['region'] == 'center')
+        self.assertEqual(record['interpretation'], {'label': 'no_chicken'})
+
+    def test_center_journal_caption_has_no_egg_count(self):
+        (self.journal.root / 'images' / (FRAME + '.jpg')).write_bytes(self.image)
+        entry = dict(id=FRAME, text='Synthetic event', zone='center', layout='vertical', evidence=[
+            dict(role='Departure confirmation', frames=[dict(id=FRAME, label='no_chicken', egg_count=None)])])
+        (self.journal.root / 'entries' / (FRAME + '.json')).write_text(json.dumps(entry))
+        page = journal_page(self.journal, 0, confirmations=self.confirmations)
+        self.assertIn(b'Center view', page)
+        self.assertNotIn(b'eggs detected', page)
+        self.assertNotIn('egg_count', self.requests(page)[0]['snapshot']['interpretation'])
 
     def test_uncertainty_and_counts_are_preserved_without_fabricated_labels(self):
         self.raw['zones']['right'].update(label='unknown', obscured=True, egg_count=None)

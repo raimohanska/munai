@@ -107,7 +107,9 @@ the example was saved successfully; repeating a confirmation does not duplicate 
 
 Status and Captures retain the frame prediction, including left/center/right
 (or top/center/bottom) labels, per-zone egg counts, the whole-frame egg count,
-and any uncertainty/obscured values. Unavailable counts stay null, not zero.
+and any uncertainty/obscured values. Center is presence-only and has no egg-count
+field in new training annotations (0.1.29+). Unavailable side counts stay null,
+not zero. Existing stored annotations are not rewritten.
 The separate historical **Confirmed state** is not a training label for the photo.
 Journal confirmations apply only to the displayed evidence region and its label
 and egg count; they do not imply confirmation of other regions or the event.

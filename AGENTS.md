@@ -88,6 +88,8 @@ produced each egg.
 - Prefer position-independent brightness/texture summaries; changed poses can
   still obscure markings, so retain an unknown outcome for ambiguous images.
 - Ignore eggs when a chicken is present.
+- In split mode, center is presence-only. Never display a center egg count or
+  include one in new training annotations; egg counts belong only to side nests.
 - Automatically saved identity predictions must not become reference images
   without review. Use the same relative image layout locally and on HA:
   `references/<identity>/` for reviewed references (no versions or state pointer),
