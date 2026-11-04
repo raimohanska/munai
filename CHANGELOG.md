@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.22
+
+- Show zones in spatial order in both Status prediction and confirmed-state
+  sections: Left, Center, Right or Top, Center, Bottom.
+- Omit the egg-count suffix from capture captions when the count is unknown.
+
 ## 0.1.21
 
 - Order review regions spatially: Left, Center, Right or Top, Center, Bottom,

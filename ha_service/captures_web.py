@@ -48,8 +48,9 @@ def state_summary(raw):
     else:
         summary = name(raw)
     eggs = raw.get('egg_count')
-    count = str(eggs) if type(eggs) is int and eggs >= 0 else '?'
-    return '{} ({} egg{})'.format(summary, count, '' if count == '1' else 's')
+    if type(eggs) is not int or eggs < 0:
+        return summary
+    return '{} ({} egg{})'.format(summary, eggs, '' if eggs == 1 else 's')
 
 
 def interpretation(store, stamp):
@@ -77,7 +78,7 @@ def render(store, day=None, base=''):
              '<p>One UTC day at a time, newest photos first. Image predictions are not '
              'reviewed identities. Use ✎ to review and teach.</p>',
              '<p class="muted">Frame only: left | center | right (top | center | bottom for horizontal splits). '
-             'An unknown egg count is shown as ?.</p>',
+              'Egg counts are shown only when known.</p>',
              '<p class="muted">Only retained capture photos are shown, not every observation or '
              'journal evidence. Deduplication and retention can leave gaps.</p>',
              '<p><a href="{}captures">Newest stored day</a> · <a href="">Refresh</a></p>'.format(base)]

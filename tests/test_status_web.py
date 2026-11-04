@@ -115,6 +115,17 @@ class StatusWebTests(unittest.TestCase):
         self.assertIn(b'does not establish that a hen is present', page)
         self.assertIn(b'Egg count unavailable', page)
 
+    def test_split_sections_follow_spatial_order(self):
+        self.observe()
+        for names, expected in ((('right', 'left', 'center'), ('Left', 'Center', 'Right')),
+                                (('bottom', 'top', 'center'), ('Top', 'Center', 'Bottom'))):
+            snapshot = self.runtime.web_status()
+            for state in (snapshot['observation'], snapshot['observation']['raw_prediction']):
+                state['zones'] = {name: {'occupant': 'empty', 'label': 'empty'} for name in names}
+            page = render(snapshot)
+            headings = [part.split(b'</dt>', 1)[0] for part in page.split(b'<dt>')[1:]]
+            self.assertEqual(headings, [name.encode() for name in expected] * 2)
+
     def test_health_states_and_sanitized_errors(self):
         with patch('ha_service.runtime.capture_paused', return_value=False):
             self.assertEqual(self.runtime.web_status()['capture_state'], 'Active')

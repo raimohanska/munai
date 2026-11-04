@@ -165,7 +165,8 @@ class CapturesGalleryTests(unittest.TestCase):
         self.result(raw_prediction={'egg_count': None, 'zones': {
             'bottom': {'label': 'hen_b'}, 'top': {'label': 'no_chicken'},
             'center': {'label': 'unknown'}}})
-        self.assertIn(b'empty | uncertain | hen_b (? eggs)', render(self.store))
+        self.assertIn(b'empty | uncertain | hen_b', render(self.store))
+        self.assertNotIn(b'(? eggs)', render(self.store))
 
     def test_missing_corrupt_or_mismatched_results_do_not_guess_from_folder(self):
         self.photo('hen_a/unreviewed/20000101T120000_000000Z.jpg')

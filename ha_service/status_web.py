@@ -14,7 +14,9 @@ def label(value):
 def state_html(state, raw=False):
     zones = state.get('zones') or {'nest': state}
     parts = ['<dl class="states">']
-    for zone, item in zones.items():
+    order = ('left', 'top', 'center', 'right', 'bottom')
+    for zone in sorted(zones, key=lambda name: order.index(name) if name in order else len(order)):
+        item = zones[zone]
         occupant = item.get('label') if raw else item.get('occupant')
         if raw and item.get('obscured'):
             occupant = 'obscured'
