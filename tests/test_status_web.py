@@ -75,7 +75,7 @@ class StatusWebTests(unittest.TestCase):
         handler.send_header.assert_any_call('Cache-Control', 'no-store')
         handler.send_header.assert_any_call('Content-Security-Policy',
             "default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; "
-            "frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
+            "connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
         self.observe(1, self.image + b'synthetic-second')
         status, data, handler = self.request('/latest/' + first + '.jpg')
         self.assertEqual((status, data), (200, self.image))

@@ -1,9 +1,12 @@
-"""Read-only HA Ingress UI; deliberately separate from the transfer API."""
+"""HA Ingress pages and explicit human review, separate from the transfer API."""
 from datetime import datetime, timezone
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import shutil
 import re
+import json
+import hmac
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .journal import ID
@@ -12,6 +15,10 @@ from .references_web import render as render_references
 from .captures_web import render as render_captures
 from .status_web import render as render_status
 from .web_layout import start, end
+from .review_web import button, dialog, CSS as REVIEW_CSS
+from .reviews import Reviews
+from .options import AppError
+from .storage import Conflict
 
 PAGE_SIZE = 20
 CSS = '''
@@ -46,7 +53,7 @@ nav { display: flex; justify-content: space-between; padding: 16px; }
 @media(max-width: 700px) { .sidebar { position: static; width: auto; padding: 16px; }
  .brand { padding: 0 0 12px; } .sidebar nav { flex-direction: row; flex-wrap: wrap; }
  .content { margin: 0; padding: 10px; } header,article { padding: 16px; } }
-'''
+''' + REVIEW_CSS
 JS = '''
 document.querySelectorAll('time').forEach(node => {
   const date = new Date(node.dateTime);
@@ -55,7 +62,7 @@ document.querySelectorAll('time').forEach(node => {
 const active = document.querySelector('a[aria-current="page"]');
 const status = active && active.textContent === 'Status';
 if (status || !new URLSearchParams(location.search).get('page')) {
-  setInterval(() => { if (!document.hidden && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
+  setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]') && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
 }
 '''
 
@@ -78,7 +85,7 @@ def render(journal, page, base=''):
         usage = journal.usage_bytes / (1024 * 1024)
     low_space = journal.store.options['minimum_free_mb']
     free = shutil.disk_usage(str(journal.root)).free / (1024 * 1024)
-    parts = [start('Journal', 'Journal', base, script=True), '<header>',
+    parts = [start('Journal', 'Journal', base, script=True, reviews=True), '<header>',
              '<h1>Journal</h1><p>The story of your nest, with the evidence behind each decision.</p>',
              '<p class="muted">{} events · {} days retention · archive {:.1f} MiB at last hourly cleanup</p>'.format(
                  len(paths), journal.store.options['journal_retention_days'], usage),
@@ -110,12 +117,13 @@ def render(journal, page, base=''):
                     caption = entry['zone'].capitalize() + ' view · ' + caption
                 overlay = ('<span class="zone {}-{}" aria-hidden="true"></span>'.format(
                     entry['layout'], entry['zone']) if 'zone' in entry else '')
-                parts.append('<figure><a href="{0}" target="_blank" rel="noopener">'
-                             '<div class="frame"><img src="{0}" loading="lazy" alt="{1}">{3}</div></a>'
+                parts.append('<figure><div class="review-photo"><a href="{0}" target="_blank" rel="noopener">'
+                             '<div class="frame"><img src="{0}" loading="lazy" alt="{1}">{3}</div></a>{5}</div>'
                              '<figcaption>{2}<br>{1}<span class="photo-id">Photo ID: '
                              '<code>{4}</code></span></figcaption></figure>'.format(
                                   source, escape(caption, quote=True), time_html(frame['id']), overlay,
-                                  escape(frame['id'])))
+                                   escape(frame['id']), button('images/' + frame['id'] + '.jpg',
+                                                              entry.get('zone', 'whole'))))
             parts.append('</div>')
         present_roles = {group['role'] for group in entry['evidence'] if group['frames']}
         required = ({'Before visit / previous count', 'Identity confirmation', 'Egg count confirmation'}
@@ -134,7 +142,7 @@ def render(journal, page, base=''):
     parts.append('<span>Page {} of {}</span>'.format(page + 1, pages))
     if page + 1 < pages:
         parts.append('<a href="?page={}">Older →</a>'.format(page + 1))
-    parts.append('</nav>' + end())
+    parts.append('</nav>' + dialog(base) + end())
     return ''.join(parts).encode('utf-8')
 
 
@@ -144,7 +152,12 @@ class JournalServer(HTTPServer):
     def __init__(self, address, journal, runtime=None):
         self.journal = journal
         self.runtime = runtime
+        self.reviews = Reviews(journal, runtime.validate_reference if runtime else self.no_validator)
         super().__init__(address, JournalHandler)
+
+    @staticmethod
+    def no_validator(path):
+        raise AppError('Recognition validation is unavailable. Reference was not activated.')
 
     def get_request(self):
         sock, address = super().get_request()
@@ -170,7 +183,7 @@ class JournalHandler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'self'; "
-                         "script-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
+                         "script-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
         self.send_header('Connection', 'close')
         self.end_headers()
         self.close_connection = True
@@ -186,7 +199,16 @@ class JournalHandler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             if parsed.scheme or parsed.netloc or parsed.fragment:
                 raise ValueError()
-            if parsed.path in ('/captures', '/captures/'):
+            if parsed.path == '/review':
+                query = parse_qs(parsed.query, strict_parsing=True, keep_blank_values=True)
+                if set(query) != {'source'} or len(query['source']) != 1:
+                    raise ValueError()
+                value = self.server.reviews.context(query['source'][0])
+                self.response(200, json.dumps(value).encode('utf-8'), 'application/json')
+            elif parsed.path == '/review.js' and not parsed.query:
+                self.response(200, Path(__file__).with_name('review.js').read_bytes(),
+                              'text/javascript; charset=utf-8')
+            elif parsed.path in ('/captures', '/captures/'):
                 query = parse_qs(parsed.query, strict_parsing=True, keep_blank_values=True) if parsed.query else {}
                 if set(query) - {'date'} or len(query.get('date', [''])) != 1:
                     raise ValueError()
@@ -258,8 +280,50 @@ class JournalHandler(BaseHTTPRequestHandler):
             else:
                 self.response(404, b'Not found.', 'text/plain')
         except FileNotFoundError:
-            self.response(404, b'Not found.', 'text/plain')
+            if parsed.path == '/review':
+                self.response(404, b'{"error":"Photo no longer available."}', 'application/json')
+            else:
+                self.response(404, b'Not found.', 'text/plain')
+        except AppError as error:
+            if parsed.path == '/review':
+                self.response(400, json.dumps({'error': str(error)}).encode('utf-8'), 'application/json')
+            else:
+                self.response(500, b'Journal unavailable; check app storage and logs.', 'text/plain')
         except ValueError:
             self.response(400, b'Invalid journal request.', 'text/plain')
         except Exception:
             self.response(500, b'Journal unavailable; check app storage and logs.', 'text/plain')
+
+    def do_POST(self):
+        if self.client_address[0] != '172.30.32.2':
+            self.response(403, b'Home Assistant Ingress required.', 'text/plain')
+            return
+        try:
+            if self.path != '/review':
+                raise AppError('Invalid review endpoint.')
+            tokens = self.headers.get_all('X-Munai-Review', [])
+            if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.reviews.token):
+                self.response(403, b'{"error":"Reopen review to authorize this action."}', 'application/json')
+                return
+            lengths = self.headers.get_all('Content-Length', [])
+            if (self.headers.get('Transfer-Encoding') or len(lengths) != 1 or
+                    not lengths[0].isdigit() or not 1 <= int(lengths[0]) <= 4096 or
+                    self.headers.get('Content-Type') != 'application/json'):
+                raise AppError('A bounded JSON review request is required.')
+            data = self.rfile.read(int(lengths[0]))
+            if len(data) != int(lengths[0]):
+                raise AppError('Incomplete review request.')
+            request = json.loads(data.decode('utf-8'))
+            if not isinstance(request, dict) or not isinstance(request.get('source'), str):
+                raise AppError('Invalid review request.')
+            value = self.server.reviews.save(request)
+            self.response(200, json.dumps(value).encode('utf-8'), 'application/json')
+        except Conflict as error:
+            self.response(409, json.dumps({'error': str(error)}).encode('utf-8'), 'application/json')
+        except FileNotFoundError:
+            self.response(404, b'{"error":"Photo no longer available."}', 'application/json')
+        except (AppError, ValueError, KeyError, TypeError) as error:
+            text = str(error) if isinstance(error, AppError) else 'Invalid review request.'
+            self.response(400, json.dumps({'error': text}).encode('utf-8'), 'application/json')
+        except Exception:
+            self.response(500, b'{"error":"Review could not be completed. Reopen the popup to check its status."}', 'application/json')

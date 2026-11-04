@@ -83,17 +83,75 @@ Each page shows a single **UTC day**, newest photos first, starting with the
 newest stored day. **Older day** and **Newer day** skip days without photos;
 `captures?date=2000-01-01` can also open a specific UTC date. Photos are lazy-loaded
 and clickable for the original, behind HA Ingress. From 0.1.17, captions show a
-compact prediction/confirmed-state summary plus just the filename. Results are
+compact frame-only summary plus just the filename. Results are
 matched by the exact capture timestamp; missing or invalid results are marked
 unavailable, never inferred from the folder. Split-zone states are shown separately.
-Raw egg counts are omitted when a hen is present; retained confirmed counts are
-marked as last confirmed in that case. Confirmed state can lag the image prediction.
+Summaries read `uncertain | empty | hen_a (0 eggs)` in left/center/right order
+(top/center/bottom for horizontal splits), using only this image's raw prediction.
+There are no confirmed-state/history labels or repeated zone names. One raw frame
+egg count appears at the end; `? eggs` means unavailable, never a retained count
+from another frame.
 
-This is a read-only view of the app's capture storage, not the journal evidence
+This is a view of the app's capture storage, not the journal evidence
 archive or a list of every observation. Image predictions are not reviewed identities.
 Enable `store_captures` to save future photos; deduplication and retention may
 leave gaps, and a photo removed by cleanup returns not found. Browsing does not
 change labels, references, retention settings or recognition.
+
+## Review & teach (0.1.19+)
+
+The small **✎** button on Captures and Journal photos opens the same quick-review
+popup. Pick a region and **Empty**, **Obscured**, an existing hen, or **＋ New hen…**.
+New hen names use 1–48 lowercase letters, digits, hyphens or underscores. Inspect
+the highlighted view, tick the visual confirmation, then save. The popup remembers
+the last region/hen during the page session; Journal initially selects its event's
+region. A **✓** indicator reopens the saved review, including from the other page
+when the underlying full-frame image bytes match. Status loads as photos become visible.
+
+- **Hen reference:** a clearly identifiable single hen in a whole frame for
+  whole-box mode, or in a side/center half-frame crop for split mode. The crop is
+  copied and validated before atomic activation. References are shared appearance
+  examples, never position rules. Active references are picked up next recognition
+  round; one example does not guarantee reliable identification.
+- **Empty reference:** the **whole frame** must be hen-free; eggs are allowed.
+  The original full frame becomes empty-background calibration.
+- **Annotation only:** Obscured is not a trainable category yet. Partial Empty,
+  whole-frame hen labels in split mode, unknown capture-time layouts, and layouts
+  different from the current app configuration do not create training references.
+  The popup explicitly says **Save annotation** rather than **Save & use**.
+
+Capture layout comes from its matching result JSON; Journal layout comes from
+the event archive. Missing metadata is never replaced with an assumed current
+layout. Missing/expired images cannot be promoted. Failed validation leaves
+references unchanged; stale image/review/reference checks require reopening the
+popup. Original prediction captions, capture folders, journal events and historical
+egg totals are not rewritten by reviews.
+
+Reopen a reviewed photo and choose **Undo review** before changing that region.
+Undo removes only the exact reference created by that review, checked by path
+and content hash. Pre-existing duplicate references are never removed. If another
+review uses the same reference, undo that dependent review first. An interrupted
+activation is shown as pending and can be undone before retrying. Undo requires
+the source photo still to be available in the selected gallery. Review metadata
+persists privately under `/data/reviews/` (up to 10,000 images), separate from
+photo retention; include it in HA backups. Promoted references remain after the
+source capture expires.
+
+**UI teaching changes HA's active reference folder, not your local production
+folder.** Before a desktop `push --replace`, pull the active references to an
+ignored folder, review/merge them into `local-data/production/references/`, then
+preview and confirm replacement. For example:
+
+```bash
+python munai_remote.py pull references local-data/ha-reviewed-references
+```
+
+Replacement refuses to drop or alter references attached to UI reviews. Keep
+their exact paths/bytes in the merged set, or explicitly Undo the corresponding
+reviews first while their source photos are still available. UI reviews cannot
+silently overwrite references changed elsewhere. No new host port is exposed:
+review reads/writes require HA Ingress, and writes also require a per-server
+anti-CSRF token, bounded JSON and explicit confirmation.
 
 ## Active references page (0.1.11+)
 
@@ -116,9 +174,9 @@ the active set while a page is open, old image requests ask you to refresh rathe
 than silently displaying new content under an old label. All links remain behind
 HA Ingress; there is no public `/local` gallery or additional host port.
 
-The page is read-only. Editing labels, approving journal photos as references,
-and reference promotion remain separate future work. Browsing does not modify
-active references, predictions, events or daily egg totals.
+The References page itself remains read-only. Use **Review & teach** on Captures
+or Journal photos for explicit promotion; browsing alone does not modify active
+references, predictions, events or daily egg totals.
 
 ## Overnight capture pause
 
@@ -241,11 +299,9 @@ boundary. Each event retains its own real confirmation/baseline frames; simultan
 events may share one physical JPEG. All region outboxes replay idempotently after
 crashes, and active evidence from all regions is protected from archive cleanup.
 Every caption exposes the stable full Photo ID: use **Photo ID plus zone** when
-reporting a wrong identity. This release is read-only: correction selectors and
-reviewed-reference import are not implemented. A future correction should preserve
-the original prediction, explicitly label the chosen zone, and require a separate
-reference-promotion decision. Copy a reviewed crop into an immutable reference
-version; never move/delete the shared journal original or silently rewrite egg totals.
+reporting a wrong identity. From 0.1.19, **Review & teach** can explicitly annotate
+that region and promote a validated copy to references. The original prediction
+and shared journal photo remain unchanged; no historical egg totals are rewritten.
 MQTT discovers side occupant/egg-count sensors plus a center occupant sensor;
 the original whole-device state includes a zone summary and combined confirmed
 egg count. Counts remain frozen when hens obscure the nest.

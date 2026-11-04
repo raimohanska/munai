@@ -132,7 +132,9 @@ class CapturesGalleryTests(unittest.TestCase):
         self.result()
         _, page, _ = self.request('/captures')
         caption = page.split(b'<figcaption>')[1].split(b'</figcaption>')[0]
-        self.assertIn('Prediction: Empty, 3 eggs · Confirmed: Empty, 2 eggs'.encode(), caption)
+        self.assertIn(b'empty (3 eggs)', caption)
+        self.assertNotIn(b'Confirmed', caption)
+        self.assertNotIn(b'Prediction:', caption)
         self.assertIn(b'<code>20000101T120000_000000Z.jpg</code>', caption)
         for removed in (b'unknown/', b'KiB', b'Full-size', b'12:00:', b'UTC'):
             self.assertNotIn(removed, caption)
@@ -142,13 +144,28 @@ class CapturesGalleryTests(unittest.TestCase):
         self.photo('unknown/20000101T120000_000000Z.jpg')
         self.result(zones={'left': {'occupant': 'hen_a', 'egg_count': 2},
                            'right': {'occupant': 'empty', 'egg_count': 1}},
-                    raw_prediction={'zones': {
-                        'left': {'label': 'hen_b', 'egg_count': 99},
-                        'right': {'label': 'no_chicken', 'egg_count': 1}}})
+                    raw_prediction={'egg_count': 0, 'zones': {
+                         'left': {'label': 'hen_b', 'egg_count': 99},
+                         'center': {'label': 'no_chicken', 'egg_count': 0},
+                         'right': {'label': 'no_chicken', 'egg_count': 1}}})
         page = render(self.store)
-        self.assertIn(b'Prediction: Left: hen_b; Right: Empty, 1 egg', page)
-        self.assertIn(b'Confirmed: Left: hen_a, 2 eggs (last confirmed); Right: Empty, 1 egg', page)
+        self.assertIn(b'hen_b | empty | empty (0 eggs)', page)
+        self.assertNotIn(b'hen_a', page)
+        self.assertNotIn(b'last confirmed', page)
         self.assertNotIn(b'99 eggs', page)
+
+    def test_requested_spatial_order_and_only_frame_egg_count(self):
+        self.photo('unknown/20000101T120000_000000Z.jpg')
+        self.result(egg_count=88, raw_prediction={'egg_count': 0, 'zones': {
+            'center': {'label': 'no_chicken', 'egg_count': 0},
+            'left': {'label': 'unknown', 'obscured': True},
+            'right': {'label': 'hen_a'}}})
+        self.assertIn(b'uncertain | empty | hen_a (0 eggs)', render(self.store))
+        self.assertNotIn(b'88 eggs', render(self.store))
+        self.result(raw_prediction={'egg_count': None, 'zones': {
+            'bottom': {'label': 'hen_b'}, 'top': {'label': 'no_chicken'},
+            'center': {'label': 'unknown'}}})
+        self.assertIn(b'empty | uncertain | hen_b (? eggs)', render(self.store))
 
     def test_missing_corrupt_or_mismatched_results_do_not_guess_from_folder(self):
         self.photo('hen_a/unreviewed/20000101T120000_000000Z.jpg')
@@ -166,11 +183,10 @@ class CapturesGalleryTests(unittest.TestCase):
         self.photo('unknown/20000101T120000_000000Z.jpg')
         self.result(occupant=None, egg_count=None,
                     raw_prediction={'occupant': 'unknown', 'egg_count': 0})
-        self.assertIn(b'Prediction: Unknown / uncertain', render(self.store))
-        self.assertIn(b'Confirmed: Not yet confirmed', render(self.store))
+        self.assertIn(b'uncertain (0 eggs)', render(self.store))
+        self.assertNotIn(b'Not yet confirmed', render(self.store))
         self.result(raw_prediction={'occupant': 'empty', 'obscured': True, 'egg_count': 99})
-        self.assertIn(b'Prediction: Obscured / uncertain', render(self.store))
-        self.assertNotIn(b'99 eggs', render(self.store))
+        self.assertIn(b'uncertain (99 eggs)', render(self.store))
         self.result(raw_prediction={'occupant': '<script>', 'egg_count': 0})
-        self.assertIn(b'Prediction: &lt;script&gt;', render(self.store))
+        self.assertIn(b'&lt;script&gt; (0 eggs)', render(self.store))
         self.assertNotIn(b'<script>', render(self.store))

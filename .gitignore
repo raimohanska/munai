@@ -24,6 +24,7 @@ references/
 /service.lock
 /nest-state.json
 /journal/
+/reviews/
 *.jpg
 *.jpeg
 *.png

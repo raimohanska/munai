@@ -1,4 +1,4 @@
-"""Read-only stored capture gallery, paged by UTC capture day."""
+"""Stored capture gallery with explicit review, paged by UTC capture day."""
 from datetime import datetime
 from html import escape
 import json
@@ -7,7 +7,7 @@ from data_layout import MAX_HISTORY_FILES
 from .options import AppError
 from .storage import MAX_FILE_BYTES, safe_path
 from .web_layout import start, end
-from .status_web import label
+from .review_web import button, dialog
 
 
 def inventory(store):
@@ -33,24 +33,23 @@ def inventory(store):
     return items
 
 
-def state_summary(state, raw=False):
-    zones = state.get('zones') or {'nest': state}
-    parts = []
-    for zone, item in sorted(zones.items()):
-        occupant = item.get('label', item.get('occupant')) if raw else item.get('occupant')
-        if raw and item.get('obscured'):
-            occupant = 'obscured'
-        text = label(occupant)
-        eggs = item.get('egg_count')
-        # Raw counts are meaningless while a hen is present. Confirmed counts
-        # may be retained from an earlier hen-free observation.
-        if isinstance(eggs, int) and not isinstance(eggs, bool) and eggs >= 0:
-            if not raw or occupant in ('empty', 'no_chicken'):
-                text += ', {} egg{}'.format(eggs, '' if eggs == 1 else 's')
-                if not raw and occupant not in ('empty', 'no_chicken'):
-                    text += ' (last confirmed)'
-        parts.append((zone.capitalize() + ': ' if 'zones' in state else '') + text)
-    return '; '.join(parts)
+def state_summary(raw):
+    """Only this frame: spatially ordered labels and one raw frame egg count."""
+    def name(item):
+        value = item.get('label', item.get('occupant'))
+        if item.get('obscured') or value in (None, 'unknown', 'obscured', 'unavailable'):
+            return 'uncertain'
+        return 'empty' if value in ('empty', 'no_chicken') else value.lower()
+
+    zones = raw.get('zones')
+    if zones:
+        order = ('left', 'center', 'right') if 'left' in zones or 'right' in zones else ('top', 'center', 'bottom')
+        summary = ' | '.join(name(zones.get(zone, {})) for zone in order)
+    else:
+        summary = name(raw)
+    eggs = raw.get('egg_count')
+    count = str(eggs) if type(eggs) is int and eggs >= 0 else '?'
+    return '{} ({} egg{})'.format(summary, count, '' if count == '1' else 's')
 
 
 def interpretation(store, stamp):
@@ -60,8 +59,7 @@ def interpretation(store, stamp):
             result = json.loads(store.read('results', stamp + '.json').decode('utf-8'))
         if result.get('timestamp') != stamp or not isinstance(result.get('raw_prediction'), dict):
             return 'Interpretation unavailable'
-        return 'Prediction: {} · Confirmed: {}'.format(
-            state_summary(result['raw_prediction'], raw=True), state_summary(result))
+        return state_summary(result['raw_prediction'])
     except (OSError, ValueError, TypeError, AttributeError, AppError):
         return 'Interpretation unavailable'
 
@@ -75,9 +73,11 @@ def render(store, day=None, base=''):
         day = days[-1]
     selected = sorted((item for item in items if item['day'] == day),
                       key=lambda item: (item['stamp'], item['path']), reverse=True)
-    parts = [start('Captures', 'Captures', base), '<header><h1>Stored captures</h1>',
+    parts = [start('Captures', 'Captures', base, reviews=True), '<header><h1>Stored captures</h1>',
              '<p>One UTC day at a time, newest photos first. Image predictions are not '
-             'reviewed identities; confirmed state may lag. This page is read-only.</p>',
+             'reviewed identities. Use ✎ to review and teach.</p>',
+             '<p class="muted">Frame only: left | center | right (top | center | bottom for horizontal splits). '
+             'An unknown egg count is shown as ?.</p>',
              '<p class="muted">Only retained capture photos are shown, not every observation or '
              'journal evidence. Deduplication and retention can leave gaps.</p>',
              '<p><a href="{}captures">Newest stored day</a> · <a href="">Refresh</a></p>'.format(base)]
@@ -103,10 +103,11 @@ def render(store, day=None, base=''):
             source = escape(base + 'captures/' + item['path'], quote=True)
             name = item['path'].rsplit('/', 1)[-1]
             summary = interpretation(store, item['stamp'])
-            parts.append('<figure><a href="{0}" target="_blank" rel="noopener">'
-                         '<img src="{0}" loading="lazy" alt="{1}"></a>'
+            parts.append('<figure><div class="review-photo"><a href="{0}" target="_blank" rel="noopener">'
+                         '<img src="{0}" loading="lazy" alt="{1}"></a>{3}</div>'
                          '<figcaption>{2}<br><code>{1}</code></figcaption></figure>'.format(
-                             source, escape(name, quote=True), escape(summary)))
+                             source, escape(name, quote=True), escape(summary),
+                             button('captures/' + item['path'])))
         parts.append('</div>')
-    parts.append('</article></main>' + end())
+    parts.append('</article></main>' + dialog(base) + end())
     return ''.join(parts).encode('utf-8')

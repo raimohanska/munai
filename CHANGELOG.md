@@ -9,6 +9,23 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.19
+
+- Make capture captions truly compact and frame-only: spatially ordered labels
+  separated by bars, followed by one raw frame egg count. Remove confirmed-state
+  history and repeated zone headings; unknown counts remain ? rather than zero.
+- Add a shared Review & teach popup to Captures and Journal photos: select a
+  highlighted region, an existing hen or a new hen, Empty or Obscured. Require
+  explicit visual confirmation and save; retain reviewed indicators across pages.
+- Validate and atomically activate compatible hen crops and whole-frame empty
+  calibration for subsequent recognition. Obscured, partial Empty and incompatible
+  layouts remain clearly labelled annotations only. Preserve historical predictions,
+  journal entries, images and egg totals.
+- Persist content-linked reviews, prevent duplicate reference additions, reject
+  stale saves, and allow hash-checked Undo of only references created by that review.
+  Keep interrupted activation recoverable. Protect UI-reviewed references from
+  being silently discarded by desktop reference replacement.
+
 ## 0.1.18
 
 - Normalize reviewed empty and live split views with the same area resampling

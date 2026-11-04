@@ -289,6 +289,26 @@ class Store:
         sync_directory(stage.parent)
         # The old folder is now disposable transaction scratch, not history.
 
+    def remove_review_reference(self, relative, checksum):
+        """Undo only an exact reference owned by a human review."""
+        with self.lock:
+            try:
+                data = self.read('references', relative)
+            except FileNotFoundError:
+                return
+            if digest(data) != checksum:
+                raise Conflict('This reference changed outside review; it has not been removed.')
+            with tempfile.TemporaryDirectory(prefix='job-', dir=str(self.root / 'scratch')) as temporary:
+                stage = Path(temporary) / 'references'
+                stage.mkdir()
+                for item in self.files('references'):
+                    if item['path'] == relative:
+                        continue
+                    target = safe_path(stage, item['path'])
+                    target.parent.mkdir(exist_ok=True)
+                    os.link(str(safe_path(self.reference_root(), item['path'])), str(target))
+                self._activate(stage)
+
     def replace_references(self, archive, expected_hash, expected_revision, validate_reference):
         """Validate a complete stored ZIP, then exchange directories exactly once."""
         checksum = hashlib.sha256()
@@ -342,6 +362,21 @@ class Store:
                         # All background images must exist before hen validation.
                         for relative in sorted(paths):
                             validate_reference(stage / relative)
+                        # Desktop replacement must not silently discard teaching
+                        # done in HA. Pull/merge those references, or Undo them first.
+                        reviews = safe_path(self.root, 'reviews')
+                        if reviews.exists():
+                            for record_path in reviews.glob('*.json'):
+                                checked = safe_path(reviews, record_path.name)
+                                if checked.stat().st_size > 32768:
+                                    raise AppError('Review metadata limit exceeded.')
+                                for record in json.loads(checked.read_text()).values():
+                                    relative = record.get('reference')
+                                    if not relative:
+                                        continue
+                                    candidate = safe_path(stage, relative)
+                                    if not candidate.is_file() or digest(candidate.read_bytes()) != record['sha256']:
+                                        raise Conflict('Replacement would discard UI-reviewed references. Pull and merge them, or Undo their reviews first.')
                         desired = [{'path': path, 'bytes': (stage / path).stat().st_size,
                                     'sha256': digest((stage / path).read_bytes())} for path in sorted(paths)]
                         if desired != self.files('references'):
