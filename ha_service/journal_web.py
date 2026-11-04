@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 from .journal import ID
 from .storage import MAX_FILE_BYTES, VERSION_ID, safe_path
 from .references_web import render as render_references
+from .captures_web import render as render_captures
 from .status_web import render as render_status
 from .web_layout import start, end
 
@@ -43,7 +44,7 @@ figcaption { font-size: .85rem; overflow-wrap: anywhere; }
 nav { display: flex; justify-content: space-between; padding: 16px; }
 .notice { border-left: 4px solid #c99b40; padding-left: 12px; }
 @media(max-width: 700px) { .sidebar { position: static; width: auto; padding: 16px; }
- .brand { padding: 0 0 12px; } .sidebar nav { flex-direction: row; }
+ .brand { padding: 0 0 12px; } .sidebar nav { flex-direction: row; flex-wrap: wrap; }
  .content { margin: 0; padding: 10px; } header,article { padding: 16px; } }
 '''
 JS = '''
@@ -185,7 +186,27 @@ class JournalHandler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             if parsed.scheme or parsed.netloc or parsed.fragment:
                 raise ValueError()
-            if parsed.path in ('/', '/index.html', '/status', '/status/', '/journal', '/journal/', '/references', '/references/'):
+            if parsed.path in ('/captures', '/captures/'):
+                query = parse_qs(parsed.query, strict_parsing=True, keep_blank_values=True) if parsed.query else {}
+                if set(query) - {'date'} or len(query.get('date', [''])) != 1:
+                    raise ValueError()
+                day = query.get('date', [None])[0]
+                if day is not None:
+                    if not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', day):
+                        raise ValueError()
+                    datetime.strptime(day, '%Y-%m-%d')
+                base = '../' if parsed.path.endswith('/') else ''
+                data = render_captures(self.server.journal.store, day=day, base=base)
+                self.response(200, data, 'text/html; charset=utf-8')
+            elif parsed.path.startswith('/captures/') and not parsed.query:
+                relative = parsed.path[len('/captures/'):]
+                store = self.server.journal.store
+                if not store.valid_file('captures', relative):
+                    raise ValueError()
+                with store.lock:
+                    data = store.read('captures', relative)
+                self.response(200, data, 'image/jpeg')
+            elif parsed.path in ('/', '/index.html', '/status', '/status/', '/journal', '/journal/', '/references', '/references/'):
                 query = parse_qs(parsed.query, strict_parsing=True) if parsed.query else {}
                 if set(query) - {'page'} or len(query.get('page', ['0'])) != 1:
                     raise ValueError()

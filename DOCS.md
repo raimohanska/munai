@@ -13,7 +13,7 @@ in usage; do not retire them until the HA pilot works.
 ## Status page (0.1.12+)
 
 **Open Web UI** opens Status by default. The **MunAI** sidebar links **Status**,
-**Journal** and **References**. Status refreshes every 15 seconds and shows the latest
+**Journal**, **Captures** and **References**. Status refreshes every 15 seconds and shows the latest
 successfully processed image with its timestamp, age and image-specific prediction,
 separately from the confirmed state at that capture. Confirmation may lag the raw
 prediction. Unknown/obscured means uncertainty, not definite hen presence. Expand
@@ -75,6 +75,20 @@ sensor or reinterpret historical captures. No MQTT, recognition thresholds or
 appearance-based identity rules change.
 Back up app data before upgrading: older releases cannot read the new nest-state
 format, so a downgrade also requires restoring the matching pre-upgrade backup.
+
+## Stored captures page (0.1.15+)
+
+Select **Captures** in the MunAI sidebar to browse retained capture JPEGs.
+Each page shows a single **UTC day**, newest photos first, starting with the
+newest stored day. **Older day** and **Newer day** skip days without photos;
+`captures?date=2000-01-01` can also open a specific UTC date. Photos are lazy-loaded
+with timestamps, folder labels, filenames and full-size links, behind HA Ingress.
+
+This is a read-only view of the app's capture storage, not the journal evidence
+archive or a list of every observation. Folder labels are unreviewed predictions.
+Enable `store_captures` to save future photos; deduplication and retention may
+leave gaps, and a photo removed by cleanup returns not found. Browsing does not
+change labels, references, retention settings or recognition.
 
 ## Active references page (0.1.11+)
 

@@ -11,7 +11,8 @@ def start(title, active, base='', script=False):
         parts.append('<script src="{}journal.js" defer></script>'.format(base))
     parts.append('</head><body><aside class="sidebar"><div class="brand">MunAI</div>'
                  '<nav aria-label="Main navigation">')
-    for label, path in (('Status', './'), ('Journal', 'journal'), ('References', 'references')):
+    for label, path in (('Status', './'), ('Journal', 'journal'),
+                        ('Captures', 'captures'), ('References', 'references')):
         parts.append('<a href="{}{}"{}>{}</a>'.format(
             base, path, ' aria-current="page"' if active == label else '', label))
     parts.append('</nav></aside><div class="content">')

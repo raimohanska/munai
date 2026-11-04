@@ -9,6 +9,13 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.15
+
+- Add a read-only Captures page to HA Ingress with lazy-loaded photos, folder
+  labels and full-size links. Show one UTC capture day at a time, defaulting to
+  the newest stored day, with older/newer navigation across available days.
+- Keep capture storage, deduplication, retention and recognition unchanged.
+
 ## 0.1.14
 
 - Show all active reference photos on one References page, grouped by hen with
