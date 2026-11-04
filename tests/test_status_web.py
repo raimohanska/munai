@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from ha_service.journal_web import JournalHandler
+from ha_service.confirmations import Confirmations
 from ha_service.options import validate
 from ha_service.runtime import Runtime
 from ha_service.status_web import render
@@ -38,7 +39,8 @@ class StatusWebTests(unittest.TestCase):
         handler = JournalHandler.__new__(JournalHandler)
         handler.path = path
         handler.client_address = (address, 12345)
-        handler.server = Mock(journal=self.runtime.journal, runtime=self.runtime)
+        handler.server = Mock(journal=self.runtime.journal, runtime=self.runtime,
+                              confirmations=Confirmations(self.runtime.journal, self.runtime))
         handler.wfile = io.BytesIO()
         handler.send_response = Mock()
         handler.send_header = Mock()

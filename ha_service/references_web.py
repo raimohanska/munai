@@ -28,7 +28,7 @@ def inventory(store):
     return revision, items
 
 
-def render(store, base=''):
+def render(store, base='', confirmations=None):
     with store.lock:
         revision, items = inventory(store)
         layout = store.options['box_split']
@@ -58,13 +58,17 @@ def render(store, base=''):
             parts.append('<div class="photos">')
             previous = label
         source = base + 'references/' + revision + '/' + item['path']
+        confirm = (confirmations.button('references/' + revision + '/' + item['path'],
+                                       {'label': label}, layout,
+                                       'whole' if label == 'empty' or layout == 'none' else 'crop',
+                                       'reference') if confirmations is not None else '')
         parts.append('<figure><a href="{0}" target="_blank" rel="noopener">'
                      '<img src="{0}" loading="lazy" alt="{1}"></a>'
                      '<figcaption><code>{2}</code><br>{3:.1f} KiB · '
                      '<a href="{0}" target="_blank" rel="noopener">Full-size photo</a>'
-                     '</figcaption></figure>'.format(
+                      ' {4}</figcaption></figure>'.format(
                          escape(source, quote=True), escape(label + ': ' + name, quote=True),
-                         escape(item['path']), item['bytes'] / 1024.0))
+                          escape(item['path']), item['bytes'] / 1024.0, confirm))
     if previous is not None:
         parts.append('</div></article>')
     parts.append('</main>' + end())

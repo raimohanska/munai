@@ -49,7 +49,7 @@ def validate(raw):
               'capture_heartbeat_seconds': (60, 86400),
               'expire_after': (60, 172800), 'mqtt_port': (1, 65535),
               'retention_days': (1, 365), 'capture_storage_mb': (16, 4096),
-              'journal_retention_days': (1, 3650),
+               'journal_retention_days': (1, 3650), 'training_storage_mb': (16, 4096),
                'minimum_free_mb': (64, 4096), 'chicken_area': (100, 100000),
                'egg_min_area': (100, 10000), 'egg_max_area': (100, 10000),
                'texture_threshold': (1, 100)}

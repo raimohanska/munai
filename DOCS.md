@@ -98,6 +98,62 @@ Enable `store_captures` to save future photos; deduplication and retention may
 leave gaps, and a photo removed by cleanup returns not found. Browsing does not
 change labels, references, retention settings or recognition.
 
+## Confirm training examples (0.1.28+)
+
+The small **Confirm** button retains the original image and the interpretation
+shown beside it, without adding references, rerunning recognition, or changing
+nest state. Use it only when that interpretation is correct. **Confirmed** means
+the example was saved successfully; repeating a confirmation does not duplicate it.
+
+Status and Captures retain the frame prediction, including left/center/right
+(or top/center/bottom) labels, per-zone egg counts, the whole-frame egg count,
+and any uncertainty/obscured values. Unavailable counts stay null, not zero.
+The separate historical **Confirmed state** is not a training label for the photo.
+Journal confirmations apply only to the displayed evidence region and its label
+and egg count; they do not imply confirmation of other regions or the event.
+References retain their existing reviewed label and crop/full-frame scope.
+
+Examples live privately in `/data/training/images/<sha256>.jpg` and
+`/data/training/annotations/<snapshot-sha256>.json`. Images are deduplicated by
+content; annotations include schema version, image checksum, source, view, layout,
+region, interpretation, confirmation time, human-confirmed flag, and app version.
+The full original image is retained even for a region-scoped Journal annotation.
+Unknown/obscured labels are not automatically converted into hen identities.
+
+This archive is independent of capture and journal cleanup and active references;
+it is included in whole-app HA backups. Keep it private and never commit it.
+The `training_storage_mb` option caps combined training images and annotations
+(default 512 MiB, range 16–4096 MiB). This cap, storage reserve checks, and a
+10,000-annotation limit stop new confirmations rather than deleting older ones.
+Lowering the cap never deletes existing examples.
+If a Status frame expires, an image changes, or the app restarts before saving,
+refresh and confirm the displayed image again. Confirmation requires HA Ingress
+and a server-signed image/interpretation snapshot; the client cannot substitute
+a newer prediction or another label.
+
+One pull fetches captures, paired result JSON, and confirmed training examples
+into matching subfolders. References remain an explicit, separate pull.
+
+```sh
+python munai_remote.py pull local-data/production --dry-run
+python munai_remote.py pull local-data/production
+```
+
+To free HA training space after saving verified local copies:
+
+```sh
+python munai_remote.py pull local-data/production --remove-transferred --dry-run
+python munai_remote.py pull local-data/production --remove-transferred --yes
+```
+
+Removal needs a write-scoped transfer token. Only training files from that pull's
+manifest are acknowledged after all local training files are checksum-verified
+and synced to disk. HA rechecks hashes before removal and keeps shared images
+needed by newer confirmations. Failed/incomplete downloads never trigger removal;
+capture/result cleanup remains app-managed. Local-only files are never deleted.
+For training alone, use `pull training local-data/production/training` with the
+same optional removal flags. Keep a separate backup of the local dataset.
+
 ## Review & teach (0.1.19+)
 
 The small **✎** button on Captures and Journal photos opens the same quick-review

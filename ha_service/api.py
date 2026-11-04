@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlsplit
 
 from .options import AppError
 from .storage import Conflict, MAX_FILE_BYTES, MAX_ARCHIVE_BYTES, digest
+from .training import TrainingArchive
 
 
 def tls_context(root):
@@ -55,6 +56,7 @@ class TransferServer(HTTPServer):
     def __init__(self, address, context, store, tokens, validate_reference, status):
         self.context = context
         self.store = store
+        self.training = TrainingArchive(store)
         self.tokens = tokens
         self.validate_reference = validate_reference
         self.status = status
@@ -153,16 +155,33 @@ class Handler(BaseHTTPRequestHandler):
         elif self.command == 'GET' and path.startswith('/v1/files/'):
             parts = path[len('/v1/files/'):].split('/', 1)
             kind = parts[0]
-            if kind not in ('references', 'captures', 'results'):
+            if kind not in ('references', 'captures', 'results', 'training'):
                 raise AppError('Unsupported data kind.')
             if len(parts) == 1:
                 with store.lock:
-                    listing = {'revision': store.revision, 'files': store.files(kind)}
+                    listing = {'revision': store.revision,
+                               'files': self.server.training.files() if kind == 'training' else store.files(kind)}
                 self.response(200, listing)
             else:
                 with store.lock:
-                    data = store.read(kind, parts[1])
+                    data = (self.server.training.read(parts[1]) if kind == 'training' else store.read(kind, parts[1]))
                 self.response(200, data=data)
+        elif self.command == 'POST' and path == '/v1/training/prune':
+            lengths = self.headers.get_all('Content-Length', [])
+            if (self.headers.get('Transfer-Encoding') or len(lengths) != 1 or
+                    not lengths[0].isdigit() or not 1 <= int(lengths[0]) <= MAX_FILE_BYTES or
+                    self.headers.get('Content-Type') != 'application/json'):
+                raise AppError('A bounded JSON training acknowledgement is required.')
+            data = self.rfile.read(int(lengths[0]))
+            if len(data) != int(lengths[0]):
+                raise AppError('Incomplete training acknowledgement.')
+            try:
+                request = json.loads(data.decode('utf-8'))
+                if not isinstance(request, dict) or set(request) != {'files'}:
+                    raise ValueError()
+            except (ValueError, UnicodeError):
+                raise AppError('Invalid training acknowledgement.') from None
+            self.response(200, self.server.training.prune(request['files']))
         elif self.command == 'PUT' and path.startswith('/v1/references/'):
             if self.headers.get('Transfer-Encoding'):
                 raise AppError('Chunked uploads are not supported.')

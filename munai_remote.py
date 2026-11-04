@@ -103,8 +103,8 @@ class Remote:
                         raise RemoteError(known[code])
                 errors = {401: 'Token rejected or scope insufficient; check HA Configuration and restart the app.',
                           404: 'Remote file or API endpoint not found.',
-                          409: 'Reference conflict: refresh the manifest, or explicitly allow overwrite.',
-                          400: 'Upload rejected; check the JPEG, identity/path, checksum and configured recognition masks.'}
+                          409: 'Remote data conflict: refresh the manifest and verify local files before retrying.',
+                          400: 'Request rejected; check paths, checksums, storage limits and app configuration.'}
                 raise RemoteError(errors.get(response.status, 'Server transfer failed; check app storage and configuration.'))
             if not hmac.compare_digest(response.getheader('X-Content-SHA256', ''), sha256(body)):
                 raise RemoteError('Response checksum failed; nothing saved.')
@@ -281,7 +281,7 @@ def download_path(root, relative):
 
 def pull(remote, kind, root, dry_run=False, overwrite=False):
     listing = remote.request('GET', '/v1/files/' + kind)
-    if len(listing['files']) > MAX_HISTORY_FILES:
+    if len(listing['files']) > (20000 if kind == 'training' else MAX_HISTORY_FILES):
         raise RemoteError('Remote file count exceeds the transfer limit.')
     pending = []
     for item in listing['files']:
@@ -299,7 +299,7 @@ def pull(remote, kind, root, dry_run=False, overwrite=False):
     print('{} {} {} file(s). No local files will be deleted.'.format(
         'Would download' if dry_run else 'Downloading', len(pending), kind))
     if dry_run:
-        return
+        return listing
     for item, destination in pending:
         data = remote.request('GET', '/v1/files/' + kind + '/' + quote(item['path'], safe='/'), binary=True)
         if len(data) != item['bytes'] or sha256(data) != item['sha256']:
@@ -319,6 +319,71 @@ def pull(remote, kind, root, dry_run=False, overwrite=False):
         finally:
             if os.path.exists(name):
                 os.unlink(name)
+        sync_local_directory(destination.parent)
+    return listing
+
+
+def sync_local_directory(path):
+    descriptor = os.open(str(path), os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def pull_training(remote, root, dry_run=False, overwrite=False, remove_transferred=False, yes=False):
+    if remove_transferred and not dry_run and not yes:
+        raise RemoteError('Remote removal requires --yes; preview with --remove-transferred --dry-run first.')
+    listing = pull(remote, 'training', root, dry_run, overwrite)
+    if dry_run:
+        if remove_transferred:
+            print('Would remove only verified transferred annotations and unused images from HA.')
+        return
+    if not remove_transferred:
+        return
+    items = {item['path']: item for item in listing['files']}
+    if len(items) != len(listing['files']):
+        raise RemoteError('Duplicate training paths; nothing removed from HA.')
+    # Recheck ALL local files, including skipped downloads, before acknowledging.
+    for relative, item in items.items():
+        if not re.fullmatch(r'(?:images/[a-f0-9]{64}\.jpg|annotations/[a-f0-9]{64}\.json)', relative):
+            raise RemoteError('Invalid training manifest; nothing removed from HA.')
+        path = download_path(root, relative)
+        if not path.is_file() or path.stat().st_size != item['bytes'] or path.stat().st_size > MAX_BYTES:
+            raise RemoteError('Local training data changed; nothing removed from HA.')
+        data = path.read_bytes()
+        if sha256(data) != item['sha256']:
+            raise RemoteError('Local training checksum failed; nothing removed from HA.')
+        if relative.startswith('annotations/'):
+            try:
+                annotation = json.loads(data.decode('utf-8'))
+                image = items[annotation['image']]
+                if image['sha256'] != annotation['sha256']:
+                    raise ValueError()
+            except (ValueError, KeyError, TypeError):
+                raise RemoteError('Incomplete local training example; nothing removed from HA.') from None
+        with path.open('rb') as handle:
+            os.fsync(handle.fileno())
+        sync_local_directory(path.parent)
+    if not items:
+        print('No training data to remove from HA.')
+        return
+    for directory in (root,) + tuple(root.parents):
+        sync_local_directory(directory)
+    data = json.dumps({'files': listing['files']}).encode('utf-8')
+    if len(data) > MAX_BYTES:
+        raise RemoteError('Training acknowledgement exceeds transfer limit; nothing removed from HA.')
+    result = remote.request('POST', '/v1/training/prune', data=data,
+                            headers={'Content-Type': 'application/json'})
+    print('Training data verified locally; removed {} transferred file(s) from HA.'.format(result['removed']))
+
+
+def pull_all(remote, root, dry_run=False, overwrite=False, remove_transferred=False, yes=False):
+    if remove_transferred and not dry_run and not yes:
+        raise RemoteError('Remote removal requires --yes; preview with --remove-transferred --dry-run first.')
+    for kind in ('captures', 'results'):
+        pull(remote, kind, root / kind, dry_run, overwrite)
+    pull_training(remote, root / 'training', dry_run, overwrite, remove_transferred, yes)
 
 
 def history_summary(remote):
@@ -358,8 +423,13 @@ def parser():
     for command in ('push', 'pull', 'export'):
         transfer = sub.add_parser(command)
         if command == 'pull':
-            transfer.add_argument('kind', choices=['references', 'captures', 'results'])
-        transfer.add_argument('directory', type=Path)
+            transfer.add_argument('kind', help='Destination directory, or references/captures/results/training followed by a directory')
+            transfer.add_argument('directory', type=Path, nargs='?')
+            transfer.add_argument('--remove-transferred', action='store_true',
+                                  help='Training only: remove checksum-verified transferred examples from HA')
+            transfer.add_argument('--yes', action='store_true', help='Confirm removal of transferred training data from HA')
+        else:
+            transfer.add_argument('directory', type=Path)
         transfer.add_argument('--dry-run', action='store_true')
         transfer.add_argument('--overwrite', action='store_true')
         if command == 'push':
@@ -407,7 +477,18 @@ def main(argv=None):
             push(remote, arguments.directory, arguments.dry_run, arguments.overwrite,
                  arguments.replace, arguments.yes)
         elif arguments.command == 'pull':
-            pull(remote, arguments.kind, arguments.directory, arguments.dry_run, arguments.overwrite)
+            if arguments.directory is None:
+                pull_all(remote, Path(arguments.kind), arguments.dry_run, arguments.overwrite,
+                         arguments.remove_transferred, arguments.yes)
+            elif arguments.kind == 'training':
+                pull_training(remote, arguments.directory, arguments.dry_run, arguments.overwrite,
+                              arguments.remove_transferred, arguments.yes)
+            elif arguments.remove_transferred:
+                raise RemoteError('--remove-transferred is supported only for training data.')
+            elif arguments.kind in ('references', 'captures', 'results'):
+                pull(remote, arguments.kind, arguments.directory, arguments.dry_run, arguments.overwrite)
+            else:
+                raise RemoteError('Choose references, captures, results or training, or pass just a destination directory.')
         elif arguments.command == 'export':
             for kind in ('references', 'captures', 'results'):
                 pull(remote, kind, arguments.directory / kind, arguments.dry_run, arguments.overwrite)

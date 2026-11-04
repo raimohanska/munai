@@ -17,6 +17,7 @@ from .status_web import render as render_status
 from .web_layout import start, end
 from .review_web import button, dialog, CSS as REVIEW_CSS
 from .reviews import Reviews
+from .confirmations import Confirmations, MAX_REQUEST_BYTES
 from .options import AppError
 from .storage import Conflict
 
@@ -50,6 +51,10 @@ figcaption { font-size: .85rem; overflow-wrap: anywhere; }
 .photo-id { display: block; font-size: .75rem; margin-top: 6px; user-select: all; }
 .event-details { margin-top: 16px; }
 .event-details > summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.confirm-button { font: inherit; font-size: .8rem; padding: 3px 8px; margin: 6px 0;
+ border: 1px solid #788b7960; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.confirm-button:disabled { opacity: .65; cursor: default; }
+.confirm-message { display: block; font-size: .85rem; }
 nav { display: flex; justify-content: space-between; padding: 16px; }
 .notice { border-left: 4px solid #c99b40; padding-left: 12px; }
 @media(max-width: 700px) { .sidebar { position: static; width: auto; padding: 16px; }
@@ -64,7 +69,7 @@ document.querySelectorAll('time').forEach(node => {
 const active = document.querySelector('a[aria-current="page"]');
 const status = active && active.textContent === 'Status';
 if (status || !new URLSearchParams(location.search).get('page')) {
-  setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open], .event-details[open]') && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
+  setInterval(() => { if (!document.hidden && !document.documentElement.dataset.confirmBusy && !document.querySelector('dialog[open], .event-details[open]') && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
 }
 '''
 
@@ -78,7 +83,7 @@ def time_html(identifier):
     return '<time datetime="{}">{}</time>'.format(stamp, stamp)
 
 
-def render(journal, page, base=''):
+def render(journal, page, base='', confirmations=None):
     with journal.lock:
         paths = journal.entries()
         pages = max(1, (len(paths) + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -115,13 +120,17 @@ def render(journal, page, base=''):
                     caption = entry['zone'].capitalize() + ' view · ' + caption
                 overlay = ('<span class="zone {}-{}" aria-hidden="true"></span>'.format(
                     entry['layout'], entry['zone']) if 'zone' in entry else '')
+                confirm = (confirmations.button('images/' + frame['id'] + '.jpg',
+                           {'label': frame['label'], 'egg_count': frame['egg_count']},
+                           entry.get('layout', 'none'), entry.get('zone', 'whole'), 'journal')
+                           if confirmations is not None else '')
                 parts.append('<figure><div class="review-photo"><a href="{0}" target="_blank" rel="noopener">'
                              '<div class="frame"><img src="{0}" loading="lazy" alt="{1}">{3}</div></a>{5}</div>'
                              '<figcaption>{2}<br>{1}<span class="photo-id">Photo ID: '
-                             '<code>{4}</code></span></figcaption></figure>'.format(
+                              '<code>{4}</code></span>{6}</figcaption></figure>'.format(
                                   source, escape(caption, quote=True), time_html(frame['id']), overlay,
                                    escape(frame['id']), button('images/' + frame['id'] + '.jpg',
-                                                              entry.get('zone', 'whole'))))
+                                                               entry.get('zone', 'whole')), confirm))
             parts.append('</div>')
         present_roles = {group['role'] for group in entry['evidence'] if group['frames']}
         required = ({'Before visit / previous count', 'Identity confirmation', 'Egg count confirmation'}
@@ -150,6 +159,7 @@ class JournalServer(HTTPServer):
         self.journal = journal
         self.runtime = runtime
         self.reviews = Reviews(journal, runtime.validate_reference if runtime else self.no_validator)
+        self.confirmations = Confirmations(journal, runtime)
         super().__init__(address, JournalHandler)
 
     @staticmethod
@@ -204,6 +214,9 @@ class JournalHandler(BaseHTTPRequestHandler):
                 self.response(200, json.dumps(value).encode('utf-8'), 'application/json')
             elif parsed.path == '/review.js' and not parsed.query:
                 self.response(200, Path(__file__).with_name('review.js').read_bytes(),
+                               'text/javascript; charset=utf-8')
+            elif parsed.path == '/confirm.js' and not parsed.query:
+                self.response(200, Path(__file__).with_name('confirm.js').read_bytes(),
                               'text/javascript; charset=utf-8')
             elif parsed.path in ('/captures', '/captures/'):
                 query = parse_qs(parsed.query, strict_parsing=True, keep_blank_values=True) if parsed.query else {}
@@ -215,7 +228,8 @@ class JournalHandler(BaseHTTPRequestHandler):
                         raise ValueError()
                     datetime.strptime(day, '%Y-%m-%d')
                 base = '../' if parsed.path.endswith('/') else ''
-                data = render_captures(self.server.journal.store, day=day, base=base)
+                data = render_captures(self.server.journal.store, day=day, base=base,
+                                       confirmations=self.server.confirmations)
                 self.response(200, data, 'text/html; charset=utf-8')
             elif parsed.path.startswith('/captures/') and not parsed.query:
                 relative = parsed.path[len('/captures/'):]
@@ -234,11 +248,14 @@ class JournalHandler(BaseHTTPRequestHandler):
                     raise ValueError()
                 base = '../' if parsed.path not in ('/',) and parsed.path.endswith('/') else ''
                 if parsed.path in ('/references', '/references/'):
-                    data = render_references(self.server.journal.store, base=base)
+                    data = render_references(self.server.journal.store, base=base,
+                                             confirmations=self.server.confirmations)
                 elif parsed.path in ('/journal', '/journal/'):
-                    data = render(self.server.journal, int(page), base=base)
+                    data = render(self.server.journal, int(page), base=base,
+                                  confirmations=self.server.confirmations)
                 else:
-                    data = render_status(self.server.runtime.web_status(), base=base)
+                    data = render_status(self.server.runtime.web_status(), base=base,
+                                         confirmations=self.server.confirmations)
                 self.response(200, data, 'text/html; charset=utf-8')
             elif parsed.path.startswith('/latest/') and not parsed.query:
                 name = parsed.path[len('/latest/'):]
@@ -296,24 +313,26 @@ class JournalHandler(BaseHTTPRequestHandler):
             self.response(403, b'Home Assistant Ingress required.', 'text/plain')
             return
         try:
-            if self.path != '/review':
+            if self.path not in ('/review', '/confirm'):
                 raise AppError('Invalid review endpoint.')
-            tokens = self.headers.get_all('X-Munai-Review', [])
-            if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.reviews.token):
-                self.response(403, b'{"error":"Reopen review to authorize this action."}', 'application/json')
-                return
+            confirming = self.path == '/confirm'
+            if not confirming:
+                tokens = self.headers.get_all('X-Munai-Review', [])
+                if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.reviews.token):
+                    self.response(403, b'{"error":"Reopen review to authorize this action."}', 'application/json')
+                    return
             lengths = self.headers.get_all('Content-Length', [])
             if (self.headers.get('Transfer-Encoding') or len(lengths) != 1 or
-                    not lengths[0].isdigit() or not 1 <= int(lengths[0]) <= 4096 or
+                    not lengths[0].isdigit() or not 1 <= int(lengths[0]) <= (MAX_REQUEST_BYTES if confirming else 4096) or
                     self.headers.get('Content-Type') != 'application/json'):
                 raise AppError('A bounded JSON review request is required.')
             data = self.rfile.read(int(lengths[0]))
             if len(data) != int(lengths[0]):
                 raise AppError('Incomplete review request.')
             request = json.loads(data.decode('utf-8'))
-            if not isinstance(request, dict) or not isinstance(request.get('source'), str):
+            if not isinstance(request, dict) or (not confirming and not isinstance(request.get('source'), str)):
                 raise AppError('Invalid review request.')
-            value = self.server.reviews.save(request)
+            value = (self.server.confirmations.save(request) if confirming else self.server.reviews.save(request))
             self.response(200, json.dumps(value).encode('utf-8'), 'application/json')
         except Conflict as error:
             self.response(409, json.dumps({'error': str(error)}).encode('utf-8'), 'application/json')
@@ -323,4 +342,6 @@ class JournalHandler(BaseHTTPRequestHandler):
             text = str(error) if isinstance(error, AppError) else 'Invalid review request.'
             self.response(400, json.dumps({'error': text}).encode('utf-8'), 'application/json')
         except Exception:
-            self.response(500, b'{"error":"Review could not be completed. Reopen the popup to check its status."}', 'application/json')
+            text = ('Confirmation could not be saved. Refresh and try again.' if self.path == '/confirm' else
+                    'Review could not be completed. Reopen the popup to check its status.')
+            self.response(500, json.dumps({'error': text}).encode('utf-8'), 'application/json')

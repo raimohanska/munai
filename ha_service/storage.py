@@ -108,7 +108,7 @@ class Store:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.options = options
         self.lock = threading.RLock()
-        for name in ('references', 'captures', 'results', 'scratch', 'tls'):
+        for name in ('references', 'captures', 'results', 'scratch', 'tls', 'training'):
             safe_path(self.root, name).mkdir(parents=True, exist_ok=True, mode=0o700)
         state_path = self.root / 'references' / 'state.json'
         if state_path.is_symlink():
@@ -141,7 +141,7 @@ class Store:
         self._revision = self._content_revision()
         # A power loss can leave incomplete atomic-write files. Only remove our
         # exact generated temporary-file names, never reviewed data or symlinks.
-        for name in ('captures', 'results', 'references'):
+        for name in ('captures', 'results', 'references', 'training'):
             managed = self.root / name
             for item in managed.rglob('.pending-*'):
                 if not re.fullmatch(r'\.pending-[a-z0-9_]{8}', item.name):

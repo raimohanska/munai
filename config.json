@@ -1,6 +1,6 @@
 {
   "name": "Munai",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "slug": "munai",
   "description": "Recognize nest occupants and publish an MQTT device",
   "arch": ["aarch64", "amd64"],
@@ -43,6 +43,7 @@
     "journal_retention_days": 365,
     "capture_storage_mb": 2048,
     "minimum_free_mb": 128,
+    "training_storage_mb": 512,
     "chicken_area": 4500,
     "texture_threshold": 8,
     "egg_min_area": 950,
@@ -80,6 +81,7 @@
     "journal_retention_days": "int(1,3650)",
     "capture_storage_mb": "int(16,4096)",
     "minimum_free_mb": "int(64,4096)",
+    "training_storage_mb": "int(16,4096)",
     "chicken_area": "int(100,100000)",
     "texture_threshold": "int(1,100)",
     "egg_min_area": "int(100,10000)",

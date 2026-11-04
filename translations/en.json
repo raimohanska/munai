@@ -28,6 +28,7 @@
     "journal_retention_days": {"name": "Journal retention (days)", "description": "Independent event/photo archive, default 365 days. Works with Save captured images off. Back up app data; younger entries are not discarded to meet the capture cap."},
     "capture_storage_mb": {"name": "Combined capture/result storage cap (MiB)", "description": "Oldest files are removed first. Reviewed references are not removed by retention."},
     "minimum_free_mb": {"name": "Minimum free disk space (MiB)", "description": "New captures and uploads stop before consuming this reserve."},
+    "training_storage_mb": {"name": "Confirmed training storage cap (MiB)", "description": "Stop new confirmations at this limit. Confirmed examples are never automatically deleted; pull verified examples locally to free space."},
     "chicken_area": {"name": "Minimum hen area", "description": "Presence heuristic in the 640×360 processing frame, not an identity feature."},
     "texture_threshold": {"name": "Foreground texture threshold"},
     "egg_min_area": {"name": "Minimum egg area", "description": "Minimum candidate and fitted ellipse area in the 640×360 processing frame. Calibrate against reviewed egg-free and egg-containing images."},

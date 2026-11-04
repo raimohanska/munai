@@ -280,7 +280,8 @@ class JournalTests(unittest.TestCase):
         handler = JournalHandler.__new__(JournalHandler)
         handler.path = path
         handler.client_address = (address, 12345)
-        handler.server = Mock(journal=self.journal)
+        from ha_service.confirmations import Confirmations
+        handler.server = Mock(journal=self.journal, confirmations=Confirmations(self.journal))
         handler.wfile = io.BytesIO()
         handler.send_response = Mock()
         handler.send_header = Mock()

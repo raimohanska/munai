@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ha_service.captures_web import inventory, render
+from ha_service.confirmations import Confirmations
 from ha_service.journal import Journal
 from ha_service.journal_web import JournalHandler
 from ha_service.options import validate
@@ -32,7 +33,7 @@ class CapturesGalleryTests(unittest.TestCase):
         handler = JournalHandler.__new__(JournalHandler)
         handler.path = path
         handler.client_address = (address, 12345)
-        handler.server = Mock(journal=self.journal)
+        handler.server = Mock(journal=self.journal, confirmations=Confirmations(self.journal))
         handler.wfile = io.BytesIO()
         handler.send_response = Mock()
         handler.send_header = Mock()

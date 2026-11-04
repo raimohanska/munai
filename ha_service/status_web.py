@@ -4,6 +4,7 @@ from html import escape
 import json
 
 from .web_layout import start, end
+from .captures_web import prediction_layout
 
 
 def label(value):
@@ -29,7 +30,7 @@ def state_html(state, raw=False):
     return ''.join(parts)
 
 
-def render(snapshot, base=''):
+def render(snapshot, base='', confirmations=None):
     observation = snapshot.get('observation')
     parts = [start('Status', 'Status', base, script=True), '<header><h1>Status</h1>',
              '<p>Capture: <strong>{}</strong> · MQTT: {}</p>'.format(
@@ -59,7 +60,10 @@ def render(snapshot, base=''):
         # Whole-box raw status historically calls its label "occupant".
         if 'zones' not in raw:
             raw = dict(raw, label=raw.get('occupant'))
-        parts.extend(['<h3>This image’s prediction</h3>', state_html(raw, raw=True),
+        confirm = (confirmations.button('latest/' + observation['timestamp'] + '.jpg',
+                                       raw, prediction_layout(raw))
+                   if confirmations is not None and snapshot.get('has_image') else '')
+        parts.extend(['<h3>This image’s prediction</h3>', state_html(raw, raw=True), confirm,
                       '</article>',
                       '<article><h2>Confirmed state</h2>', state_html(observation),
                       '<p>Latest event: {}</p></article>'.format(escape(observation.get('latest_event') or 'None yet')),

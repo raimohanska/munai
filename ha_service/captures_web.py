@@ -53,19 +53,31 @@ def state_summary(raw):
     return '{} ({} egg{})'.format(summary, eggs, '' if eggs == 1 else 's')
 
 
-def interpretation(store, stamp):
+def prediction(store, stamp):
     """Use only the exact paired result; never infer state from the folder."""
     try:
         with store.lock:
             result = json.loads(store.read('results', stamp + '.json').decode('utf-8'))
         if result.get('timestamp') != stamp or not isinstance(result.get('raw_prediction'), dict):
-            return 'Interpretation unavailable'
-        return state_summary(result['raw_prediction'])
+            return None
+        return result['raw_prediction']
     except (OSError, ValueError, TypeError, AttributeError, AppError):
-        return 'Interpretation unavailable'
+        return None
 
 
-def render(store, day=None, base=''):
+def interpretation(store, stamp):
+    raw = prediction(store, stamp)
+    return state_summary(raw) if raw is not None else 'Interpretation unavailable'
+
+
+def prediction_layout(raw):
+    zones = raw.get('zones')
+    if not zones:
+        return 'none'
+    return 'vertical' if 'left' in zones or 'right' in zones else 'horizontal'
+
+
+def render(store, day=None, base='', confirmations=None):
     with store.lock:
         items = inventory(store)
         enabled = store.options['store_captures']
@@ -96,12 +108,15 @@ def render(store, day=None, base=''):
         for item in selected:
             source = escape(base + 'captures/' + item['path'], quote=True)
             name = item['path'].rsplit('/', 1)[-1]
-            summary = interpretation(store, item['stamp'])
+            raw = prediction(store, item['stamp'])
+            summary = state_summary(raw) if raw is not None else 'Interpretation unavailable'
+            confirm = (confirmations.button('captures/' + item['path'], raw, prediction_layout(raw))
+                       if confirmations is not None and raw is not None else '')
             parts.append('<figure><div class="review-photo"><a href="{0}" target="_blank" rel="noopener">'
                          '<img src="{0}" loading="lazy" alt="{1}"></a>{3}</div>'
-                         '<figcaption>{2}<br><code>{1}</code></figcaption></figure>'.format(
+                          '<figcaption>{2}<br><code>{1}</code></figcaption>{4}</figure>'.format(
                              source, escape(name, quote=True), escape(summary),
-                             button('captures/' + item['path'])))
+                              button('captures/' + item['path']), confirm))
         parts.append('</div>')
     parts.append('</article></main>' + dialog(base) + end())
     return ''.join(parts).encode('utf-8')

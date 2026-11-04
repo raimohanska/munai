@@ -9,6 +9,17 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.28
+
+- Add small Confirm buttons to Status, Captures, Journal evidence, and References.
+  Retain the original image and the displayed interpretation in a private training
+  archive, independently of capture/journal retention and active references.
+- Preserve per-zone predictions, uncertainty, and available egg counts; bind
+  confirmations to the displayed image and interpretation, not a newer result.
+- Add a configurable training-storage cap and one local pull for captures,
+  paired results, and training examples. Optionally remove only checksum-verified
+  transferred training files from HA, preserving images used by newer examples.
+
 ## 0.1.27
 
 - Assign each detected body to the side or center rectangle with the greatest

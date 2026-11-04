@@ -750,6 +750,32 @@ class APITests(StorageFixture):
         self.assertEqual((self.root / 'download-captures' / 'empty' / NAME).read_bytes(), self.image)
         self.assertEqual(json.loads((self.root / 'download-results' / result_name).read_text()), {'occupant': 'empty'})
 
+    def test_https_training_download_prune_and_write_scope(self):
+        from html import unescape
+        from ha_service.confirmations import Confirmations
+        from munai_remote import pull_all
+        source = 'captures/empty/' + NAME
+        path = self.store.root / source
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.image)
+        confirmations = Confirmations(self.runtime.journal)
+        button = confirmations.button(source, {'label': 'no_chicken', 'egg_count': 2})
+        request = json.loads(unescape(button.split('data-confirm="', 1)[1].split('"', 1)[0]))
+        confirmations.save(request)
+        self.tokens[0]['scope'] = 'read'
+        self.assertEqual(len(self.remote.request('GET', '/v1/files/training')['files']), 2)
+        root = self.root / 'download-training'
+        with redirect_stdout(io.StringIO()):
+            with self.assertRaises(RemoteError):
+                pull_all(self.remote, root, remove_transferred=True, yes=True)
+        self.assertEqual(len(self.server.training.files()), 2)
+        self.tokens[0]['scope'] = 'write'
+        with redirect_stdout(io.StringIO()):
+            pull_all(self.remote, root, remove_transferred=True, yes=True)
+        self.assertFalse(self.server.training.files())
+        self.assertEqual((root / source).read_bytes(), self.image)
+        self.assertTrue(path.exists())
+
     def test_wrong_or_revoked_token_cannot_read_status(self):
         for token in (None, 'incorrect-synthetic-token-not-a-secret'):
             with self.assertRaises(RemoteError):

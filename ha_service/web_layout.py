@@ -7,6 +7,7 @@ def start(title, active, base='', script=False, reviews=False):
              '<meta name="viewport" content="width=device-width, initial-scale=1">',
              '<title>MunAI · {}</title>'.format(escape(title)),
              '<link rel="stylesheet" href="{}journal.css">'.format(base)]
+    parts.append('<script src="{0}confirm.js" data-confirm-api="{0}confirm" defer></script>'.format(base))
     if script:
         parts.append('<script src="{}journal.js" defer></script>'.format(base))
     if reviews:
