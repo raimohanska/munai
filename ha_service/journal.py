@@ -73,12 +73,13 @@ def group(role, frames):
     return {'role': role, 'frames': frames}
 
 
-def evolve(before, after, frame, streak, egg_streak, events):
+def evolve(before, after, frame, streak, egg_streak, events, count_allowed=True):
     """Use the state machine's actual streaks, never a parallel decision rule."""
     evidence = copy.deepcopy(before['journal'])
     evidence['presence'] = (evidence['presence'] if streak > 1 else [])[-4:] + [frame]
-    evidence['count'] = ((evidence['count'] if egg_streak > 1 else [])[-2:] + [frame]
-                         if egg_streak else [])
+    if count_allowed:
+        evidence['count'] = ((evidence['count'] if egg_streak > 1 else [])[-2:] + [frame]
+                             if egg_streak else [])
     presence, counts = evidence['presence'], evidence['count']
     context = evidence['visit'] if before['hen'] is not None else evidence['pending']
     for index, text in enumerate(events):
@@ -107,7 +108,7 @@ def evolve(before, after, frame, streak, egg_streak, events):
         evidence['visit'] = []
     if after['pending_hen'] is None:
         evidence['pending'] = []
-    if after['hen'] is None and egg_streak >= 3:
+    if count_allowed and after['hen'] is None and egg_streak >= 3:
         evidence['baseline'] = counts
     after['journal'] = evidence
 

@@ -210,8 +210,30 @@ hidden-side observations and invalidates unsafe laying attribution; no empty
 observation or collection is fabricated. Patterned bodies missed by smooth
 regions can pause counting through reviewed-empty background-change checks.
 New bedding/lighting can cause conservative unknown/obscured outcomes and may
-need refreshed reviewed empty calibration. A working assumption that divider
+need refreshed reviewed empty calibration. From 0.1.18, reference and live views
+share area resampling and the normalized split grid. Background-change checks
+suppress fine edge noise; broad losses of reviewed texture can still reveal
+similarly bright bodies, subject to the feather/smooth-patch gate that rejects
+smooth egg piles. These cues establish presence/uncertainty, never identity.
+A working assumption that divider
 hens are alone does not override contradictory observations.
+
+From 0.1.18, the minimum detected visitor surface is
+`max(chicken_area, 10 * egg_max_area)` at the normalized 640×360 scale (35,000
+pixels with default egg settings, with no half-frame stretching). `chicken_area`
+still controls minimum measurable plumage in reviewed identity references; it
+does not lower this live visitor floor. Smaller convincing foreground bodies,
+including edge fragments, are **obscured**, not identity/visitor observations.
+An obscured shot neither advances nor resets the three/five-shot confirmation
+counters. Small fragments are skipped without changing the visit baseline;
+genuine hidden/ambiguous nests still invalidate unsafe laying attribution.
+
+Egg detection runs only when **every zone is clear and hen-free**. Any hen or
+obscured zone freezes the whole box's egg counts at the last clean confirmed
+values. Uncountable shots do not enter egg-confirmation evidence. Clear presence
+observations can still confirm departure while egg counting is frozen; a later
+clean stable count may confirm a pending egg. Failed captures and restarts remain
+separate gaps that reset confirmation. None of these rules backfill past events.
 
 The journal prefixes events with their zone and outlines the corresponding view
 on shared full-frame evidence photos. The outline is a view, not an exact body

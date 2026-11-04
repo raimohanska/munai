@@ -77,13 +77,26 @@ def load(root, options):
     full, common = calibration(root, options)
     refs = References(common)
     refs.full_background_mask = full
-    refs.background_frames = [cv2.resize(cv2.imread(str(path), cv2.IMREAD_GRAYSCALE), (640, 360))
-                              for path in capture_files(Path(root) / 'empty')]
-    backgrounds = [cv2.GaussianBlur(cv2.resize(cv2.imread(str(path), cv2.IMREAD_GRAYSCALE), (640, 360)),
-                                   (21, 21), 0).astype(np.int16)
-                   for path in capture_files(Path(root) / 'empty')]
-    refs.background_low = np.minimum.reduce(backgrounds)
-    refs.background_high = np.maximum.reduce(backgrounds)
+    # Compare the same area-averaged pixels as live image_statistics(), not
+    # linearly sampled straw texture (which aliases when shrinking a full frame).
+    refs.background_frames = []
+    # A broad loss of background texture can reveal a feathered body with the
+    # same mean brightness as straw. Use the lowest reviewed texture, not one
+    # selected side/identity, so ordinary reviewed smooth areas remain allowed.
+    refs.background_texture_low = None
+    for path in capture_files(Path(root) / 'empty'):
+        frame, unused_pixels, std = image_statistics(path)
+        refs.background_frames.append(frame)
+        texture = cv2.GaussianBlur(std, (21, 21), 0)
+        blurred = cv2.GaussianBlur(frame, (21, 21), 0).astype(np.int16)
+        if refs.background_texture_low is None:
+            refs.background_texture_low = texture
+            refs.background_low, refs.background_high = blurred.copy(), blurred.copy()
+        else:
+            # Do not retain floating-point statistics for every reference.
+            np.minimum(refs.background_texture_low, texture, out=refs.background_texture_low)
+            np.minimum(refs.background_low, blurred, out=refs.background_low)
+            np.maximum(refs.background_high, blurred, out=refs.background_high)
     for folder in sorted(Path(root).iterdir()):
         if not folder.is_dir() or folder.is_symlink() or folder.name in RESERVED or folder.name.startswith('.'):
             continue
@@ -100,24 +113,34 @@ def load(root, options):
 
 
 def changed_textured_body(view, empty_views, exclusions, options):
-    """Conservative occlusion flag, not an identity or a second nest visitor."""
+    """Changed textured area (or zero), not an identity or a second visitor."""
     size = measurement_size(options['box_split'])
     gray, unused_pixels, std = image_statistics(view, size)
-    nearest = min(empty_views, key=lambda empty: float(np.mean(cv2.absdiff(gray, empty))))
-    changed = (cv2.absdiff(gray, nearest) > 30).astype(np.float32)
+    # Fine straw edges can move without a body appearing. Suppress one-pixel
+    # texture changes in BOTH operands, retaining original texture for the
+    # feather test below. Never smooth/stretch a half view to full-frame scale.
+    comparison = cv2.GaussianBlur(gray, (3, 3), 0)
+    empty_comparisons = [cv2.GaussianBlur(empty, (3, 3), 0) for empty in empty_views]
+    nearest = min(empty_comparisons,
+                  key=lambda empty: float(np.mean(cv2.absdiff(comparison, empty))))
+    changed = (cv2.absdiff(comparison, nearest) > 30).astype(np.float32)
     mask = ((cv2.GaussianBlur(changed, (13, 13), 0) > 0.25) & (~exclusions)).astype(np.uint8) * 255
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
-    distance = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-    for contour in cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]:
+    contours = sorted(cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2],
+                      key=cv2.contourArea, reverse=True)
+    for contour in contours:
         if cv2.contourArea(contour) < options['chicken_area']:
             continue
         region = np.zeros(gray.shape, np.uint8)
         cv2.drawContours(region, [contour], -1, 255, -1)
         inside = (region != 0) & (~exclusions)
+        # Measure the body's silhouette, not holes from neutral background
+        # exclusions. Otherwise a broad/clipped body can appear too thin.
+        distance = cv2.distanceTransform(region, cv2.DIST_L2, 5)
         if (inside.any() and float(distance[inside].max()) >= 22
                 and float(np.mean(std[inside] < options['texture_threshold'])) < 0.75):
-            return True
-    return False
+            return float(cv2.contourArea(contour))
+    return 0
 
 
 def predict(path, references, options):
@@ -125,23 +148,37 @@ def predict(path, references, options):
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise AppError('Split image cannot be decoded.')
-    blurred = cv2.GaussianBlur(cv2.resize(image, (640, 360)), (21, 21), 0).astype(np.int16)
+    frame, unused_pixels, std = image_statistics(image)
+    blurred = cv2.GaussianBlur(frame, (21, 21), 0).astype(np.int16)
     novelty = (blurred < references.background_low - 25) | (blurred > references.background_high + 25)
+    texture_change = cv2.GaussianBlur(std, (21, 21), 0) < references.background_texture_low * 0.5
+    minimum_body = max(options['chicken_area'], 10 * options['egg_max_area'])
     presence = detect(path, split, references.full_background_mask,
-                      options['chicken_area'], options['texture_threshold'], novelty_mask=novelty)
+                      minimum_body, options['texture_threshold'],
+                      novelty_mask=novelty, texture_mask=texture_change,
+                      fragment_area=options['egg_max_area'])
     sides = ('left', 'right') if split == 'vertical' else ('top', 'bottom')
     zones = {}
     for zone in sides + ('center',):
-        obscured = presence['ambiguous'] or (presence['center_present'] and zone != 'center')
-        view = crop(image, zone, split)
+        reason = ('ambiguous_presence' if presence['ambiguous'] else
+                  'center_occupied' if presence['center_present'] and zone != 'center' else
+                  'small_body' if zone in presence.get('uncertain_zones', ()) else None)
+        obscured = reason is not None
+        # Use the same full-frame normalization and split grid as calibration,
+        # including when a source image has odd dimensions.
+        view = crop(frame, zone, split)
         item = {'label': 'unknown' if obscured else 'no_chicken', 'egg_count': None,
-                'distance': None, 'margin': None, 'obscured': obscured}
+                'distance': None, 'margin': None, 'obscured': obscured,
+                'obscured_reason': reason}
         detected = any(body['zone'] == zone for body in presence['bodies'])
         if not obscured and not detected and zone != 'center':
             empty_views = [crop(frame, zone, split) for frame in references.background_frames]
-            obscured = changed_textured_body(view, empty_views, crop(references.full_background_mask, zone, split), options)
+            changed_area = changed_textured_body(view, empty_views,
+                                                 crop(references.full_background_mask, zone, split), options)
+            obscured = bool(changed_area)
             if obscured:
-                item.update(label='unknown', obscured=True)
+                item.update(label='unknown', obscured=True,
+                            obscured_reason='background_change' if changed_area >= minimum_body else 'small_body')
         # Center presence is decided on the whole frame, never on a central crop
         # that could include feathers from two separate side occupants.
         if not obscured and detected:
@@ -151,18 +188,23 @@ def predict(path, references, options):
             item.update({key: decision[key] for key in ('label', 'distance', 'margin')})
             if detected and item['label'] == 'no_chicken':
                 item['label'] = 'unknown'  # Full-frame presence wins over a clipped crop.
-        if not obscured and item['label'] == 'no_chicken':
-            item['egg_count'] = (0 if zone == 'center' else len(detect_eggs(
-                view, options['texture_threshold'], options['egg_min_area'],
-                options['egg_max_area'], size=measurement_size(split))))
         zones[zone] = item
     left, right = (zones[zone] for zone in sides)
     if left['label'] == right['label'] and left['label'] not in ('unknown', 'no_chicken'):
         # A configured hen cannot be two independent visitors simultaneously.
         # Do not choose a side or a corrected identity from positional coverage.
         for zone in sides:
-            zones[zone].update(label='unknown', egg_count=None, obscured=True)
+            zones[zone].update(label='unknown', egg_count=None, obscured=True,
+                               obscured_reason='duplicate_identity')
         presence['ambiguous'] = True
+    # Eggs are observable only in a completely clear full frame. A hen or
+    # uncertainty anywhere freezes every side's last confirmed count.
+    if all(not item['obscured'] and item['label'] == 'no_chicken' for item in zones.values()):
+        for zone in sides:
+            zones[zone]['egg_count'] = len(detect_eggs(
+                crop(frame, zone, split), options['texture_threshold'], options['egg_min_area'],
+                options['egg_max_area'], size=measurement_size(split)))
+        zones['center']['egg_count'] = 0
     labels = {item['label'] for item in zones.values() if item['label'] != 'no_chicken'}
     label = next(iter(labels)) if len(labels) == 1 else 'unknown' if labels else 'no_chicken'
     counts = [zones[zone]['egg_count'] for zone in sides]

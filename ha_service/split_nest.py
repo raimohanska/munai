@@ -80,15 +80,22 @@ class SplitNest:
             raise AppError('Split observation has incorrect zones.')
         events = []
         self.blocked = set()
+        count_allowed = all(not item.get('obscured') and item['label'] == 'no_chicken'
+                            for item in observations.values())
         for zone, nest in self.regions.items():
             item = observations[zone]
             if item.get('obscured'):
                 self.blocked.add(zone)
-                nest.obscure()
+                # Small edge/body fragments are skipped completely. Genuine
+                # hidden/ambiguous nests still invalidate attribution, without
+                # consuming or erasing a confirmation shot or the clean count.
+                if item.get('obscured_reason') != 'small_body':
+                    nest.obscure(pause=True)
                 continue
+            eggs = item['egg_count'] if count_allowed else None
             frame = None if evidence is None else dict(evidence, zone=zone, label=item['label'],
-                         egg_count=item['egg_count'] if item['label'] == 'no_chicken' else None)
-            for event in nest.observe(item['label'], item['egg_count'], frame):
+                         egg_count=eggs if item['label'] == 'no_chicken' else None)
+            for event in nest.observe(item['label'], eggs, frame, count_allowed=count_allowed):
                 events.append(zone.capitalize() + ': ' + event)
         self._refresh_latest()
         return events

@@ -65,6 +65,18 @@ class EggTests(unittest.TestCase):
             cv2.ellipse(image, center, (30, 28), 0, 0, 360, 140, -1)
         self.assertEqual(detect_eggs(image), [])
 
+    def test_plausible_ellipse_outside_its_visible_surface_is_rejected(self):
+        original_fit = cv2.fitEllipse
+
+        def unsupported_fit(points):
+            center, axes, angle = original_fit(points)
+            return ((center[0] + 100, center[1] + 100), axes, angle)
+
+        # Size, aspect and area coverage remain unchanged; spatial support does
+        # not. This models an unstable fit from a short smooth wall/corner arc.
+        with patch('count_eggs.cv2.fitEllipse', side_effect=unsupported_fit):
+            self.assertEqual(detect_eggs(nest([(180, 180)])), [])
+
     def test_smooth_ring_does_not_hide_textured_bedding(self):
         image = nest()
         cv2.ellipse(image, (180, 180), (30, 35), 0, 0, 360, 140, 13)

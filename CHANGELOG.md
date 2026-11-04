@@ -9,6 +9,29 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.18
+
+- Normalize reviewed empty and live split views with the same area resampling
+  and full-frame split grid, avoiding false background-change occlusion from
+  aliased texture or independently resized half views.
+- Suppress fine background-edge differences before the conservative per-side
+  change check, while measuring body thickness on its filled silhouette so
+  neutral mask holes do not hide broad or clipped bodies.
+- Detect broad losses of reviewed background texture as possible bodies, even
+  when their brightness matches the background. Preserve the feather/smooth-patch
+  gate so smooth egg piles do not become visitors through this new cue.
+- Reject egg ellipses whose centers fall outside their visible surface hull;
+  a plausible size/area ratio alone must not turn a short wall arc into an egg.
+- Require a visitor to cover at least ten maximum-egg areas in normalized pixels.
+  Smaller convincing bodies/fragments are obscured, not identified visitors.
+- Freeze all split egg counting while any zone has a hen or is obscured, keeping
+  the previous clean count. Obscured shots pause rather than advance or reset
+  confirmation counters. Small fragments leave visit attribution untouched;
+  genuinely hidden/ambiguous nests still invalidate unsafe laying attribution.
+- Add synthetic regressions for both split axes, minimum visitor size, texture
+  changes, resampling, egg-pile gating, skipped shots and journal evidence. Do
+  not rewrite historical events or counters.
+
 ## 0.1.17
 
 - Show each stored capture's paired image prediction and confirmed state in a

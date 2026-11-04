@@ -96,7 +96,8 @@ def assign_regions(masks, split, fragment_gap=24):
                                  if name not in blocked]}
 
 
-def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8, novelty_mask=None):
+def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
+           novelty_mask=None, texture_mask=None, fragment_area=None):
     """Find every accepted presence component, then assign spatial occupancy.
 
     Reviewed full-frame empty calibration is required. No identity reference or
@@ -116,29 +117,50 @@ def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
                                       cv2.CHAIN_APPROX_SIMPLE)[-2],
                       key=cv2.contourArea, reverse=True)
     masks = []
+    candidate_area = chicken_area if fragment_area is None else fragment_area
     for contour in contours:
-        if cv2.contourArea(contour) < chicken_area:
+        if cv2.contourArea(contour) < candidate_area:
             break
         region = np.zeros(gray.shape, np.uint8)
         cv2.drawContours(region, [contour], -1, 255, -1)
         region = cv2.bitwise_and(region, valid)
         unused_contour, unused_area, hen = chicken_region(cv2.bitwise_and(smooth, region),
-                                                        region, chicken_area)
+                                                        region, candidate_area)
         if hen:
             masks.append(region != 0)
-    if novelty_mask is not None:
+    if novelty_mask is not None or texture_mask is not None:
         # Broad changes relative to reviewed empty backgrounds catch patterned
         # bodies whose smooth feather patches are individually too fragmented.
-        novel = (novelty_mask & (~background_mask)).astype(np.uint8) * 255
-        novel = cv2.morphologyEx(novel, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
-        distance = cv2.distanceTransform(novel, cv2.DIST_L2, 5)
-        for contour in cv2.findContours(novel, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]:
-            if cv2.contourArea(contour) < chicken_area:
+        for change, texture_only in ((novelty_mask, False), (texture_mask, True)):
+            if change is None:
                 continue
-            region = np.zeros(gray.shape, np.uint8)
-            cv2.drawContours(region, [contour], -1, 255, -1)
-            inside = region != 0
-            if float(distance[inside].max()) >= 22:
+            novel = (change & (~background_mask)).astype(np.uint8) * 255
+            novel = cv2.morphologyEx(novel, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
+            distance = cv2.distanceTransform(novel, cv2.DIST_L2, 5)
+            for contour in cv2.findContours(novel, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]:
+                if cv2.contourArea(contour) < candidate_area:
+                    continue
+                region = np.zeros(gray.shape, np.uint8)
+                cv2.drawContours(region, [contour], -1, 255, -1)
+                inside = (region != 0) & (~background_mask)
+                if not inside.any() or float(distance[inside].max()) < 22:
+                    continue
+                if texture_only:
+                    # Egg piles also replace textured straw with smooth shells.
+                    # Keep the shared broad-plumage / feather-texture gate,
+                    # measuring smooth thickness BEFORE closing joins shells.
+                    # A reviewed wall exclusion may now lie inside plumage.
+                    # It must not punch artificial holes into a candidate's
+                    # unclosed smooth patch. The candidate itself still needs
+                    # broad change on nonexcluded background pixels.
+                    unclosed = (std < texture_threshold).astype(np.uint8) * 255
+                    unclosed = cv2.morphologyEx(unclosed, cv2.MORPH_OPEN,
+                                                np.ones((3, 3), np.uint8))
+                    smooth_distance = cv2.distanceTransform(cv2.bitwise_and(unclosed, region),
+                                                            cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+                    if (float(smooth_distance[inside].max()) < 22
+                            and float(np.mean(smooth[inside] != 0)) >= 0.75):
+                        continue
                 masks.append(inside)
         # Two methods may describe the same body. Never count overlapping masks
         # as separate hens; genuinely merged bodies still fail ambiguity checks.
@@ -154,4 +176,22 @@ def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
                         break
             merged.append(mask)
         masks = merged
-    return assign_regions(masks, split)
+    visitors = [mask for mask in masks if np.count_nonzero(mask) >= chicken_area]
+    fragments = [mask for mask in masks if np.count_nonzero(mask) < chicken_area]
+    result = assign_regions(visitors, split)
+    result['fragments'] = []
+    uncertain = set()
+    for mask in fragments:
+        body = assign_regions([mask], split)['bodies'][0]
+        result['fragments'].append(body)
+        if body['zone'] == 'center':
+            uncertain.update(('left', 'right', 'center') if split == 'vertical'
+                             else ('top', 'bottom', 'center'))
+        else:
+            uncertain.add(body['zone'])
+    result['uncertain_zones'] = sorted(uncertain)
+    if visitors or fragments:
+        result['blocked_for_eggs'] = (['whole'] if split == 'none' else
+                                     list(half_boxes(640, 360, split)))
+        result['clear_candidates'] = []
+    return result

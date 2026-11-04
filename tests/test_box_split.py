@@ -1,5 +1,6 @@
 """Synthetic geometry/presence checks; no camera capture or real identities."""
 import unittest
+from unittest.mock import patch
 import json
 from pathlib import Path
 import shutil
@@ -18,6 +19,19 @@ def body(x, y, w, h):
 
 
 class SplitTests(unittest.TestCase):
+    def test_small_convincing_body_is_uncertain_not_a_visitor(self):
+        gray = np.full((360, 640), 120, dtype=np.uint8)
+        exclusions = np.zeros(gray.shape, dtype=bool)
+        for size, visitor in ((100, False), (200, True)):
+            std = np.full(gray.shape, 20, dtype=np.float32)
+            std[40:40 + size, 20:20 + size] = 4
+            with patch('box_split.image_statistics', return_value=(gray, gray.astype(float), std)):
+                result = detect('synthetic', 'vertical', exclusions,
+                                chicken_area=35000, fragment_area=3500)
+            self.assertEqual(bool(result['bodies']), visitor)
+            self.assertEqual(result['uncertain_zones'], [] if visitor else ['left'])
+            self.assertEqual(bool(result['fragments']), not visitor)
+
     def test_crop_coverage_and_names(self):
         for split in ('none', 'vertical', 'horizontal'):
             canvas = np.zeros((361, 641), dtype=int)

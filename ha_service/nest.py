@@ -148,9 +148,10 @@ class NestState:
         daily = self.state['daily_eggs']
         return {'date': daily['date'], 'counts': dict(daily['counts'])}
 
-    def obscure(self):
+    def obscure(self, pause=False):
         """No empty observation is implied by a hidden/ambiguous nest."""
-        self.reset_confirmation()
+        if not pause:
+            self.reset_confirmation()
         state = copy.deepcopy(self.state)
         state.update(baseline=None, pending_hen=None, pending_baseline=None, pending_settled=False)
         state['journal']['baseline'] = []
@@ -169,10 +170,10 @@ class NestState:
                 'egg_count': self.state['eggs'],
                 'latest_event': self.state['latest_event']}
 
-    def observe(self, label, eggs, evidence=None):
+    def observe(self, label, eggs, evidence=None, count_allowed=True):
         if label != 'no_chicken' and not valid_hen(label):
             raise AppError('Invalid nest observation.')
-        if label == 'no_chicken' and (not count(eggs) or eggs is None):
+        if label == 'no_chicken' and (not count(eggs) or (eggs is None and count_allowed)):
             raise AppError('Invalid nest egg count.')
         state = self._dated_state()
         hen = state['hen']
@@ -182,8 +183,10 @@ class NestState:
         streak = min(DEPARTURE_FRAMES, self.streak + 1) if candidate == self.candidate else 1
         egg_candidate = eggs if label == 'no_chicken' else None
         egg_streak = (min(EGG_FRAMES, self.egg_streak + 1)
-                      if egg_candidate is not None and egg_candidate == self.egg_candidate
-                      else 1 if egg_candidate is not None else 0)
+                       if egg_candidate is not None and egg_candidate == self.egg_candidate
+                       else 1 if egg_candidate is not None else 0)
+        if not count_allowed:
+            egg_candidate, egg_streak = self.egg_candidate, self.egg_streak
         events = []
         laying_hen = None
         required = DEPARTURE_FRAMES if target == 'no_chicken' and hen is not None else ARRIVAL_FRAMES
@@ -191,7 +194,7 @@ class NestState:
             state['confirmed'] = True
             if target == 'no_chicken' and hen is not None:
                 name = hen.capitalize() if hen != 'unknown' else 'Unknown'
-                laid = (egg_streak >= EGG_FRAMES and state['baseline'] is not None
+                laid = (count_allowed and egg_streak >= EGG_FRAMES and state['baseline'] is not None
                         and eggs > state['baseline']
                         and eggs > (state['egg_high_water'] or 0))
                 if laid:
@@ -220,7 +223,7 @@ class NestState:
                 state['pending_settled'] = False
                 events.append(target.capitalize() + ' arrived')
 
-        if label == 'no_chicken' and state['hen'] is None and egg_streak >= EGG_FRAMES:
+        if count_allowed and label == 'no_chicken' and state['hen'] is None and egg_streak >= EGG_FRAMES:
             # A stable partial decrease can be occlusion, not collection. Rebounds
             # must not count the same eggs again; only a confirmed zero resets it.
             increase = eggs - (state['egg_high_water'] or 0)
@@ -256,7 +259,7 @@ class NestState:
         if events:
             state['latest_event'] = events[-1]
         if evidence is not None:
-            evolve(self.state, state, evidence, streak, egg_streak, events)
+            evolve(self.state, state, evidence, streak, egg_streak, events, count_allowed=count_allowed)
             if self.zone is not None:
                 for entry in state['journal']['outbox']:
                     if 'zone' not in entry:

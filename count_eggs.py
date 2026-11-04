@@ -116,6 +116,11 @@ def detect_eggs(gray, texture_threshold=8, min_area=950, max_area=3500, size=(64
             if len(curved) < 5:
                 continue
             ellipse = cv2.fitEllipse(curved.reshape(-1, 1, 2))
+            # A short wall/corner arc can fit a plausible ellipse somewhere
+            # ELSE in the image. Area ratios alone do not establish support.
+            # A >=70%-visible ellipse must have its center in the visible hull.
+            if cv2.pointPolygonTest(hull, ellipse[0], False) < 0:
+                continue
             axes = ellipse[1]
             aspect = min(axes) / max(max(axes), 1)
             ellipse_area = np.pi * axes[0] * axes[1] / 4
