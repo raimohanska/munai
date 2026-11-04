@@ -80,8 +80,8 @@ class Reviews:
             data, layout = self.source(source)
             checksum = digest(data)
             records, revision = self.load(checksum)
-            regions = {'vertical': ['whole', 'left', 'right', 'center'],
-                       'horizontal': ['whole', 'top', 'bottom', 'center']}.get(layout, ['whole'])
+            regions = {'vertical': ['whole', 'left', 'center', 'right'],
+                       'horizontal': ['whole', 'top', 'center', 'bottom']}.get(layout, ['whole'])
             _, reference_items = reference_inventory(self.store)
             identities = sorted({item['path'].split('/')[0] for item in reference_items}
                                 - {'empty'})

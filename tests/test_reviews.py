@@ -56,6 +56,13 @@ class ReviewTests(unittest.TestCase):
     def save(self, **kwargs):
         return self.reviews.save(self.request(**kwargs))
 
+    def test_regions_follow_spatial_order(self):
+        self.assertEqual(self.reviews.context(SOURCE)['regions'],
+                         ['whole', 'left', 'center', 'right'])
+        self.result.write_text(json.dumps(dict(timestamp=STAMP, raw_prediction={'zones': {'top': {}}})))
+        self.assertEqual(self.reviews.context(SOURCE)['regions'],
+                         ['whole', 'top', 'center', 'bottom'])
+
     def test_promote_correct_crop_validate_activate_and_undo(self):
         original_result = self.result.read_bytes()
         value = self.save()

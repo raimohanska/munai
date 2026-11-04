@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.21
+
+- Order review regions spatially: Left, Center, Right or Top, Center, Bottom,
+  with Whole frame first.
+
 ## 0.1.20
 
 - Remove the Review & teach confirmation checkbox and its extra save requirement.
