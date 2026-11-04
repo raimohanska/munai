@@ -9,6 +9,14 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.17
+
+- Show each stored capture's paired image prediction and confirmed state in a
+  compact summary, including split-zone states and meaningful egg counts. Mark
+  missing or invalid results unavailable rather than guessing from folders.
+- Keep just the filename below the summary; remove duplicate timestamps, folder
+  paths, file sizes and separate full-size links. Photos remain clickable.
+
 ## 0.1.15
 
 - Add a read-only Captures page to HA Ingress with lazy-loaded photos, folder

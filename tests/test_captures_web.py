@@ -1,5 +1,6 @@
 """Synthetic stored-photo browsing tests, not camera capture tests."""
 import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -79,7 +80,7 @@ class CapturesGalleryTests(unittest.TestCase):
         self.assertEqual(page.count(b'loading="lazy"'), 5)
         self.assertIn(b'href="../journal.css"', page)
         self.assertIn(b'href="../captures/hen_a/unreviewed/', page)
-        self.assertIn(b'Full-size photo', page)
+        self.assertNotIn(b'Full-size photo', page)
         self.assertNotIn(b'src="/', page)
 
     def test_original_photo_and_cleanup_404(self):
@@ -117,3 +118,59 @@ class CapturesGalleryTests(unittest.TestCase):
         path.symlink_to(self.store.root / 'config.json')
         self.assertEqual(self.request('/captures')[0], 500)
         self.assertEqual(self.request('/captures/' + relative)[0], 500)
+
+    def result(self, stamp='20000101T120000_000000Z', **fields):
+        value = dict(timestamp=stamp, occupant='empty', egg_count=2,
+                     raw_prediction={'occupant': 'empty', 'egg_count': 3})
+        value.update(fields)
+        path = self.store.root / 'results' / (stamp + '.json')
+        path.write_text(json.dumps(value))
+        return path
+
+    def test_compact_paired_interpretation_and_filename_only(self):
+        self.photo('unknown/20000101T120000_000000Z.jpg')
+        self.result()
+        _, page, _ = self.request('/captures')
+        caption = page.split(b'<figcaption>')[1].split(b'</figcaption>')[0]
+        self.assertIn('Prediction: Empty, 3 eggs · Confirmed: Empty, 2 eggs'.encode(), caption)
+        self.assertIn(b'<code>20000101T120000_000000Z.jpg</code>', caption)
+        for removed in (b'unknown/', b'KiB', b'Full-size', b'12:00:', b'UTC'):
+            self.assertNotIn(removed, caption)
+        self.assertEqual(caption.count(b'<br>'), 1)
+
+    def test_split_summary_and_hidden_raw_eggs(self):
+        self.photo('unknown/20000101T120000_000000Z.jpg')
+        self.result(zones={'left': {'occupant': 'hen_a', 'egg_count': 2},
+                           'right': {'occupant': 'empty', 'egg_count': 1}},
+                    raw_prediction={'zones': {
+                        'left': {'label': 'hen_b', 'egg_count': 99},
+                        'right': {'label': 'no_chicken', 'egg_count': 1}}})
+        page = render(self.store)
+        self.assertIn(b'Prediction: Left: hen_b; Right: Empty, 1 egg', page)
+        self.assertIn(b'Confirmed: Left: hen_a, 2 eggs (last confirmed); Right: Empty, 1 egg', page)
+        self.assertNotIn(b'99 eggs', page)
+
+    def test_missing_corrupt_or_mismatched_results_do_not_guess_from_folder(self):
+        self.photo('hen_a/unreviewed/20000101T120000_000000Z.jpg')
+        self.assertIn(b'Interpretation unavailable', render(self.store))
+        path = self.result()
+        path.write_text('{invalid')
+        self.assertIn(b'Interpretation unavailable', render(self.store))
+        self.result(timestamp='20000102T120000_000000Z')
+        self.assertIn(b'Interpretation unavailable', render(self.store))
+        path.unlink()
+        path.symlink_to(self.store.root / 'private.json')
+        self.assertIn(b'Interpretation unavailable', render(self.store))
+
+    def test_unknown_obscured_and_html_escaping(self):
+        self.photo('unknown/20000101T120000_000000Z.jpg')
+        self.result(occupant=None, egg_count=None,
+                    raw_prediction={'occupant': 'unknown', 'egg_count': 0})
+        self.assertIn(b'Prediction: Unknown / uncertain', render(self.store))
+        self.assertIn(b'Confirmed: Not yet confirmed', render(self.store))
+        self.result(raw_prediction={'occupant': 'empty', 'obscured': True, 'egg_count': 99})
+        self.assertIn(b'Prediction: Obscured / uncertain', render(self.store))
+        self.assertNotIn(b'99 eggs', render(self.store))
+        self.result(raw_prediction={'occupant': '<script>', 'egg_count': 0})
+        self.assertIn(b'Prediction: &lt;script&gt;', render(self.store))
+        self.assertNotIn(b'<script>', render(self.store))

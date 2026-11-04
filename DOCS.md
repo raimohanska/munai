@@ -82,10 +82,15 @@ Select **Captures** in the MunAI sidebar to browse retained capture JPEGs.
 Each page shows a single **UTC day**, newest photos first, starting with the
 newest stored day. **Older day** and **Newer day** skip days without photos;
 `captures?date=2000-01-01` can also open a specific UTC date. Photos are lazy-loaded
-with timestamps, folder labels, filenames and full-size links, behind HA Ingress.
+and clickable for the original, behind HA Ingress. From 0.1.17, captions show a
+compact prediction/confirmed-state summary plus just the filename. Results are
+matched by the exact capture timestamp; missing or invalid results are marked
+unavailable, never inferred from the folder. Split-zone states are shown separately.
+Raw egg counts are omitted when a hen is present; retained confirmed counts are
+marked as last confirmed in that case. Confirmed state can lag the image prediction.
 
 This is a read-only view of the app's capture storage, not the journal evidence
-archive or a list of every observation. Folder labels are unreviewed predictions.
+archive or a list of every observation. Image predictions are not reviewed identities.
 Enable `store_captures` to save future photos; deduplication and retention may
 leave gaps, and a photo removed by cleanup returns not found. Browsing does not
 change labels, references, retention settings or recognition.
