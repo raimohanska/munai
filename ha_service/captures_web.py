@@ -75,12 +75,6 @@ def render(store, day=None, base=''):
     selected = sorted((item for item in items if item['day'] == day),
                       key=lambda item: (item['stamp'], item['path']), reverse=True)
     parts = [start('Captures', 'Captures', base, reviews=True), '<header><h1>Stored captures</h1>',
-             '<p>One UTC day at a time, newest photos first. Image predictions are not '
-             'reviewed identities. Use ✎ to review and teach.</p>',
-             '<p class="muted">Frame only: left | center | right (top | center | bottom for horizontal splits). '
-              'Egg counts are shown only when known.</p>',
-             '<p class="muted">Only retained capture photos are shown, not every observation or '
-             'journal evidence. Deduplication and retention can leave gaps.</p>',
              '<p><a href="{}captures">Newest stored day</a> · <a href="">Refresh</a></p>'.format(base)]
     if not enabled:
         parts.append('<p class="notice">Ordinary capture storage is disabled. Enable store_captures '
@@ -96,8 +90,7 @@ def render(store, day=None, base=''):
         parts.append('<a href="?date={}">Older day ({}) →</a>'.format(older[-1], older[-1]))
     parts.append('</nav><main><article>')
     if not selected:
-        parts.append('<h2>No stored captures{}</h2><p>Photos may not have been saved or may have '
-                     'expired under the retention limits.</p>'.format(' for this day' if day else ''))
+        parts.append('<h2>No stored captures{}</h2>'.format(' for this day' if day else ''))
     else:
         parts.append('<div class="photos">')
         for item in selected:

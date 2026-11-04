@@ -47,6 +47,8 @@ class CapturesGalleryTests(unittest.TestCase):
         self.assertIn(b'capture storage is disabled', page)
         self.assertIn(b'href="captures" aria-current="page"', page)
         self.assertNotIn(b'?date=', page)
+        for removed in (b'reviewed identities', b'Frame only:', b'Deduplication and retention'):
+            self.assertNotIn(removed, page)
 
     def test_single_utc_day_and_navigation_skip_empty_days(self):
         self.photo('empty/20000101T235959_999999Z.jpg')

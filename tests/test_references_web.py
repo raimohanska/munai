@@ -67,6 +67,9 @@ class ReferenceGalleryTests(unittest.TestCase):
         self.assertIn(b'loading="lazy"', page)
         self.assertNotIn(b'src="/', page)
         self.assertLess(page.index(b'<h2>Hen_a'), page.index(b'<h2>Empty-nest'))
+        for removed in (b'not local candidates', b'validate recognition accuracy',
+                        b'not a hen identity', b'provenance'):
+            self.assertNotIn(removed, page)
         url = '/references/' + revision + '/hen_a/' + NAME
         status, data, handler = self.request(url)
         self.assertEqual((status, data), (200, self.image))

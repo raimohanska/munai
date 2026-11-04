@@ -88,20 +88,15 @@ def render(journal, page, base=''):
     low_space = journal.store.options['minimum_free_mb']
     free = shutil.disk_usage(str(journal.root)).free / (1024 * 1024)
     parts = [start('Journal', 'Journal', base, script=True, reviews=True), '<header>',
-             '<h1>Journal</h1><p>The story of your nest, with the evidence behind each decision.</p>',
+             '<h1>Journal</h1>',
              '<p class="muted">{} events · {} days retention · archive {:.1f} MiB at last hourly cleanup</p>'.format(
                  len(paths), journal.store.options['journal_retention_days'], usage),
-             '<p class="muted">Times are shown in your browser’s timezone. Event times indicate confirmation, '
-             'not the exact moment of laying. Predictions are not reviewed identities.</p>',
              '<a href="{}journal">Latest entries</a> · <a href="">Refresh</a>'.format(base)]
     if free < low_space + 16:
-        parts.append('<p class="notice">Storage is low. New observations may stop to protect the disk reserve. '
-                     'Back up the archive and free space; younger journal entries are not automatically discarded.</p>')
+        parts.append('<p class="notice">Storage is low. Back up the archive and free space.</p>')
     parts.append('</header><main>')
     if not entries:
-        parts.append('<article><h2>Your journal starts here</h2><p>Confirmed arrivals, departures, laying '
-                     'and collections will appear here with their supporting photos. Existing historical '
-                     'events cannot be reconstructed.</p></article>')
+        parts.append('<article><h2>No journal events</h2></article>')
     for entry in entries:
         parts.append('<article><p class="muted">Confirmed {}</p><h2>{}</h2>'.format(
             time_html(entry['id']), escape(entry['text'])))
@@ -136,8 +131,7 @@ def render(journal, page, base=''):
                     {'Identity confirmation', 'Departure confirmation'}
                     if entry['text'].endswith(' left') else {'Identity confirmation'})
         if not has_frames or required - present_roles:
-            parts.append('<p class="notice">Some evidence predates journal support or is unavailable. '
-                         'No historical photos have been fabricated.</p>')
+            parts.append('<p class="notice">Some evidence is unavailable.</p>')
         parts.append('</details></article>')
     parts.append('</main><nav>')
     if page:

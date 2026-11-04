@@ -28,9 +28,8 @@
       (hen && ((context.layout === 'none' && region.value === 'whole') ||
                (['vertical', 'horizontal'].includes(context.layout) && region.value !== 'whole'))));
     get('help').textContent = promotable
-      ? (label.value === 'empty' ? 'Adds full-frame empty calibration. No hens anywhere; eggs are allowed.'
-        : 'Adds this view as a shared hen reference. Check that one hen is clearly identifiable; position is not identity.')
-      : label.value === 'obscured' ? 'Annotation only. Saves a reviewed obscured example; it does not train the detector yet.'
+      ? (label.value === 'empty' ? 'Adds empty-nest calibration.' : 'Adds a hen reference.')
+      : label.value === 'obscured' ? 'Annotation only.'
       : label.value === 'empty' && region.value !== 'whole' ? 'Annotation only. Empty calibration requires the entire frame to be hen-free.'
       : context.layout === 'unknown' ? 'Annotation only. This image’s capture-time layout is unavailable.'
       : context.layout !== context.current_layout ? 'Annotation only. This image uses a different recognition layout.'
@@ -122,11 +121,11 @@
       if (!response.ok) throw new Error(value.error || 'Review failed; reopen and try again.');
       lastRegion = region.value; lastLabel = chosen;
       if (action === 'undo') {
-        fill(value, lastRegion); message.textContent = 'Review undone. Original prediction and journal are unchanged.';
+        fill(value, lastRegion); message.textContent = 'Review undone.';
       } else {
         fill(value, lastRegion);
         const saved = record();
-        const text = saved.status === 'active' ? 'Reference saved and activated for the next detection.' : 'Annotation saved (not a training reference).';
+        const text = saved.status === 'active' ? 'Reference saved and activated.' : 'Annotation saved.';
         message.textContent = text;
         currentButton.title = text;
         let toast = document.getElementById('review-feedback');

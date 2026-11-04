@@ -37,21 +37,16 @@ def render(store, base=''):
     identities = sorted(label for label in counts if label != 'empty')
     parts = [start('References', 'References', base), '<header><h1>Active references</h1>',
              '<p><a href="{}references">Refresh references</a></p>'.format(base),
-             '<p>These are the server’s currently active reviewed references, not local candidates, '
-             'unreviewed captures, or journal predictions.</p>',
               '<p>Reference content checksum: <code>{}</code><br>Configured box split: <strong>{}</strong></p>'.format(
                  escape(revision), escape(layout)),
              '<p>{} identity photos across {} hens · {} full-frame empty calibration photos</p>'.format(
-                 sum(counts[label] for label in identities), len(identities), counts['empty']),
-             '<p class="muted">Recognition may still be unavailable if these references are incompatible '
-             'with the configured layout. Listing them does not validate recognition accuracy. '
-              'Only the current reference set is stored; no version history or rollback is retained.</p>']
+                 sum(counts[label] for label in identities), len(identities), counts['empty'])]
     if identities:
         parts.append('<p>' + ' · '.join('{} ({})'.format(escape(label), counts[label]) for label in identities) + '</p>')
     parts.append('</header><main>')
     if not items:
         parts.append('<article><h2>No active reference photos</h2><p>Upload reviewed identity and '
-                     'empty-nest references using the transfer CLI. This page is read-only.</p></article>')
+                     'empty-nest references using the transfer CLI.</p></article>')
     previous = None
     for item in items:
         label, name = item['path'].split('/')
@@ -60,12 +55,6 @@ def render(store, base=''):
                 parts.append('</div></article>')
             title = 'Empty-nest background calibration' if label == 'empty' else label.capitalize()
             parts.append('<article><h2>{}</h2><p>{} active reference photos</p>'.format(escape(title), counts[label]))
-            if label == 'empty':
-                parts.append('<p class="muted">Reviewed hen-free full frames. These calibrate background '
-                             'exclusions; they are not a hen identity and may contain eggs.</p>')
-            else:
-                parts.append('<p class="muted">Shared appearance references: side/view suffixes record '
-                             'provenance, not where this hen must be identified.</p>')
             parts.append('<div class="photos">')
             previous = label
         source = base + 'references/' + revision + '/' + item['path']

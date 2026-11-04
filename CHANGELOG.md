@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.26
+
+- Remove explanatory UI filler and disclaimers from Status, Captures, Journal,
+  References, and review feedback. Keep actionable warnings and concise labels.
+- Add a project rule against explanatory UI boilerplate.
+
 ## 0.1.25
 
 - Count eggs independently in each clear side while the other side is occupied

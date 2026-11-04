@@ -112,7 +112,10 @@ class StatusWebTests(unittest.TestCase):
         self.assertIn(b'hen_a', page)
         self.assertIn(b'&lt;script&gt;', page)
         self.assertNotIn(b'<script>synthetic', page)
-        self.assertIn(b'does not establish that a hen is present', page)
+        for removed in (b'does not establish that a hen is present',
+                        b'not human-reviewed', b'after confirmation rules',
+                        b'retain an earlier confirmed value'):
+            self.assertNotIn(removed, page)
         self.assertIn(b'Egg count unavailable', page)
 
     def test_split_sections_follow_spatial_order(self):

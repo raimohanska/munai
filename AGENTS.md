@@ -18,6 +18,14 @@ Collect timestamped images from an overhead LAN RTSP camera, then build a
 dataset of egg-laying events and identify which of the configured hens
 produced each egg.
 
+## UI copy
+
+- Keep app screens terse: labels, values, controls, and actionable errors only.
+  Do not add explanatory filler, prediction/review disclaimers, obvious interface
+  instructions, or paragraphs describing internal confirmation rules. Put
+  background explanations in documentation, not in the UI. Keep necessary
+  warnings and action-specific consequences concise.
+
 ## Raspberry Pi compatibility
 
 - Target Python 3.5.3 and Node.js 12.13.1.

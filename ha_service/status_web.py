@@ -34,8 +34,7 @@ def render(snapshot, base=''):
     parts = [start('Status', 'Status', base, script=True), '<header><h1>Status</h1>',
              '<p>Capture: <strong>{}</strong> · MQTT: {}</p>'.format(
                  escape(snapshot['capture_state']), escape(snapshot['mqtt_state'])),
-             '<p class="muted">Refreshes automatically every 15 seconds. '
-             'Times use your browser’s timezone. <a href="">Refresh now</a></p>']
+             '<p><a href="">Refresh</a></p>']
     for message in snapshot.get('errors', []):
         parts.append('<p class="notice">{}</p>'.format(escape(message)))
     parts.append('</header><main>')
@@ -49,7 +48,7 @@ def render(snapshot, base=''):
         parts.append('<article><h2>Latest processed capture</h2><p><time datetime="{0}">{0}</time>'
                      ' · {1} seconds ago</p>'.format(escape(stamp.isoformat()), age))
         if age > snapshot['stale_after']:
-            parts.append('<p class="notice">Stale image — this is not a live camera view.</p>')
+            parts.append('<p class="notice">Stale image.</p>')
         source = base + 'latest/' + observation['timestamp'] + '.jpg'
         if snapshot.get('has_image'):
             parts.append('<a href="{0}" target="_blank" rel="noopener"><img class="latest" '
@@ -61,12 +60,8 @@ def render(snapshot, base=''):
         if 'zones' not in raw:
             raw = dict(raw, label=raw.get('occupant'))
         parts.extend(['<h3>This image’s prediction</h3>', state_html(raw, raw=True),
-                      '<p class="muted">Unknown or obscured does not establish that a hen is present. '
-                      'Predicted identities are not human-reviewed.</p></article>',
+                      '</article>',
                       '<article><h2>Confirmed state</h2>', state_html(observation),
-                      '<p class="muted">State at this capture, after confirmation rules. It may differ '
-                      'from the image prediction while a change is being confirmed. Egg counts may '
-                      'retain an earlier confirmed value while a hen is present.</p>',
                       '<p>Latest event: {}</p></article>'.format(escape(observation.get('latest_event') or 'None yet')),
                       '<article><details><summary>Recognition diagnostics</summary><pre>{}</pre></details></article>'.format(
                           escape(json.dumps(dict(distance=observation.get('distance'),
