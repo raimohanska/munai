@@ -114,6 +114,16 @@ class DescriptorTests(unittest.TestCase):
             self.assertTrue(np.isfinite(result['patches']).all())
             self.assertEqual(set(result), {'texture', 'patches'})
 
+    def test_opencv_sampling_maps_remain_float32(self):
+        gray = np.full((180, 320), 80, dtype=np.uint8)
+        inside = np.ones(gray.shape, dtype=bool)
+        with patch('ha_service.plumage.cv2.remap', wraps=cv2.remap) as remap:
+            self.describe(gray, inside)
+        self.assertEqual(remap.call_count, 24)
+        for call in remap.call_args_list:
+            self.assertEqual(call[0][1].dtype, np.float32)
+            self.assertEqual(call[0][2].dtype, np.float32)
+
     def test_background_far_from_feathers_does_not_change_descriptor(self):
         gray = np.full((180, 320), 80, dtype=np.uint8)
         inside = np.zeros(gray.shape, dtype=bool)

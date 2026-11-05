@@ -17,8 +17,11 @@ def describe(gray, pixels, std, inside, background, edges):
         bits = []
         for index in range(8):
             angle = index * 2 * np.pi / 8
-            sample = cv2.remap(pixels, xx + radius * np.cos(angle),
-                               yy + radius * np.sin(angle), cv2.INTER_LINEAR)
+            # NumPy 2 promotes these scalar additions to float64. OpenCV
+            # requires float32 coordinate maps, irrespective of NumPy version.
+            map_x = (xx + radius * np.cos(angle)).astype(np.float32)
+            map_y = (yy + radius * np.sin(angle)).astype(np.float32)
+            sample = cv2.remap(pixels, map_x, map_y, cv2.INTER_LINEAR)
             bits.append(sample >= pixels)
         transitions = sum(bits[index] != bits[(index + 1) % 8] for index in range(8))
         count = sum(bit.astype(np.uint8) for bit in bits)

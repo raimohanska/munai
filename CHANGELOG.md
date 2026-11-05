@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.35
+
+- Fix split reference loading with HA's pinned NumPy 2 runtime by explicitly
+  keeping plumage sampling maps in the float32 format required by OpenCV.
+  Existing reviewed references do not need changing or re-uploading.
+
 ## 0.1.34
 
 - Add a guarded split-identity second opinion for otherwise unknown hens using
