@@ -185,6 +185,12 @@ class NestState:
         hen = state['hen']
         # Unknown frames establish presence, but never erase a known identity.
         target = hen if label == 'unknown' and hen is not None else label
+        # A single accepted appearance decision can identify an otherwise
+        # unknown arrival. Unknowns confirm presence, not a different identity.
+        # Empty observations, competing identities and resets break this chain.
+        if (label == 'unknown' and hen in (None, 'unknown')
+                and self.candidate not in (None, 'unknown', 'no_chicken')):
+            target = self.candidate
         candidate = target
         streak = min(DEPARTURE_FRAMES, self.streak + 1) if candidate == self.candidate else 1
         egg_candidate = eggs if label == 'no_chicken' else None

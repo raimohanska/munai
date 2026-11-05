@@ -62,6 +62,23 @@ class NestTests(unittest.TestCase):
         self.assertEqual(self.shots('hen_a'), ['Hen_a arrived'])
         self.assertEqual(self.shots('no_chicken', 2), ['Hen_a laid an Egg'])
 
+    def test_single_identity_among_unknown_arrival_frames(self):
+        self.shots('no_chicken', 1)
+        self.assertEqual(self.shots('hen_a', n=1), [])
+        self.assertEqual(self.shots('unknown', n=2), ['Hen_a arrived'])
+        self.assertEqual(self.nest.state['baseline'], 1)
+        self.assertEqual(self.shots('no_chicken', 2), ['Hen_a laid an Egg'])
+
+    def test_empty_breaks_tentative_arrival_identity(self):
+        self.shots('hen_a', n=1)
+        self.shots('no_chicken', n=1)
+        self.assertEqual(self.shots('unknown'), ['Unknown arrived'])
+
+    def test_competing_identity_replaces_tentative_arrival(self):
+        self.shots('hen_a', n=1)
+        self.shots('hen_b', n=1)
+        self.assertEqual(self.shots('unknown', n=2), ['Hen_b arrived'])
+
     def test_noise_and_occupied_zeros_are_not_collection(self):
         self.shots('no_chicken', 2)
         self.shots('no_chicken', 0, 2)

@@ -17,6 +17,7 @@ from . import VERSION
 from .mqtt import occupant
 from .nest import NestState, valid_hen
 from .journal import Journal
+from .identity_retry import IdentityRetry, MAX_EXTRA_SHOTS
 from .options import AppError
 from .photo_archive import PhotoArchive
 from .split_nest import SplitNest
@@ -223,34 +224,48 @@ class Runtime:
         with self.store.job() as scratch:
             references = self._references()
             self.store.require_space(MAX_FILE_BYTES * 2)
-            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%fZ')
-            predictions = []
-            evidence = []
-            images = []
+            selection = IdentityRetry()
+            latest = {}
+            deadline = time.monotonic() + self.options['capture_timeout']
 
             def process(path):
                 source = Path(path)
+                stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%fZ')
                 prediction = self.predict(source, references)
-                predictions.append(prediction)
-                evidence.append(self.journal.save_frame(source, prediction, stamp=stamp))
-                images.append(source.read_bytes())
+                frame = self.journal.save_frame(source, prediction, stamp=stamp)
+                selection.add(prediction, frame)
+                latest.update(stamp=stamp, image=source.read_bytes())
                 self.photos.save(source, stamp, prediction)
 
-            try:
-                capture(self.options['camera_url'], str(scratch), '/usr/bin/ffmpeg',
-                        self.options['capture_timeout'], 15, 0, on_capture=process, store=False, quiet=True)
-            except CaptureError as error:
-                raise AppError(str(error)) from None  # CaptureError contains only fixed summaries.
-            if not predictions:
+            for unused in range(MAX_EXTRA_SHOTS + 1):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                previous_stamp = latest.get('stamp')
+                try:
+                    capture(self.options['camera_url'], str(scratch), '/usr/bin/ffmpeg',
+                            remaining, 15, 0, on_capture=process, store=False, quiet=True)
+                except CaptureError as error:
+                    if not latest:
+                        raise AppError(str(error)) from None
+                    # Keep successful evidence if a later retry times out/fails.
+                    break
+                if latest.get('stamp') == previous_stamp or not selection.needs_more():
+                    break
+            if not latest:
                 raise AppError('Capture did not complete; check the camera and overlap lock.')
-            self.observe(stamp, predictions[0], evidence[0], image=images[0])
+            prediction, evidence, zone_evidence = selection.result()
+            self.observe(latest['stamp'], prediction, evidence, image=latest['image'],
+                         zone_evidence=zone_evidence)
 
-    def observe(self, stamp, prediction, evidence=None, image=None):
+    def observe(self, stamp, prediction, evidence=None, image=None, zone_evidence=None):
         """Commit and publish the same confirmed state for a successful prediction."""
         if image is not None and len(image) > MAX_FILE_BYTES:
             raise AppError('Image exceeds 8 MiB; lower the camera resolution.')
         self.journal.flush(self.nest)
-        events = (self.nest.observe_zones(prediction['zones'], evidence) if 'zones' in prediction else
+        events = (self.nest.observe_zones(prediction['zones'], evidence,
+                                         zone_evidence=zone_evidence)
+                  if 'zones' in prediction else
                   self.nest.observe(prediction['label'], prediction['egg_count'], evidence))
         for event in events:
             LOG.info('Latest event: %s.', event)

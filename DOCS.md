@@ -803,6 +803,18 @@ Discovery and availability are retained; **observations are not retained**, so
 HA restarts do not replay old identities as fresh. HA's birth message triggers
 rediscovery; the next successful capture supplies a fresh observation.
 
+An unidentified, visible hen triggers up to 15 extra shots in the same round,
+within the existing `capture_timeout` budget. Retrying stops once visible hens
+have accepted identities. One accepted identity wins over unknown shots; the
+appearance distance/margin thresholds are not relaxed. Split regions retain
+their own identified shot and journal evidence while other regions retry.
+Empty or obscured observations discard that region's earlier retry identity;
+obscured regions do not themselves trigger retries. If no shot identifies a hen,
+it remains unknown. Retry shots do not count as separate arrival/departure
+confirmations. Unknown presence can complete an identified arrival's three-round
+confirmation, but cannot override an already known visitor. Empty frames,
+competing identities, and interrupted observations reset that candidate.
+
 Egg count shares Occupant's observation, availability and expiry. Occupant uses
 three-observation arrival/identity confirmation and five-observation empty-nest
 departure confirmation, with the same unknown-identity handling as events.

@@ -104,7 +104,7 @@ class SplitNest:
         self.transition_path.unlink()
         sync_directory(self.root)
 
-    def observe_zones(self, observations, evidence=None):
+    def observe_zones(self, observations, evidence=None, zone_evidence=None):
         if set(observations) != set(self.regions):
             raise AppError('Split observation has incorrect zones.')
         self._recover_transition()
@@ -119,8 +119,15 @@ class SplitNest:
         observations = copy.deepcopy(observations)
         known = {}
         for zone, item in observations.items():
-            if not item.get('obscured') and item['label'] not in ('unknown', 'no_chicken'):
-                known.setdefault(item['label'], []).append(zone)
+            label = item['label']
+            nest = regions[zone]
+            # Match NestState's tentative arrival identity through unknown
+            # presence, so its eventual confirmation still releases an origin.
+            if (label == 'unknown' and nest.state['hen'] in (None, 'unknown')
+                    and nest.candidate not in (None, 'unknown', 'no_chicken')):
+                label = nest.candidate
+            if not item.get('obscured') and label not in ('unknown', 'no_chicken'):
+                known.setdefault(label, []).append(zone)
         for zones in known.values():
             if len(zones) > 1:
                 # Two independent detections with the same identity are not a
@@ -173,7 +180,8 @@ class SplitNest:
             # in the other nest does not hide this nest. Center is presence-only.
             count_allowed = (zone in self.sides and center_clear and item['label'] == 'no_chicken')
             eggs = item['egg_count'] if count_allowed else None
-            frame = None if evidence is None else dict(evidence, zone=zone, label=item['label'],
+            source_frame = zone_evidence.get(zone) if zone_evidence is not None else evidence
+            frame = None if source_frame is None else dict(source_frame, zone=zone, label=item['label'],
                          egg_count=eggs if item['label'] == 'no_chicken' else None)
             for event in nest.observe(item['label'], eggs, frame, count_allowed=count_allowed,
                                       arrival_event=moves.get(zone)):

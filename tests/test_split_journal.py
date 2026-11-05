@@ -69,6 +69,40 @@ class SplitJournalTests(unittest.TestCase):
         self.assertIn('Photo ID:', page)
         self.assertIn(frames[0]['id'], page)
 
+    def test_retry_selection_preserves_each_regions_source_frame(self):
+        from ha_service.identity_retry import IdentityRetry
+        self.shots()
+        sources = []
+        for _ in range(3):
+            selection = IdentityRetry()
+            first = {'zones': {'left': observation('hen_a'), 'right': observation('unknown'),
+                               'center': observation()}, 'label': 'unknown', 'egg_count': None}
+            second = {'zones': {'left': observation('unknown'), 'right': observation('hen_b'),
+                                'center': observation()}, 'label': 'unknown', 'egg_count': None}
+            frames = [self.journal.save_frame(self.source, p) for p in (first, second)]
+            sources.append(frames)
+            selection.add(first, frames[0])
+            selection.add(second, frames[1])
+            prediction, frame, zone_frames = selection.result()
+            self.nest.observe_zones(prediction['zones'], frame, zone_evidence=zone_frames)
+            self.journal.flush(self.nest)
+            self.journal.cleanup_pending(self.nest)
+        for entry in self.entries():
+            index = 0 if entry['zone'] == 'left' else 1
+            arrival = entry['evidence'][1]['frames']
+            self.assertEqual([f['id'] for f in arrival], [pair[index]['id'] for pair in sources])
+
+    def test_one_identified_move_then_unknown_presence_releases_origin(self):
+        self.shots()
+        self.shots(right=observation('hen_a'))
+        hidden = observation('unknown', eggs=None, obscured=True)
+        self.shot(left=hidden, right=hidden, center=observation('hen_a'))
+        self.shot(left=hidden, right=hidden, center=observation('unknown'))
+        unused, events = self.shot(left=hidden, right=hidden, center=observation('unknown'))
+        self.assertEqual(events, ['Hen_a moved to center'])
+        self.assertEqual(self.nest.regions['center'].state['hen'], 'hen_a')
+        self.assertIsNone(self.nest.regions['right'].state['hen'])
+
     def test_move_to_center_releases_old_position_and_retains_real_evidence(self):
         self.shots()
         self.shots(right=observation('hen_a'))

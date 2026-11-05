@@ -9,6 +9,15 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.33
+
+- Retry unidentified hens with up to 15 extra shots within the round's capture
+  timeout, stopping when identities are available. Prefer accepted identities
+  over unknown shots independently per visible split region; retain unknown
+  when no shot meets the existing appearance thresholds.
+- Let unknown presence frames complete an identified arrival's confirmation,
+  without overriding known visitors or carrying identities across empty frames.
+
 ## 0.1.32
 
 - Make Review & teach confirm edited labels for the training archive by default;
