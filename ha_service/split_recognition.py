@@ -10,6 +10,7 @@ from data_layout import RESERVED
 from recognize_chickens import References, background_mask, identify, measure, image_statistics
 from sort_captures import capture_files
 from .options import AppError
+from .plumage import describe, recover
 
 
 def measurement_size(split):
@@ -103,7 +104,7 @@ def load(root, options):
         for path in capture_files(folder):
             validate_half(path, root, options['box_split'])
             result = measure(path, options['chicken_area'], options['texture_threshold'],
-                             common, measurement_size(options['box_split']))
+                             common, measurement_size(options['box_split']), describe=describe)
             if result['features'] is None:
                 raise AppError('Split reference has insufficient measurable plumage; review the half-frame crop.')
             refs.append((folder.name, path, result))
@@ -162,6 +163,7 @@ def predict(path, references, options):
                       minimum_fragment_change=options['chicken_area'])
     sides = ('left', 'right') if split == 'vertical' else ('top', 'bottom')
     zones = {}
+    upgraded = set()
     for zone in sides + ('center',):
         reason = ('ambiguous_presence' if presence['ambiguous'] else
                   'center_occupied' if presence['center_present'] and zone != 'center' else
@@ -188,11 +190,25 @@ def predict(path, references, options):
             result = measure(view, options['chicken_area'], options['texture_threshold'],
                              references.background_mask, measurement_size(split))
             decision = identify(result, references, options['max_distance'], options['min_margin'])
+            if (decision['label'] == 'unknown' and decision['distance'] is not None
+                    and decision['distance'] <= options['max_distance']):
+                detailed = measure(view, options['chicken_area'], options['texture_threshold'],
+                                   references.background_mask, measurement_size(split), describe=describe)
+                decision = recover(decision, detailed, references, options['max_distance'])
+                if decision['label'] != 'unknown':
+                    upgraded.add(zone)
+                    item['identity_method'] = 'plumage_consensus'
             item.update({key: decision[key] for key in ('label', 'distance', 'margin')})
             if detected and item['label'] == 'no_chicken':
                 item['label'] = 'unknown'  # Full-frame presence wins over a clipped crop.
         zones[zone] = item
     left, right = (zones[zone] for zone in sides)
+    if (left['label'] == right['label'] and left['label'] not in ('unknown', 'no_chicken')
+            and len(upgraded.intersection(sides)) == 1):
+        # A fallback must not displace the other side's original accepted hen.
+        zone = next(zone for zone in sides if zone in upgraded)
+        zones[zone]['label'] = 'unknown'
+        zones[zone].pop('identity_method', None)
     if left['label'] == right['label'] and left['label'] not in ('unknown', 'no_chicken'):
         # A configured hen cannot be two independent visitors simultaneously.
         # Do not choose a side or a corrected identity from positional coverage.

@@ -69,7 +69,8 @@ def background_mask(directory, texture_threshold=8):
     return mask
 
 
-def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None, size=(640, 360)):
+def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None, size=(640, 360),
+            describe=None):
     gray, pixels, std = image_statistics(path, size)
     valid = np.full(gray.shape, 255, np.uint8)
     if background_mask is not None:
@@ -100,6 +101,8 @@ def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None, 
     values += [float(np.mean(edges[inside] != 0))]
     result['features'] = [float(value) for value in values]
     result['box'] = [int(value) for value in cv2.boundingRect(contour)]
+    if describe is not None:
+        result['appearance'] = describe(gray, pixels, std, inside, background, edges)
     return result
 
 

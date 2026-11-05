@@ -185,6 +185,50 @@ class SplitRecognitionTests(unittest.TestCase):
         self.assertTrue(result['zones']['right']['obscured'])
         self.assertNotEqual(result['zones']['center']['label'], 'no_chicken')
 
+    def test_consensus_cannot_displace_an_existing_identity_on_other_side(self):
+        presence = {'ambiguous': False, 'center_present': False,
+                    'bodies': [{'zone': 'left'}, {'zone': 'right'}]}
+        accepted = {'label': 'hen_a', 'distance': .1, 'margin': .5}
+        unknown = {'label': 'unknown', 'distance': .2, 'margin': .1}
+        with patch('ha_service.split_recognition.detect', return_value=presence), \
+                patch('ha_service.split_recognition.identify', side_effect=[accepted, unknown]), \
+                patch('ha_service.split_recognition.recover', return_value=dict(unknown, label='hen_a')):
+            result = split.predict(self.fixtures / 'synthetic_hen_dark.jpg', self.refs, self.options)
+        self.assertEqual(result['zones']['left']['label'], 'hen_a')
+        self.assertEqual(result['zones']['right']['label'], 'unknown')
+        self.assertFalse(result['zones']['left']['obscured'])
+        self.assertNotIn('identity_method', result['zones']['right'])
+
+    def test_accepted_identity_does_not_compute_live_second_opinion(self):
+        presence = {'ambiguous': False, 'center_present': True, 'bodies': [{'zone': 'center'}]}
+        accepted = {'label': 'hen_a', 'distance': .1, 'margin': .5}
+        with patch('ha_service.split_recognition.detect', return_value=presence), \
+                patch('ha_service.split_recognition.identify', return_value=accepted), \
+                patch('ha_service.split_recognition.measure', wraps=split.measure) as measurement, \
+                patch('ha_service.split_recognition.recover') as fallback:
+            result = split.predict(self.fixtures / 'synthetic_hen_dark.jpg', self.refs, self.options)
+        self.assertEqual(result['zones']['center']['label'], 'hen_a')
+        measurement.assert_called_once()
+        self.assertNotIn('describe', measurement.call_args[1])
+        fallback.assert_not_called()
+
+    def test_center_upgrade_leaves_side_uncertainty_and_egg_suppression_intact(self):
+        presence = {'ambiguous': False, 'center_present': True, 'bodies': [{'zone': 'center'}]}
+        unknown = {'label': 'unknown', 'distance': .2, 'margin': .1}
+        with patch('ha_service.split_recognition.detect', return_value=presence), \
+                patch('ha_service.split_recognition.identify', return_value=unknown), \
+                patch('ha_service.split_recognition.recover', return_value=dict(unknown, label='hen_a')), \
+                patch('ha_service.split_recognition.detect_eggs') as eggs:
+            result = split.predict(self.fixtures / 'synthetic_hen_dark.jpg', self.refs, self.options)
+        self.assertEqual(result['zones']['center']['identity_method'], 'plumage_consensus')
+        self.assertEqual(result['zones']['center']['label'], 'hen_a')
+        self.assertIsNone(result['zones']['center']['egg_count'])
+        for zone in ('left', 'right'):
+            self.assertEqual(result['zones'][zone]['label'], 'unknown')
+            self.assertEqual(result['zones'][zone]['obscured_reason'], 'center_occupied')
+            self.assertNotIn('identity_method', result['zones'][zone])
+        eggs.assert_not_called()
+
     def test_contradictory_presence_blocks_every_zone(self):
         presence = {'ambiguous': True, 'center_present': True, 'bodies': [{'zone': 'center'}, {'zone': 'left'}]}
         with patch('ha_service.split_recognition.detect', return_value=presence), \

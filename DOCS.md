@@ -806,14 +806,28 @@ rediscovery; the next successful capture supplies a fresh observation.
 An unidentified, visible hen triggers up to 15 extra shots in the same round,
 within the existing `capture_timeout` budget. Retrying stops once visible hens
 have accepted identities. One accepted identity wins over unknown shots; the
-appearance distance/margin thresholds are not relaxed. Split regions retain
-their own identified shot and journal evidence while other regions retry.
+original appearance distance/margin thresholds are not relaxed by retries.
+Split regions retain their own identified shot and journal evidence while other
+regions retry.
 Empty or obscured observations discard that region's earlier retry identity;
 obscured regions do not themselves trigger retries. If no shot identifies a hen,
 it remains unknown. Retry shots do not count as separate arrival/departure
 confirmations. Unknown presence can complete an identified arrival's three-round
 confirmation, but cannot override an already known visitor. Empty frames,
 competing identities, and interrupted observations reset that candidate.
+
+From 0.1.34, a measurable split hen that fails the original margin check can
+receive a second opinion from rotation-invariant feather texture and local
+brightness/texture patches. Both matchers must select the same identity with a
+best-to-next-identity distance ratio at most 0.8 and an absolute distance within
+`max_distance`. Existing accepted identities stay unchanged; an upgrade cannot
+claim a hen already accepted on the other side. Obscured/uncertain presence and
+insufficient plumage stay unknown. All comparisons use the same shared reviewed
+reference pool, never nest position or orientation. Whole-box mode is unchanged.
+Reference descriptors are cached in memory, not written into the reference
+folders. Extra live descriptors are computed only for measurable unknown hens.
+Raw upgraded zones carry `identity_method: plumage_consensus`; their distance and
+margin retain the original seven-feature diagnostics, not second-opinion scores.
 
 Egg count shares Occupant's observation, availability and expiry. Occupant uses
 three-observation arrival/identity confirmation and five-observation empty-nest

@@ -9,6 +9,15 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.34
+
+- Add a guarded split-identity second opinion for otherwise unknown hens using
+  rotation-invariant plumage texture and local brightness/texture patches.
+  Upgrade only when both matchers agree with clear separation and an acceptable
+  absolute fit; preserve existing accepted identities and uncertain presence.
+- Cache reference descriptors in memory; compute extra live descriptors only
+  for measurable unknown hens. Keep whole-box recognition and egg rules unchanged.
+
 ## 0.1.33
 
 - Retry unidentified hens with up to 15 extra shots within the round's capture
