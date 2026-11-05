@@ -1,6 +1,8 @@
 """Synthetic stored-photo browsing tests, not camera capture tests."""
 import io
 import json
+import os
+import time
 from pathlib import Path
 import tempfile
 import unittest
@@ -16,6 +18,11 @@ from ha_service.storage import Store
 
 class CapturesGalleryTests(unittest.TestCase):
     def setUp(self):
+        self.timezone = patch.dict(os.environ, {'TZ': 'UTC'})
+        self.timezone.start()
+        time.tzset()
+        self.addCleanup(time.tzset)
+        self.addCleanup(self.timezone.stop)
         self.temp = tempfile.TemporaryDirectory(dir='/tmp/opencode')
         self.store = Store(Path(self.temp.name) / 'data', validate({}))
         self.journal = Journal(self.store)
@@ -51,13 +58,15 @@ class CapturesGalleryTests(unittest.TestCase):
         for removed in (b'reviewed identities', b'Frame only:', b'Deduplication and retention'):
             self.assertNotIn(removed, page)
 
-    def test_single_utc_day_and_navigation_skip_empty_days(self):
+    def test_single_local_day_and_navigation_skip_empty_days(self):
         self.photo('empty/20000101T235959_999999Z.jpg')
         self.photo('hen_a/unreviewed/20000103T000000_000000Z.jpg')
         self.photo('unknown/20000103T120000_000000Z.jpg')
         status, page, _ = self.request('/captures')
         self.assertEqual(status, 200)
-        self.assertIn(b'2000-01-03 (UTC)', page)
+        self.assertIn(b'<h2>2000-01-03</h2>', page)
+        self.assertNotIn(b'Refresh', page)
+        self.assertIn(b'<h3><time datetime="2000-01-03T12:00:00+00:00">12:00:00</time></h3>', page)
         self.assertIn(b'2 stored photos', page)
         self.assertEqual(page.count(b'<figure>'), 2)
         self.assertNotIn(b'20000101T', page)
@@ -74,6 +83,19 @@ class CapturesGalleryTests(unittest.TestCase):
         self.assertIn(b'No stored captures for this day', page)
         self.assertIn(b'?date=2000-01-01', page)
         self.assertIn(b'?date=2000-01-03', page)
+
+    def test_local_day_boundary_and_links_surround_day(self):
+        with patch.dict(os.environ, {'TZ': 'Europe/Helsinki'}):
+            time.tzset()
+            self.photo('empty/20000101T210000_000000Z.jpg')
+            self.photo('empty/20000101T230000_000000Z.jpg')
+            self.photo('empty/20000102T230000_000000Z.jpg')
+            page = render(self.store, day='2000-01-02')
+            self.assertEqual(page.count(b'<figure>'), 1)
+            self.assertIn(b'>01:00:00</time></h3>', page)
+            self.assertLess(page.index(b'?date=2000-01-01'), page.index(b'<h2>2000-01-02'))
+            self.assertLess(page.index(b'<h2>2000-01-02'), page.index(b'?date=2000-01-03'))
+        time.tzset()
 
     def test_all_capture_categories_and_ingress_relative_links(self):
         for category in ('empty', 'unknown', 'pending', 'eggs', 'hen_a/unreviewed'):

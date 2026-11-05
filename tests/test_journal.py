@@ -6,6 +6,7 @@ import copy
 from html.parser import HTMLParser
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -55,7 +56,7 @@ class JournalTests(unittest.TestCase):
     def entries(self):
         return [self.journal.read_entry(path) for path in self.journal.entries()]
 
-    def test_event_details_are_collapsed_with_titles_outside_and_photos_inside(self):
+    def test_event_details_are_collapsed_with_one_full_photo_outside(self):
         self.shots('hen_a')
         self.shots('hen_b')
         tags = []
@@ -71,6 +72,7 @@ class JournalTests(unittest.TestCase):
         in_details = False
         sections = 0
         photos = 0
+        representatives = 0
         for tag, attrs in tags:
             if tag == 'details':
                 self.assertFalse(in_details)
@@ -84,11 +86,17 @@ class JournalTests(unittest.TestCase):
             elif tag == 'h2':
                 self.assertFalse(in_details)
             elif tag == 'img' and attrs.get('src', '').startswith('/ingress/images/'):
-                self.assertTrue(in_details)
-                photos += 1
+                if attrs.get('class') == 'representative':
+                    self.assertFalse(in_details)
+                    self.assertEqual(attrs['alt'], 'Full nest')
+                    representatives += 1
+                else:
+                    self.assertTrue(in_details)
+                    photos += 1
             elif tag == '/article':
                 self.assertFalse(in_details)
         self.assertEqual(sections, len(self.entries()))
+        self.assertEqual(representatives, sections)
         self.assertGreater(photos, 0)
 
     def test_visit_retains_exact_baseline_identity_and_after_frames(self):
@@ -105,6 +113,31 @@ class JournalTests(unittest.TestCase):
         self.assertEqual(list((self.store.root / 'captures').rglob('*.jpg')), [])
         self.store.retain()
         self.assertEqual(len(self.entries()), 2)
+
+    def test_local_day_sections_and_compact_event_headings(self):
+        self.shots('hen_a')
+        original = self.entries()[0]
+        entries = []
+        for index, stamp in enumerate(('20000101T210000_000000Z', '20000101T230000_000000Z',
+                                        '20000102T000000_000000Z')):
+            entry = copy.deepcopy(original)
+            entry['id'] = stamp + original['id'][23:]
+            entry['text'] = 'Center: Hen_a arrived'
+            entries.append(entry)
+        try:
+            with patch.dict(os.environ, {'TZ': 'Europe/Helsinki'}):
+                time.tzset()
+                with patch.object(self.journal, 'entries', return_value=[2, 1, 0]), \
+                        patch.object(self.journal, 'read_entry', side_effect=lambda index: entries[index]):
+                    page = render(self.journal, 0)
+        finally:
+            time.tzset()
+        self.assertEqual(page.count(b'class="journal-day"'), 2)
+        self.assertIn(b'<h2>2000-01-02</h2>', page)
+        self.assertIn(b'<h2>2000-01-01</h2>', page)
+        self.assertIn(b'>01:00:00</time> <span>Hen_a arrived</span></h3>', page)
+        self.assertNotIn(b'Confirmed', page)
+        self.assertNotIn(b'Center: ', page)
 
     def test_delayed_count_and_visit_evidence_survive_restart(self):
         baseline = self.shots('no_chicken', 1)

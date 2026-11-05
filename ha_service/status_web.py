@@ -6,6 +6,7 @@ import json
 from .web_layout import start, end
 from .captures_web import prediction_layout
 from .training import without_center_eggs
+from .web_time import time_html, event_text
 
 
 def label(value):
@@ -37,8 +38,10 @@ def state_html(state, raw=False):
 def render(snapshot, base='', confirmations=None):
     observation = snapshot.get('observation')
     parts = [start('Status', 'Status', base, script=True), '<header><h1>Status</h1>',
-             '<p>Capture: <strong>{}</strong> · MQTT: {}</p>'.format(
-                 escape(snapshot['capture_state']), escape(snapshot['mqtt_state'])),
+              '<p>Capture: <strong>{}</strong> · MQTT: {}</p>'.format(
+                  escape(snapshot['capture_state']), escape(snapshot['mqtt_state'])),
+              '<p>Latest event: {}</p>'.format(escape(event_text(
+                  snapshot.get('latest_event', (observation or {}).get('latest_event')) or 'No events yet'))),
              '<p><a href="">Refresh</a></p>']
     for message in snapshot.get('errors', []):
         parts.append('<p class="notice">{}</p>'.format(escape(message)))
@@ -50,8 +53,8 @@ def render(snapshot, base='', confirmations=None):
     else:
         stamp = datetime.strptime(observation['timestamp'], '%Y%m%dT%H%M%S_%fZ').replace(tzinfo=timezone.utc)
         age = max(0, int((datetime.now(timezone.utc) - stamp).total_seconds()))
-        parts.append('<article><h2>Latest processed capture</h2><p><time datetime="{0}">{0}</time>'
-                     ' · {1} seconds ago</p>'.format(escape(stamp.isoformat()), age))
+        parts.append('<article><h2>Latest processed capture</h2><p>{0}'
+                      ' · {1} seconds ago</p>'.format(time_html(observation['timestamp']), age))
         if age > snapshot['stale_after']:
             parts.append('<p class="notice">Stale image.</p>')
         source = base + 'latest/' + observation['timestamp'] + '.jpg'
@@ -69,8 +72,7 @@ def render(snapshot, base='', confirmations=None):
                    if confirmations is not None and snapshot.get('has_image') else '')
         parts.extend(['<h3>This image’s prediction</h3>', state_html(raw, raw=True), confirm,
                       '</article>',
-                      '<article><h2>Confirmed state</h2>', state_html(observation),
-                      '<p>Latest event: {}</p></article>'.format(escape(observation.get('latest_event') or 'None yet')),
+                       '<article><h2>Confirmed state</h2>', state_html(observation), '</article>',
                       '<article><details><summary>Recognition diagnostics</summary><pre>{}</pre></details></article>'.format(
                           escape(json.dumps(dict(distance=observation.get('distance'),
                               margin=observation.get('margin'), prediction=raw), indent=2, ensure_ascii=False)))])

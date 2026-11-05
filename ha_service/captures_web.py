@@ -1,5 +1,4 @@
-"""Stored capture gallery with explicit review, paged by UTC capture day."""
-from datetime import datetime
+"""Stored capture gallery with explicit review, paged by local capture day."""
 from html import escape
 import json
 
@@ -8,6 +7,7 @@ from .options import AppError
 from .storage import MAX_FILE_BYTES, safe_path
 from .web_layout import start, end
 from .review_web import button, dialog
+from .web_time import local_time, time_html
 
 
 def inventory(store):
@@ -27,7 +27,7 @@ def inventory(store):
         if size > MAX_FILE_BYTES or len(items) >= MAX_HISTORY_FILES:
             raise AppError('Capture gallery limit exceeded.')
         stamp = checked.stem
-        captured = datetime.strptime(stamp, '%Y%m%dT%H%M%S_%fZ')
+        captured = local_time(stamp)
         items.append({'path': relative, 'stamp': stamp,
                       'day': captured.strftime('%Y-%m-%d')})
     return items
@@ -87,20 +87,23 @@ def render(store, day=None, base='', confirmations=None):
     selected = sorted((item for item in items if item['day'] == day),
                       key=lambda item: (item['stamp'], item['path']), reverse=True)
     parts = [start('Captures', 'Captures', base, reviews=True), '<header><h1>Stored captures</h1>',
-             '<p><a href="{}captures">Newest stored day</a> · <a href="">Refresh</a></p>'.format(base)]
+             '<p><a href="{}captures">Newest stored day</a></p>'.format(base)]
     if not enabled:
         parts.append('<p class="notice">Ordinary capture storage is disabled. Enable store_captures '
                      'in the app configuration to retain future capture photos.</p>')
-    if day:
-        parts.append('<h2>{} (UTC)</h2><p>{} stored photos</p>'.format(escape(day), len(selected)))
-    parts.append('</header><nav aria-label="Capture days">')
+    parts.append('<nav class="day-navigation" aria-label="Capture days">')
     older = [value for value in days if value < day] if day else []
     newer = [value for value in days if value > day] if day else []
-    if newer:
-        parts.append('<a href="?date={}">← Newer day ({})</a>'.format(newer[0], newer[0]))
     if older:
-        parts.append('<a href="?date={}">Older day ({}) →</a>'.format(older[-1], older[-1]))
-    parts.append('</nav><main><article>')
+        parts.append('<a href="?date={}">← Older day</a>'.format(older[-1]))
+    else:
+        parts.append('<span></span>')
+    parts.append('<h2>{}</h2>'.format(escape(day or 'No stored days')))
+    if newer:
+        parts.append('<a href="?date={}">Newer day →</a>'.format(newer[0]))
+    else:
+        parts.append('<span></span>')
+    parts.append('</nav><p>{} stored photos</p></header><main><article>'.format(len(selected)))
     if not selected:
         parts.append('<h2>No stored captures{}</h2>'.format(' for this day' if day else ''))
     else:
@@ -112,11 +115,11 @@ def render(store, day=None, base='', confirmations=None):
             summary = state_summary(raw) if raw is not None else 'Interpretation unavailable'
             confirm = (confirmations.button('captures/' + item['path'], raw, prediction_layout(raw))
                        if confirmations is not None and raw is not None else '')
-            parts.append('<figure><div class="review-photo"><a href="{0}" target="_blank" rel="noopener">'
+            parts.append('<figure><h3>{5}</h3><div class="review-photo"><a href="{0}" target="_blank" rel="noopener">'
                          '<img src="{0}" loading="lazy" alt="{1}"></a>{3}</div>'
                           '<figcaption>{2}<br><code>{1}</code></figcaption>{4}</figure>'.format(
                              source, escape(name, quote=True), escape(summary),
-                              button('captures/' + item['path']), confirm))
+                               button('captures/' + item['path']), confirm, time_html(item['stamp'], clock=True)))
         parts.append('</div>')
     parts.append('</article></main>' + dialog(base) + end())
     return ''.join(parts).encode('utf-8')

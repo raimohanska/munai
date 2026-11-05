@@ -8,6 +8,15 @@ from ha_service.options import validate
 
 
 class SplitMQTTTests(unittest.TestCase):
+    def test_event_only_publication_does_not_replay_live_state(self):
+        publisher = MQTT(validate({}))
+        publisher.send = Mock()
+        for text, expected in (('Sleep mode', 'Sleep mode'), (None, 'No events yet'),
+                               ('Center: Hen_a arrived', 'Hen_a arrived')):
+            publisher.publish_event(text)
+            publisher.send.assert_called_with(publisher.base + '/latest_event', expected, True)
+        self.assertEqual(publisher.send.call_count, 3)
+
     def test_zone_discovery_and_payload(self):
         publisher = MQTT(validate({'box_split': 'vertical'}))
         self.assertEqual(set(publisher.zone_configs), {'left_occupant', 'right_occupant',

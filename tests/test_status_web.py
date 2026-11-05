@@ -1,6 +1,7 @@
 """Synthetic status/Ingress tests; never connect to or exercise camera capture."""
 import io
 import json
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
@@ -187,3 +188,32 @@ class StatusWebTests(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent
         self.assertEqual(json.loads((root / 'config.json').read_text())['version'], VERSION)
         self.assertIn('## ' + VERSION, (root / 'CHANGELOG.md').read_text())
+
+    def test_sleep_and_morning_event_display_preserve_history_and_counts(self):
+        self.runtime.nest.state['latest_event'] = 'Center: Hen_a arrived'
+        self.runtime.latest_event_stamp = '20000101T120000_000000Z'
+        before = json.dumps(self.runtime.nest.state, sort_keys=True)
+        with patch('ha_service.runtime.local_time', return_value=datetime(2000, 1, 1, 12)):
+            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 1, 22, 59)),
+                             'Hen_a arrived')
+            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 1, 23)), 'Sleep mode')
+            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 2, 4, 59)), 'Sleep mode')
+            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 2, 5)), 'No events yet')
+        with patch('ha_service.runtime.local_time', return_value=datetime(2000, 1, 2, 6)):
+            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 2, 6)), 'Hen_a arrived')
+        self.assertEqual(json.dumps(self.runtime.nest.state, sort_keys=True), before)
+        with patch('ha_service.runtime.capture_paused', return_value=True):
+            self.assertIn(b'Latest event: Sleep mode', render(self.runtime.web_status()))
+
+    def test_restart_restores_event_timestamp_from_journal(self):
+        source = Path(self.temp.name) / 'synthetic.jpg'
+        source.write_bytes(self.image)
+        for index in range(3):
+            stamp = '20000101T120000_{:06d}Z'.format(index)
+            prediction = {'label': 'hen_a', 'egg_count': 0, 'distance': .1, 'margin': .5}
+            evidence = self.runtime.journal.save_frame(source, prediction, stamp=stamp)
+            self.runtime.observe(stamp, prediction, evidence)
+        restarted = Runtime(self.options, self.runtime.store)
+        self.assertTrue(restarted.latest_event_stamp.startswith('20000101T120000_'))
+        with patch('ha_service.runtime.local_time', return_value=datetime(2000, 1, 1, 12)):
+            self.assertEqual(restarted.latest_display_event(datetime(2000, 1, 2, 5)), 'No events yet')

@@ -147,7 +147,7 @@ class MQTT:
         if eggs is not None and (type(eggs) is not int or eggs < 0):
             raise AppError('Invalid egg count; no observation published.')
         # Historical event, unlike live observations, survives reconnects.
-        self.send(self.base + '/latest_event', state['latest_event'] or 'No events yet', True)
+        self.publish_event(state['latest_event'])
         # Expiring state MUST NOT be retained. Availability alone is insufficient
         # to present an occupant after a restart or an extended capture failure.
         payload = {'occupant': state['occupant'], 'egg_count': eggs}
@@ -156,6 +156,10 @@ class MQTT:
             payload['layout'] = state['layout']
         self.send(self.base + '/state', json.dumps(payload), False)
         self.send(self.base + '/availability', 'online', True)
+
+    def publish_event(self, text):
+        from .web_time import event_text
+        self.send(self.base + '/latest_event', event_text(text) if text else 'No events yet', True)
 
     def offline(self):
         if self.connected.is_set():

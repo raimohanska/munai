@@ -1,5 +1,5 @@
 """HA Ingress pages and explicit human review, separate from the transfer API."""
-from datetime import datetime, timezone
+from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import shutil
@@ -20,6 +20,7 @@ from .reviews import Reviews
 from .confirmations import Confirmations, MAX_REQUEST_BYTES
 from .options import AppError
 from .storage import Conflict
+from .web_time import local_time, time_html, event_text
 
 PAGE_SIZE = 20
 CSS = '''
@@ -50,6 +51,11 @@ figure { margin: 0; } img { width: 100%; height: auto; border-radius: 8px; }
 figcaption { font-size: .85rem; overflow-wrap: anywhere; }
 .photo-id { display: block; font-size: .75rem; margin-top: 6px; user-select: all; }
 .event-details { margin-top: 16px; }
+.day-navigation { align-items: center; gap: 12px; padding: 0; }
+.day-navigation > :first-child, .day-navigation > :last-child { flex: 1; }
+.day-navigation > :last-child { text-align: right; }
+.event-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
+.representative { max-width: 540px; margin-top: 12px; }
 .event-details > summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
 .confirm-button { font: inherit; font-size: .8rem; padding: 3px 8px; margin: 6px 0;
  border: 1px solid #788b7960; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
@@ -62,25 +68,12 @@ nav { display: flex; justify-content: space-between; padding: 16px; }
  .content { margin: 0; padding: 10px; } header,article { padding: 16px; } }
 ''' + REVIEW_CSS
 JS = '''
-document.querySelectorAll('time').forEach(node => {
-  const date = new Date(node.dateTime);
-  if (!isNaN(date)) { node.textContent = date.toLocaleString(); node.title = node.dateTime; }
-});
 const active = document.querySelector('a[aria-current="page"]');
 const status = active && active.textContent === 'Status';
 if (status || !new URLSearchParams(location.search).get('page')) {
   setInterval(() => { if (!document.hidden && !document.documentElement.dataset.confirmBusy && !document.querySelector('dialog[open], .event-details[open]') && (status || window.scrollY < 150)) location.reload(); }, status ? 15000 : 60000);
 }
 '''
-
-
-def timestamp(identifier):
-    return datetime.strptime(identifier[:23], '%Y%m%dT%H%M%S_%fZ').replace(tzinfo=timezone.utc).isoformat()
-
-
-def time_html(identifier):
-    stamp = escape(timestamp(identifier))
-    return '<time datetime="{}">{}</time>'.format(stamp, stamp)
 
 
 def render(journal, page, base='', confirmations=None):
@@ -102,9 +95,24 @@ def render(journal, page, base='', confirmations=None):
     parts.append('</header><main>')
     if not entries:
         parts.append('<article><h2>No journal events</h2></article>')
+    day = None
     for entry in entries:
-        parts.append('<article><p class="muted">Confirmed {}</p><h2>{}</h2>'.format(
-            time_html(entry['id']), escape(entry['text'])))
+        entry_day = local_time(entry['id']).strftime('%Y-%m-%d')
+        if entry_day != day:
+            if day is not None:
+                parts.append('</section>')
+            parts.append('<section class="journal-day"><h2>{}</h2>'.format(entry_day))
+            day = entry_day
+        parts.append('<article><h3 class="event-heading">{} <span>{}</span></h3>'.format(
+            time_html(entry['id'], clock=True), escape(event_text(entry['text']))))
+        frames = [frame for group in entry['evidence'] for frame in group['frames']]
+        if frames:
+            # The latest evidence is closest to the confirmed event. Show the
+            # original full frame, without the zone overlay used in details.
+            frame = max(frames, key=lambda item: item['id'])
+            source = escape(base + 'images/' + frame['id'] + '.jpg', quote=True)
+            parts.append('<a href="{0}" target="_blank" rel="noopener"><img class="representative" '
+                         'src="{0}" loading="lazy" alt="Full nest"></a>'.format(source))
         parts.append('<details class="event-details"><summary>Details &amp; pictures</summary>')
         has_frames = False
         for group in entry['evidence']:
@@ -143,6 +151,8 @@ def render(journal, page, base='', confirmations=None):
         if not has_frames or required - present_roles:
             parts.append('<p class="notice">Some evidence is unavailable.</p>')
         parts.append('</details></article>')
+    if day is not None:
+        parts.append('</section>')
     parts.append('</main><nav>')
     if page:
         parts.append('<a href="?page={}">← Newer</a>'.format(page - 1))

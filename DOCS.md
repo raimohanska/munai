@@ -25,6 +25,12 @@ larger of `expire_after` and twice `capture_interval`, including during sleep ti
 This is not a live stream or a new on-demand camera request. Failed recognition
 keeps the previous successful observation visible with its original timestamp.
 
+From 0.1.31, all UI times and day boundaries use Home Assistant's local timezone,
+also used by the sleep schedule. Stored filenames and result timestamps stay UTC.
+The latest-event display and MQTT sensor show **Sleep mode** during scheduled
+sleep, then **No events yet** until a new event after waking. This does not erase
+journal entries, nest state, or egg totals, and survives app restarts.
+
 At most two full images (8 MiB each maximum) are held in memory, independent of
 `store_captures`, photo deduplication and journal cleanup. Timestamp-pinned URLs
 never substitute a newer photo; expired URLs return unavailable. After an app
@@ -37,8 +43,10 @@ From the Munai app page in HA, choose **Open Web UI**, then **Journal**. Enable 
 for a persistent MunAI link. HA Ingress authenticates access; there is no new
 host port or journal password. The existing HTTPS transfer API remains separate.
 
-Entries appear newest first, with browser-local confirmation timestamps and the
-actual contributing photos. Click a photo for the original; pages contain at
+Entries appear newest first, grouped by Home Assistant local day, with local
+times in their headings. Each card shows one representative full-nest photo;
+the actual contributing photos remain in **Details & pictures**. Click a photo
+for the original; pages contain at
 most 20 events and the latest page refreshes every minute. A confirmation time is
 not an exact laying time. Identity/count predictions remain experimental and
 are not human-reviewed labels.
@@ -79,9 +87,10 @@ format, so a downgrade also requires restoring the matching pre-upgrade backup.
 ## Stored captures page (0.1.15+)
 
 Select **Captures** in the MunAI sidebar to browse retained capture JPEGs.
-Each page shows a single **UTC day**, newest photos first, starting with the
+Each page shows a single **local day**, newest photos first, starting with the
 newest stored day. **Older day** and **Newer day** skip days without photos;
-`captures?date=2000-01-01` can also open a specific UTC date. Photos are lazy-loaded
+`captures?date=2000-01-01` can also open a specific local date. Each image has a
+local-time heading. Photos are lazy-loaded
 and clickable for the original, behind HA Ingress. From 0.1.17, captions show a
 compact frame-only summary plus just the filename. Results are
 matched by the exact capture timestamp; missing or invalid results are marked

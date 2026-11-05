@@ -9,6 +9,16 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.31
+
+- Use Home Assistant local time for UI timestamps and capture/journal day grouping.
+- Put capture day links around the selected day, add photo time headings, and
+  remove the capture Refresh link.
+- Group Journal cards by day, put time in the heading, remove the Confirmed and
+  Center prefixes, and show one full-nest picture above collapsed evidence.
+- Show Sleep mode overnight and No events yet after waking until a new event,
+  including the MQTT latest-event sensor; preserve journal history and counts.
+
 ## 0.1.30
 
 - Ignore small split-presence changes such as loose feathers when their actual

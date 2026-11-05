@@ -1,5 +1,5 @@
 """Serial recognition rounds around the unchanged appearance-based algorithm."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import copy
 import logging
 from pathlib import Path
@@ -23,6 +23,7 @@ from .split_nest import SplitNest
 from . import split_recognition
 from .schedule import capture_paused
 from .storage import MAX_FILE_BYTES, atomic_json, image_valid, safe_path
+from .web_time import local_time, event_text
 
 LOG = logging.getLogger('munai')
 
@@ -76,6 +77,8 @@ class Runtime:
                 self.nest = SplitNest(store.root, options['box_split'], carry=legacy.daily_snapshot())
         if self.journal:
             self.journal.flush(self.nest)
+        entries = self.journal.entries() if self.journal else []
+        self.latest_event_stamp = entries[0].stem if entries else None
         self.events = EventLog()
         self.photos = PhotoArchive(store) if store is not None else None
 
@@ -152,7 +155,7 @@ class Runtime:
                     'references_ready': identities >= 2 and empty_count > 0 and compatible,
                     'reference_layout_compatible': compatible,
                     'last_observation': self.last_observation,
-                    'latest_event': self.nest.state['latest_event'],
+                    'latest_event': self.latest_display_event(),
                     'box_split': self.options['box_split'],
                     'zones': self.nest.snapshot().get('zones', {}),
                     'daily_eggs': self.nest.daily_snapshot()}
@@ -166,11 +169,34 @@ class Runtime:
                          'Paused for sleep time' if capture_paused(self.options) else
                          'Failed' if 'round' in self.events.failures else 'Active')
         return {'observation': observation, 'has_image': has_image,
+                'latest_event': self.latest_display_event(),
                 'capture_state': capture_state,
                 'mqtt_state': ('Disabled' if not self.options['mqtt_enabled'] else
                                'Connected' if self.publisher and self.publisher.connected.is_set() else 'Disconnected'),
                 'stale_after': max(self.options['expire_after'], self.options['capture_interval'] * 2),
                 'errors': [item[0] for item in self.events.failures.copy().values()]}
+
+    def latest_display_event(self, now=None):
+        """Reset only the displayed event at sleep; preserve durable history."""
+        now = datetime.now() if now is None else now
+        enabled = self.options['capture_enabled']
+        if enabled and capture_paused(self.options, now.timetuple()):
+            return 'Sleep mode'
+        value = self.nest.state['latest_event']
+        if enabled and self.options['capture_pause_start'] != self.options['capture_pause_end']:
+            hour, minute = map(int, self.options['capture_pause_start'].split(':'))
+            cutoff = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if cutoff > now:
+                cutoff -= timedelta(days=1)
+            if self.latest_event_stamp is None:
+                return 'No events yet'
+            try:
+                captured = local_time(self.latest_event_stamp).replace(tzinfo=None)
+            except ValueError:
+                return event_text(value) if value else 'No events yet'
+            if captured < cutoff:
+                return 'No events yet'
+        return event_text(value) if value else 'No events yet'
 
     def web_image(self, stamp):
         with self.web_lock:
@@ -228,6 +254,8 @@ class Runtime:
                   self.nest.observe(prediction['label'], prediction['egg_count'], evidence))
         for event in events:
             LOG.info('Latest event: %s.', event)
+        if events:
+            self.latest_event_stamp = evidence['id'] if evidence else stamp
         self.journal.flush(self.nest)
         self.journal.cleanup_pending(self.nest)
         state = self.nest.snapshot()
@@ -253,7 +281,8 @@ class Runtime:
             self.last_occupant = observation['occupant']
         if self.publisher:
             self.publish_daily()
-            self.publisher.publish(state)
+            latest = self.latest_display_event()
+            self.publisher.publish(dict(state, latest_event=None if latest == 'No events yet' else latest))
 
     def update_daily(self):
         # Only reviewed identity directories, never predictions or nest positions.
@@ -285,6 +314,12 @@ class Runtime:
                 self.update_daily()
                 self.publish_daily()
                 paused = capture_paused(self.options)
+                if self.publisher:
+                    try:
+                        self.publisher.publish_event(self.latest_display_event())
+                        self.events.recovered('event_mqtt', 'Latest event publication recovered.')
+                    except AppError:
+                        self.events.failed('event_mqtt', 'Latest event MQTT publication failed; check broker connectivity and permissions.')
                 if self.options['capture_enabled'] and paused != was_paused:
                     LOG.info('Scheduled camera capture %s.', 'paused for sleep time' if paused else 'active')
                     was_paused = paused
