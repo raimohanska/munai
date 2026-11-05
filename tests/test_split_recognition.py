@@ -65,6 +65,20 @@ class SplitRecognitionTests(unittest.TestCase):
         exclusions = np.zeros(gray.shape, dtype=bool)
         self.assertFalse(split.changed_textured_body(gray, [empty], exclusions, self.options))
 
+    def test_small_changed_ring_does_not_count_unchanged_contour_interior(self):
+        empty = np.full((360, 320), 130, dtype=np.uint8)
+        exclusions = np.zeros(empty.shape, dtype=bool)
+        for filled in (False, True):
+            gray = empty.copy()
+            gray[80:180, 60:160] = 40
+            if not filled:
+                gray[90:170, 70:150] = 130
+            std = np.full(gray.shape, 20, dtype=np.float32)
+            with patch('ha_service.split_recognition.image_statistics',
+                       return_value=(gray, gray.astype(float), std)):
+                area = split.changed_textured_body(gray, [empty], exclusions, self.options)
+            self.assertEqual(bool(area), filled)
+
     def test_broad_patterned_change_survives_texture_suppression_and_mask_holes(self):
         gray = np.tile(np.array([40, 80], dtype=np.uint8), (360, 160))
         empty = np.full(gray.shape, 130, dtype=np.uint8)
@@ -128,6 +142,7 @@ class SplitRecognitionTests(unittest.TestCase):
                               dict(self.options, egg_max_area=area))
             self.assertEqual(detector.call_args[0][3], 10 * area)
             self.assertEqual(detector.call_args[1]['fragment_area'], area)
+            self.assertEqual(detector.call_args[1]['minimum_fragment_change'], self.options['chicken_area'])
 
     def test_small_border_fragment_is_not_identified_or_counted(self):
         presence = {'ambiguous': False, 'center_present': False, 'bodies': [],

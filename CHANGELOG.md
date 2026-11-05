@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.30
+
+- Ignore small split-presence changes such as loose feathers when their actual
+  changed area is below the chicken-area threshold, even if a filled contour
+  encloses surrounding unchanged straw. Retain larger partial-body uncertainty.
+
 ## 0.1.29
 
 - Treat center as presence-only throughout the UI: no egg-count line in either

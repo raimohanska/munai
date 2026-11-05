@@ -19,6 +19,30 @@ def body(x, y, w, h):
 
 
 class SplitTests(unittest.TestCase):
+    def test_fragment_requires_actual_change_not_its_filled_contour(self):
+        gray = np.full((360, 640), 120, dtype=np.uint8)
+        exclusions = np.zeros(gray.shape, dtype=bool)
+        std = np.full(gray.shape, 20, dtype=np.float32)
+        std[40:140, 20:120] = 4
+        for split in ('vertical', 'horizontal'):
+            for pixels, expected in ((0, False), (4499, False), (4500, True), (6000, True)):
+                change = np.zeros(gray.shape, dtype=bool)
+                # Keep the changed pixels inside the same larger smooth contour.
+                patch_change = np.arange(10000).reshape(100, 100) < pixels
+                change[40:140, 20:120] = patch_change
+                for texture in (False, True):
+                    with self.subTest(split=split, pixels=pixels, texture=texture):
+                        with patch('box_split.image_statistics', return_value=(gray, gray.astype(float), std)):
+                            result = detect('synthetic', split, exclusions,
+                                            chicken_area=35000, fragment_area=3500,
+                                            novelty_mask=np.zeros_like(change) if texture else change,
+                                            texture_mask=change if texture else np.zeros_like(change),
+                                            minimum_fragment_change=4500)
+                        self.assertEqual(bool(result['fragments']), expected)
+                        self.assertEqual(bool(result['uncertain_zones']), expected)
+                        self.assertEqual(bool(result['blocked_for_eggs']), expected)
+                        self.assertEqual(result['bodies'], [])
+
     def test_small_convincing_body_is_uncertain_not_a_visitor(self):
         gray = np.full((360, 640), 120, dtype=np.uint8)
         exclusions = np.zeros(gray.shape, dtype=bool)

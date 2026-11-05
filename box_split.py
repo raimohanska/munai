@@ -106,7 +106,8 @@ def assign_regions(masks, split, fragment_gap=24):
 
 
 def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
-           novelty_mask=None, texture_mask=None, fragment_area=None):
+           novelty_mask=None, texture_mask=None, fragment_area=None,
+           minimum_fragment_change=None):
     """Find every accepted presence component, then assign spatial occupancy.
 
     Reviewed full-frame empty calibration is required. No identity reference or
@@ -187,6 +188,12 @@ def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
         masks = merged
     visitors = [mask for mask in masks if np.count_nonzero(mask) >= chicken_area]
     fragments = [mask for mask in masks if np.count_nonzero(mask) < chicken_area]
+    if minimum_fragment_change is not None and novelty_mask is not None and texture_mask is not None:
+        # Closing/filling a contour can enclose unchanged straw around a feather.
+        # Require enough actual change, not merely a large enclosing silhouette.
+        changed = (novelty_mask | texture_mask) & (~background_mask)
+        fragments = [mask for mask in fragments
+                     if np.count_nonzero(mask & changed) >= minimum_fragment_change]
     result = assign_regions(visitors, split)
     result['fragments'] = []
     uncertain = set()

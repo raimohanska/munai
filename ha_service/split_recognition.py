@@ -134,6 +134,8 @@ def changed_textured_body(view, empty_views, exclusions, options):
         region = np.zeros(gray.shape, np.uint8)
         cv2.drawContours(region, [contour], -1, 255, -1)
         inside = (region != 0) & (~exclusions)
+        if np.count_nonzero(inside & (changed != 0)) < options['chicken_area']:
+            continue
         # Measure the body's silhouette, not holes from neutral background
         # exclusions. Otherwise a broad/clipped body can appear too thin.
         distance = cv2.distanceTransform(region, cv2.DIST_L2, 5)
@@ -156,7 +158,8 @@ def predict(path, references, options):
     presence = detect(path, split, references.full_background_mask,
                       minimum_body, options['texture_threshold'],
                       novelty_mask=novelty, texture_mask=texture_change,
-                      fragment_area=options['egg_max_area'])
+                      fragment_area=options['egg_max_area'],
+                      minimum_fragment_change=options['chicken_area'])
     sides = ('left', 'right') if split == 'vertical' else ('top', 'bottom')
     zones = {}
     for zone in sides + ('center',):
