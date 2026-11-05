@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Munai — The chicken &amp; egg problem</title>
+  <style>
+    :root { --paper:#f7f3e9; --ink:#23382e; --muted:#5c6b60; --green:#315c43; --lime:#dceba7; --orange:#dc663c; --line:#d8dccb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    button, a { -webkit-tap-highlight-color:transparent; }
+    button { font:inherit; cursor:pointer; }
+    button:focus-visible, a:focus-visible, section:focus-visible { outline:3px solid var(--orange); outline-offset:5px; }
+    header { display:flex; justify-content:space-between; align-items:center; padding:22px 5vw; border-bottom:1px solid var(--line); gap:16px; }
+    .brand { font-size:20px; font-weight:850; letter-spacing:-1px; }
+    .brand span { color:var(--orange); }
+    .edition, .eyebrow { font:700 11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; text-transform:uppercase; letter-spacing:2px; }
+    .edition { color:var(--muted); text-align:right; }
+    main { max-width:1440px; margin:auto; }
+    .slide { min-height:calc(100svh - 155px); padding:5vh 6vw 4vh; display:flex; flex-direction:column; justify-content:center; gap:25px; }
+    .slide[hidden] { display:none; }
+    .eyebrow { color:var(--green); margin:0; }
+    h1, h2, h3, p { margin:0; }
+    h1 { font-size:clamp(48px,6.8vw,96px); line-height:1.02; letter-spacing:-.065em; max-width:900px; }
+    h2 { font-size:clamp(36px,4.7vw,66px); line-height:1.06; letter-spacing:-.055em; max-width:1000px; }
+    h3 { font-size:22px; letter-spacing:-.025em; }
+    .accent { color:var(--orange); }
+    .lead { font-size:clamp(19px,2vw,27px); line-height:1.5; max-width:780px; color:var(--muted); }
+    .aside { font-size:15px; line-height:1.6; color:var(--muted); max-width:900px; }
+    .quip { border-left:3px solid var(--orange); padding-left:16px; font-size:16px; line-height:1.5; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+    .two { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .card { padding:28px; border:1px solid var(--line); border-radius:18px; background:#fffaf0; }
+    .card p { margin-top:12px; font-size:17px; line-height:1.55; color:var(--muted); }
+    .card .number { display:block; color:var(--orange); font:600 13px ui-monospace,monospace; margin-bottom:24px; }
+    .hero { display:grid; grid-template-columns:1.5fr 1fr; align-items:center; gap:24px; }
+    .hero-copy { display:flex; flex-direction:column; gap:26px; }
+    .illustration { width:100%; max-height:380px; }
+    .pill { display:inline-block; border:1px solid var(--green); border-radius:30px; padding:7px 13px; font:650 12px ui-monospace,monospace; width:fit-content; }
+    .flow { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+    .step { background:var(--green); color:var(--paper); padding:24px 18px; border-radius:14px; position:relative; }
+    .step b { display:block; margin:20px 0 10px; font-size:20px; }
+    .step p { font-size:14px; line-height:1.5; color:#e0e9d5; }
+    .step small { color:var(--lime); font-family:ui-monospace,monospace; }
+    .statement { background:var(--green); color:var(--paper); border-radius:22px; padding:32px; }
+    .statement p { font-size:clamp(23px,3vw,40px); line-height:1.3; letter-spacing:-.03em; }
+    .statement strong { color:var(--lime); }
+    .timeline { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid var(--line); border-radius:18px; overflow:hidden; }
+    .moment { padding:26px; border-right:1px solid var(--line); }
+    .moment:last-child { border:0; background:var(--lime); }
+    .moment small { color:var(--muted); font:600 12px ui-monospace,monospace; }
+    .moment b { display:block; font-size:28px; margin:20px 0 12px; letter-spacing:-1px; }
+    .moment p { line-height:1.5; }
+    .equation { font-size:clamp(28px,4vw,54px); font-weight:750; letter-spacing:-.045em; }
+    .checklist { display:grid; gap:16px; padding:0; margin:0; list-style:none; }
+    .checklist li { font-size:20px; line-height:1.5; padding-left:30px; position:relative; }
+    .checklist li::before { content:"+"; position:absolute; left:0; color:var(--orange); font-weight:800; }
+    .nest-map { display:grid; grid-template-columns:1fr .65fr 1fr; gap:12px; }
+    .zone { min-height:150px; border:2px dashed #9ba98a; border-radius:18px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:20px; text-align:center; }
+    .zone.center { background:var(--lime); border-style:solid; }
+    .zone b { font-size:22px; }
+    .zone span { color:var(--muted); font-size:15px; }
+    footer { min-height:76px; padding:14px 5vw; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .footer-note { font:500 12px ui-monospace,monospace; color:var(--muted); }
+    .controls { display:flex; align-items:center; gap:12px; }
+    .controls button { background:transparent; border:1px solid #a8b49e; border-radius:50%; width:40px; height:40px; color:var(--ink); font-size:20px; }
+    .controls button:disabled { opacity:.3; cursor:default; }
+    #counter { min-width:62px; text-align:center; font:600 12px ui-monospace,monospace; }
+    #print { width:auto; border-radius:20px; padding:0 14px; font-size:12px; }
+    .progress { height:3px; background:var(--line); }
+    #progress { height:100%; background:var(--orange); transition:width .2s; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+    .speaker-notes { max-width:1180px; margin:0 auto 24px; padding:22px 6vw; border-top:1px dashed var(--line); }
+    .speaker-notes h2 { font:700 12px ui-monospace,monospace; letter-spacing:1px; margin-bottom:12px; }
+    .speaker-notes p { font-size:16px; line-height:1.7; color:var(--muted); max-width:900px; }
+    #notes-toggle { width:auto; border-radius:20px; padding:0 14px; font-size:12px; }
+    .little-eggs { display:flex; gap:10px; align-items:end; padding:4px 0; }
+    .little-eggs span { display:grid; place-items:center; width:35px; height:46px; border:2px solid #c5b99c; border-radius:52% 52% 46% 46% / 65% 65% 38% 38%; background:#fffaf0; color:var(--orange); font-size:17px; }
+    .little-eggs span:nth-child(2) { transform:rotate(9deg); height:39px; width:30px; }
+    @media (min-width:1500px) { .slide { padding-left:60px; padding-right:60px; } }
+    @media (max-width:760px) {
+      header { padding:16px 6vw; } .edition { font-size:9px; letter-spacing:1px; }
+      .slide { padding:30px 6vw; gap:23px; } .hero { grid-template-columns:1fr; }
+      .illustration { max-height:220px; } .grid, .two { grid-template-columns:1fr; }
+      .card { padding:22px; } .card .number { margin-bottom:12px; }
+      .flow { grid-template-columns:1fr; } .step { padding:18px; } .step b { margin:8px 0; }
+      .timeline { grid-template-columns:1fr 1fr; } .moment { border-bottom:1px solid var(--line); padding:20px; }
+      .nest-map { gap:6px; } .zone { padding:14px 6px; } .zone b { font-size:17px; }
+      footer { padding:14px 6vw; } .footer-note { display:none; } .controls { width:100%; justify-content:space-between; }
+    }
+    @media (prefers-reduced-motion:reduce) { #progress { transition:none; } }
+    @media print {
+      @page { size:landscape; margin:12mm; }
+      body { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+      header, footer, .progress, noscript, .speaker-notes { display:none; }
+      .slide, .slide[hidden] { display:flex !important; min-height:0; height:175mm; padding:8mm; gap:6mm; break-after:page; page-break-after:always; }
+      .slide:last-child { break-after:auto; page-break-after:auto; }
+      h1 { font-size:62px; } h2 { font-size:44px; } .lead { font-size:22px; }
+      .card { padding:20px; } .card p { font-size:15px; } .illustration { max-height:260px; }
+    }
+  </style>
+</head>
+<body>
+  <header><div class="brand">Mun<span>ai</span> / field notes</div><div class="edition">Small flock. Big questions.<br>A practical computer-vision story</div></header>
+  <noscript><p class="aside" style="padding:20px">All slides are shown below. Enable JavaScript for slide navigation.</p></noscript>
+  <main aria-label="The chicken and egg problem presentation">
+    <section class="slide" aria-labelledby="title-1">
+      <div class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">01 / The problem · a 10-minute coop story</p>
+          <h1 id="title-1">The chicken<br>&amp; <span class="accent">egg</span> problem.</h1>
+          <p class="lead">We find eggs in a shared nest.<br>How do we know which hen laid each one?</p>
+          <span class="pill">Camera → evidence → events</span>
+        </div>
+        <svg class="illustration" viewBox="0 0 440 390" role="img" aria-labelledby="hen-title hen-desc">
+          <title id="hen-title">A hen and a mysterious egg</title><desc id="hen-desc">An original illustration of a hen looking toward an egg, under an overhead camera.</desc>
+          <circle cx="223" cy="205" r="167" fill="#e6ebd5"/>
+          <path d="M66 314 Q220 352 379 314" fill="none" stroke="#9ba98a" stroke-width="3"/>
+          <path d="M125 281L95 186L149 208C183 141 293 159 299 235C305 307 187 334 125 281Z" fill="#315c43"/>
+          <path d="M155 234Q210 206 240 253Q200 290 155 234Z" fill="#70916a"/>
+          <path d="M263 199C240 173 250 126 279 122C314 119 328 156 310 181L303 236Z" fill="#315c43"/>
+          <path d="M270 125C247 103 267 90 279 107C287 79 305 94 300 111C326 99 331 123 310 133" fill="#dc663c"/>
+          <path d="M312 150L342 164L312 176Z" fill="#e9ad4b"/><circle cx="296" cy="147" r="5" fill="#f7f3e9"/>
+          <path d="M187 302L185 326M235 302L238 326M173 328H199M225 328H251" stroke="#dc663c" stroke-width="5" stroke-linecap="round"/>
+          <path d="M322 292C322 275 335 254 346 254C359 254 373 277 373 294C373 322 320 324 322 292Z" fill="#fffaf0" stroke="#b9bd9e" stroke-width="2"/>
+          <text x="350" y="233" text-anchor="middle" fill="#dc663c" font-size="41" font-family="Georgia,serif">?</text>
+          <rect x="179" y="30" width="82" height="43" rx="12" fill="#23382e"/><circle cx="220" cy="52" r="12" fill="#dceba7"/><circle cx="220" cy="52" r="5" fill="#23382e"/>
+          <path d="M196 88L152 135M245 88L286 106" stroke="#9ba98a" stroke-width="2" stroke-dasharray="5 7"/>
+        </svg>
+      </div>
+      <p class="quip">The hens are lovely. Their record-keeping is terrible.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-2">
+      <p class="eyebrow">02 / What we want to know</p>
+      <h2 id="title-2">Three questions.<br>One overhead camera.</h2>
+      <div class="grid">
+        <article class="card"><span class="number">01 / WHO</span><h3>Who is in the nest?</h3><p>Recognize configured hens by appearance. Keep “unknown” when the image is ambiguous.</p></article>
+        <article class="card"><span class="number">02 / WHAT</span><h3>How many visible eggs?</h3><p>Count only when the nest is hen-free. A hen is a very effective privacy curtain.</p></article>
+        <article class="card"><span class="number">03 / WHEN</span><h3>What changed?</h3><p>Turn repeated observations into visits, inferred laying events, and collections—with supporting photos.</p></article>
+      </div>
+      <p class="aside">The goal: a timestamped dataset and an inspectable account of which hen likely produced each egg.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-3">
+      <p class="eyebrow">03 / The pipeline</p>
+      <h2 id="title-3">From coop cam to <span class="accent">receipts.</span></h2>
+      <div class="flow">
+        <div class="step"><small>01</small><b>Capture</b><p>Scheduled snapshots from an overhead LAN RTSP camera.</p></div>
+        <div class="step"><small>02</small><b>Recognize</b><p>Estimate hen presence and identity from reviewed examples.</p></div>
+        <div class="step"><small>03</small><b>Count</b><p>Estimate visible eggs in chicken-free nests.</p></div>
+        <div class="step"><small>04</small><b>Confirm</b><p>Track visits and changes across consecutive observations.</p></div>
+        <div class="step"><small>05</small><b>Record</b><p>Keep journal evidence; publish Home Assistant sensors over MQTT.</p></div>
+      </div>
+      <p class="lead">A snapshot is an observation.<br>An event needs a little more evidence.</p>
+      <p class="quip">We do not let one blurry feather file the incident report.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-4">
+      <p class="eyebrow">04 / Identity without assigned seating</p>
+      <h2 id="title-4">Recognize the plumage.<br>Not the postcode.</h2>
+      <div class="grid two">
+        <article class="card"><h3>Use appearance</h3><p>Compare brightness and texture patterns with human-reviewed reference images. Include variation in pose and lighting, plus hen-free background examples.</p></article>
+        <article class="card"><h3>Reject shortcuts</h3><p>Nest position, coordinates, and body orientation are not identity features. Missing reference coverage is not proof of who is sitting there.</p></article>
+      </div>
+      <div class="statement"><p><strong>“Unknown” is a useful answer.</strong><br>A confident guess is still a guess in a nice hat.</p></div>
+      <p class="aside">Poses can hide distinctive markings. We retain uncertainty rather than forcing every frame into a named category.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-5">
+      <p class="eyebrow">05 / Egg attribution, illustrated</p>
+      <h2 id="title-5">Before. Visitor. After.<br><span class="accent">A plausible producer.</span></h2>
+      <div class="timeline">
+        <div class="moment"><small>BEFORE</small><b>1 egg</b><p>A hen-free count establishes the baseline.</p></div>
+        <div class="moment"><small>DURING</small><b>Hen A</b><p>A confirmed visit. Freeze the baseline; ignore hidden eggs.</p></div>
+        <div class="moment"><small>AFTER</small><b>2 eggs</b><p>Confirm departure and establish the post-visit count.</p></div>
+        <div class="moment"><small>INFERENCE</small><b>+1 egg</b><p>Attribute the increase to the eligible confirmed visitor.</p></div>
+      </div>
+      <p class="aside">Illustrative example; “Hen A” is synthetic. Attribution depends on valid baseline, visit, departure, and count evidence. It is not direct footage of laying.</p>
+      <p class="quip">Less facial recognition. More breakfast accounting.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-6">
+      <p class="eyebrow">06 / A little patience, fewer false alarms</p>
+      <h2 id="title-6">The nest has a memory.</h2>
+      <div class="grid">
+        <article class="card"><span class="number">3 CONSECUTIVE SHOTS</span><h3>Confirm arrival</h3><p>Arrivals and identity changes need repeated agreement. Unknown observations do not erase a confirmed visitor.</p></article>
+        <article class="card"><span class="number">5 CHICKEN-FREE SHOTS</span><h3>Confirm departure</h3><p>A quick movement is not a checkout. Departure confirmation does not require egg-count agreement.</p></article>
+        <article class="card"><span class="number">3 ZERO-EGG SHOTS</span><h3>Confirm collection</h3><p>Repeated hen-free zero counts confirm full collection. Brief dips do not reset the egg baseline.</p></article>
+      </div>
+      <p class="aside">Delayed count confirmation can support a later laying event. Ambiguous hen swaps or missing baselines keep attribution unknown; partial collection is not supported.</p>
+      <p class="quip">The chickens have no patience for paperwork. Fortunately, the software does.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-7">
+      <p class="eyebrow">07 / Multiple nests, same principles</p>
+      <h2 id="title-7">Zones locate events.<br>They do not name hens.</h2>
+      <div class="nest-map" role="img" aria-label="Example split layout: left and right nests support occupants and egg counts; center supports presence only.">
+        <div class="zone"><b>Left nest</b><span>Occupant · eggs</span></div>
+        <div class="zone center"><b>Center</b><span>Presence only</span></div>
+        <div class="zone"><b>Right nest</b><span>Occupant · eggs</span></div>
+      </div>
+      <ul class="checklist">
+        <li>Split mode can separate left/right or top/bottom nests.</li>
+        <li>The center divider tracks presence, never an egg count.</li>
+        <li>References describe appearance across positions—not ownership of a seat.</li>
+      </ul>
+      <p class="quip">No reserved parking. Even for the most assertive hen.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-8">
+      <p class="eyebrow">08 / Learning without believing our own hype</p>
+      <h2 id="title-8">Predict. Review.<br><span class="accent">Then teach.</span></h2>
+      <div class="grid">
+        <article class="card"><span class="number">OBSERVE</span><h3>Keep predictions separate</h3><p>Automatically saved identities remain unreviewed. Unknown images stay unknown until someone can identify them.</p></article>
+        <article class="card"><span class="number">REVIEW</span><h3>Retain human decisions</h3><p>Confirm or correct a region in a photo. Save the original image and its reviewed interpretation as a training example.</p></article>
+        <article class="card"><span class="number">TEACH</span><h3>Promote explicitly</h3><p>Adding an eligible reviewed image as an active reference is a separate, deliberate choice—not an automatic reward for confidence.</p></article>
+      </div>
+      <p class="aside">Reviews do not rewrite original predictions or historical egg totals. Private images, identities, and calibration stay out of the public repository.</p>
+      <p class="quip">The model does not get to mark its own homework. Neither do the hens.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-9">
+      <p class="eyebrow">09 / Useful on an ordinary Tuesday</p>
+      <h2 id="title-9">Evidence you can inspect.<br>Automation you can trust cautiously.</h2>
+      <div class="grid two">
+        <article class="card"><h3>In Home Assistant</h3><p>Status shows the latest processed image and prediction separately from confirmed state. The journal keeps event evidence; MQTT exposes occupant, egg count, and latest event.</p></article>
+        <article class="card"><h3>Under the hood</h3><p>Bound capture time, protect credentials, persist nest state across restarts, and flag stale observations. Keep evidence retention and backups intentional.</p></article>
+      </div>
+      <div class="statement"><p><strong>No fresh observation ≠ an empty nest.</strong><br>Stale live sensors become unavailable.</p></div>
+      <p class="aside">Visible egg counts need camera-specific calibration. An occupied-nest zero is not proof that there are no eggs underneath.</p>
+    </section>
+
+    <section class="slide" aria-labelledby="title-10">
+      <p class="eyebrow">10 / The approach, in one sentence</p>
+      <div class="little-eggs" aria-hidden="true"><span>♥</span><span>♥</span><span>♥</span></div>
+      <h2 id="title-10">Observe carefully.<br>Infer conservatively.<br><span class="accent">Keep the receipts.</span></h2>
+      <p class="lead">Use appearance to recognize hens, time to understand visits, and human review to build a better dataset.</p>
+      <div class="statement"><p>We may not settle which came first.<br><strong>We can make a better case for who came last.</strong></p></div>
+      <p class="quip">Thank you. Questions, comments, or a strongly worded cluck?</p>
+    </section>
+  </main>
+  <aside id="speaker-notes" class="speaker-notes" aria-labelledby="notes-heading" hidden>
+    <h2 id="notes-heading">Speaker notes</h2>
+    <p id="notes-copy"></p>
+  </aside>
+  <div class="progress" aria-hidden="true"><div id="progress"></div></div>
+  <footer>
+    <span class="footer-note">MUNAI / ← → navigate · Home / End</span>
+    <nav class="controls" aria-label="Slide navigation">
+      <button id="print" type="button">Print / PDF</button>
+      <button id="notes-toggle" type="button" aria-expanded="false" aria-controls="speaker-notes">Notes</button>
+      <button id="prev" type="button" aria-label="Previous slide">←</button>
+      <span id="counter">All slides</span>
+      <button id="next" type="button" aria-label="Next slide">→</button>
+    </nav>
+  </footer>
+  <div id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <script>
+    (function () {
+      'use strict';
+      var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+      var previous = document.getElementById('prev');
+      var next = document.getElementById('next');
+      var notesToggle = document.getElementById('notes-toggle');
+      // Suggested pacing totals 10 minutes. All names and counts are illustrative.
+      var notes = [
+        { seconds: 50, text: 'Start with the everyday mystery: there is an egg in a shared nest, but no label on it. We want to connect eggs to individual hens without standing beside the coop all day. The camera sees visits and visible eggs, not necessarily the moment an egg is laid. That distinction shapes the whole approach: collect evidence over time, then make a cautious inference. This is a practical chicken-and-egg problem, rather than an attempt to settle evolutionary biology before lunch.' },
+        { seconds: 50, text: 'Break the big question into three smaller ones: who is present, how many eggs are visible, and what changed between observations? Each question has different failure modes. A hen can hide eggs, straw can confuse counting, and an awkward pose can hide identifying markings. We want useful records without pretending those problems disappear. The end product is both an event history and a dataset that a person can inspect and improve, not just a dashboard with very confident numbers.' },
+        { seconds: 60, text: 'Walk left to right through the five stages. A scheduled camera snapshot becomes an observation. Recognition estimates presence and identity; egg counting is relevant only when the nest is hen-free. A stateful tracker combines observations before declaring an event. Finally, Home Assistant displays the results and a journal keeps supporting photos. Emphasize the separation between one image and a confirmed event. If someone asks why not just use a live stream, explain that the approach is built around timestamped snapshots and accumulated evidence.' },
+        { seconds: 65, text: 'The most tempting shortcut is also the wrong one: learning that a particular hen usually sits on the left. We deliberately avoid using location or orientation to assign identity. Instead, reviewed examples describe appearance, including brightness and texture. Empty-nest examples help distinguish background from birds. Different lighting and poses still matter, so unknown is a legitimate output. Ask the audience to imagine identifying a friend wearing a coat with their back to the camera: sometimes the honest answer is that you need a better view.' },
+        { seconds: 80, text: 'Spend the most time on this example. Begin with one visible egg and no hen. Hen A arrives and is confirmed. During her visit we preserve the earlier count; we do not try to see through feathers. After she leaves, the nest eventually shows two eggs. With valid visit and count evidence, the increase supports attributing one egg to that visitor. This is a synthetic example, not a measured result. Ask what happens if another hen swaps in without a clean empty interval: the answer is uncertainty, not an invented producer. Confirmation time is not the exact laying time.' },
+        { seconds: 70, text: 'Explain why repeated shots matter. Three consistent observations confirm arrivals and identity changes; five hen-free observations confirm departure. At a one-minute cadence, that departure check spans about four minutes from the first empty image. Egg-count agreement is separate from confirming the hen has left, and a count increase may settle later. Three hen-free zero readings confirm full collection. Brief dips must not create extra production on the rebound. Partial collection remains a limitation. The principle is simple: a momentary mistake should not become permanent history.' },
+        { seconds: 50, text: 'Show the layout as an example of split mode, not a rule for where any individual hen belongs. Side nests can have occupants and egg counts. The center is presence-only, with no egg count. That helps distinguish the question of where something happened from who was involved. The same appearance references serve identity recognition rather than assigning seats. Top-and-bottom layouts follow the same principle. The diagram is deliberately schematic; it is not a photograph or a calibration map of the real coop.' },
+        { seconds: 65, text: 'A prediction is not automatically a teaching example. Otherwise an early mistake could train the system to repeat itself. A person can inspect a photo, choose the relevant region, and confirm or correct its interpretation. Saving that annotation and explicitly adding an eligible reference are separate choices. Historical predictions and egg totals are not silently rewritten. This keeps an honest record of what the system believed at the time, alongside human-reviewed material for improvement. Private flock images and identities stay private; none are needed to tell this story.' },
+        { seconds: 60, text: 'Bring the story back to daily use. Home Assistant provides a current view, confirmed state, and an evidence journal, while MQTT makes the results available to automations. Reliability includes ordinary unglamorous details: bounded capture attempts, protected credentials, state that survives restarts, and backups. A disconnected camera must not look like an empty nest, so stale live readings become unavailable. Also distinguish visible egg count from actual hidden eggs: a zero while occupied is not evidence that no eggs exist. We are aiming for inspectable usefulness, not a claim of perfect accuracy.' },
+        { seconds: 50, text: 'Close by returning to the original question: which hen likely laid which egg? Our approach combines appearance, visit history, changes in visible eggs, and human review. The important habit is to preserve uncertainty and keep the evidence, rather than optimize for a confident-looking answer on every frame. Better reviewed examples can improve the dataset without letting predictions certify themselves. Leave the three principles on screen: observe carefully, infer conservatively, keep the receipts. End with the joke, then invite questions; discussion can follow the ten-minute talk.' }
+      ];
+      var current = 0;
+      function fromHash() {
+        var match = /^#slide-(\d+)$/.exec(window.location.hash);
+        return match ? Math.max(0, Math.min(slides.length - 1, Number(match[1]) - 1)) : 0;
+      }
+      function show(index, updateHash, focus) {
+        current = Math.max(0, Math.min(slides.length - 1, index));
+        slides.forEach(function (slide, i) { slide.hidden = i !== current; });
+        previous.disabled = current === 0;
+        next.disabled = current === slides.length - 1;
+        document.getElementById('counter').textContent = (current + 1) + ' / ' + slides.length;
+        document.getElementById('progress').style.width = ((current + 1) / slides.length * 100) + '%';
+        var title = slides[current].querySelector('h1, h2').textContent;
+        var elapsed = notes.slice(0, current).reduce(function (total, note) { return total + note.seconds; }, 0);
+        function clock(seconds) { return Math.floor(seconds / 60) + ':' + ('0' + seconds % 60).slice(-2); }
+        document.getElementById('notes-heading').textContent = 'Speaker notes · ' + clock(elapsed) + '–' + clock(elapsed + notes[current].seconds) + ' / 10:00';
+        document.getElementById('notes-copy').textContent = notes[current].text;
+        document.title = 'Munai — ' + title;
+        document.getElementById('announcement').textContent = 'Slide ' + (current + 1) + ' of ' + slides.length + ': ' + title;
+        if (updateHash) {
+          // Location hashes work even when this file is opened directly from disk.
+          window.location.hash = 'slide-' + (current + 1);
+        }
+        if (focus) {
+          slides[current].setAttribute('tabindex', '-1');
+          slides[current].focus({ preventScroll: true });
+          window.scrollTo(0, 0);
+        }
+      }
+      previous.addEventListener('click', function () { show(current - 1, true, true); });
+      next.addEventListener('click', function () { show(current + 1, true, true); });
+      document.getElementById('print').addEventListener('click', function () { window.print(); });
+      notesToggle.addEventListener('click', function () {
+        var panel = document.getElementById('speaker-notes');
+        panel.hidden = !panel.hidden;
+        notesToggle.setAttribute('aria-expanded', String(!panel.hidden));
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.altKey || event.ctrlKey || event.metaKey || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(event.target.tagName) || event.target.isContentEditable) return;
+        var target = current;
+        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') target++;
+        else if (event.key === 'ArrowLeft' || event.key === 'PageUp') target--;
+        else if (event.key === 'Home') target = 0;
+        else if (event.key === 'End') target = slides.length - 1;
+        else return;
+        event.preventDefault();
+        show(target, true, true);
+      });
+      window.addEventListener('hashchange', function () { if (fromHash() !== current) show(fromHash(), false, true); });
+      show(fromHash(), false, false);
+    }());
+  </script>
+</body>
+</html>
