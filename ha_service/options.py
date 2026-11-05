@@ -13,9 +13,10 @@ RETIRED_MASK_OPTIONS = frozenset(('horizontal_bounds', 'horizontal_left', 'horiz
 class AppError(Exception):
     """Only fixed, credential-free messages belong here."""
 
-    def __init__(self, message, code='invalid'):
+    def __init__(self, message, code='invalid', diagnostic=None):
         super().__init__(message)
         self.code = code
+        self.diagnostic = diagnostic
 
 
 def read_options(path=Path('/data/options.json')):

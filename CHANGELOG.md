@@ -9,6 +9,15 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.36
+
+- Preserve specific reference validation errors instead of replacing them with
+  a generic reference warning. Log safe cause categories, application source
+  locations, OpenCV function/error codes and dependency versions for unexpected
+  reference, recognition, startup, retention and shutdown failures.
+- Keep raw exception messages, source lines, locals and private paths out of
+  logs. Throttle identical failures, but report a changed diagnostic immediately.
+
 ## 0.1.35
 
 - Fix split reference loading with HA's pinned NumPy 2 runtime by explicitly

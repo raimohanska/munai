@@ -829,6 +829,15 @@ folders. Extra live descriptors are computed only for measurable unknown hens.
 Raw upgraded zones carry `identity_method: plumage_consensus`; their distance and
 margin retain the original seven-feature diagnostics, not second-opinion scores.
 
+From 0.1.36, unexpected runtime failures include a safe `Diagnostic:` in app logs:
+exception categories, public application file/line locations, supported OpenCV
+function/error codes, and NumPy/OpenCV versions. Wrapped recognition errors retain
+these diagnostics, while expected reference validation errors keep their specific
+actionable message. Identical failures are throttled for 15 minutes; changed causes
+are logged immediately. Raw exception messages, traceback source lines, locals and
+private paths are deliberately omitted because they can contain credentials or
+private image names. Technical diagnostics stay in logs, not the app error list.
+
 Egg count shares Occupant's observation, availability and expiry. Occupant uses
 three-observation arrival/identity confirmation and five-observation empty-nest
 departure confirmation, with the same unknown-identity handling as events.

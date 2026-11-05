@@ -7,6 +7,7 @@ import signal
 import threading
 
 from .api import TransferServer, tls_context
+from .diagnostics import exception_details
 from .mqtt import MQTT
 from .options import AppError, read_options
 from .runtime import Runtime
@@ -68,10 +69,13 @@ def main():
         runtime.run(stop)
         return 0
     except AppError as error:
-        LOG.error('%s', error)
+        if error.diagnostic:
+            LOG.error('%s Diagnostic: %s', error, error.diagnostic)
+        else:
+            LOG.error('%s', error)
         return 1
-    except Exception:
-        LOG.error('App startup failed; check dependencies, Configuration, HTTPS files and storage permissions.')
+    except Exception as error:
+        LOG.error('App startup failed. Diagnostic: %s', exception_details(error))
         return 1
     finally:
         if journal_server:
@@ -83,8 +87,8 @@ def main():
         if publisher:
             try:
                 publisher.close()
-            except Exception:
-                pass
+            except Exception as error:
+                LOG.warning('MQTT shutdown failed. Diagnostic: %s', exception_details(error))
         if lock:
             lock.close()
         LOG.info('Munai stopped.')

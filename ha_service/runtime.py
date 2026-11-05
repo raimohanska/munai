@@ -14,6 +14,7 @@ from recognize_chickens import background_mask, identify, load_references, measu
 from data_layout import RESERVED
 
 from . import VERSION
+from .diagnostics import exception_details
 from .mqtt import occupant
 from .nest import NestState, valid_hen
 from .journal import Journal
@@ -40,12 +41,17 @@ class EventLog:
         self.clock = clock
         self.failures = {}
 
-    def failed(self, key, message):
+    def failed(self, key, message, diagnostic=None):
         now = self.clock()
         previous = self.failures.get(key)
-        if previous is None or previous[0] != message or now - previous[1] >= 900:
-            self.logger.warning('%s Repeated failures are suppressed for 15 minutes.', message)
-            self.failures[key] = (message, now)
+        if (previous is None or previous[0] != message or previous[2] != diagnostic
+                or now - previous[1] >= 900):
+            if diagnostic:
+                self.logger.warning('%s Diagnostic: %s. Repeated failures are suppressed for 15 minutes.',
+                                    message, diagnostic)
+            else:
+                self.logger.warning('%s Repeated failures are suppressed for 15 minutes.', message)
+            self.failures[key] = (message, now, diagnostic)
 
     def recovered(self, key, message):
         if key in self.failures:
@@ -103,9 +109,14 @@ class Runtime:
             else:
                 mask = background_mask(Path(path).parent.parent, self.options['texture_threshold'])
             if self.measurement(path, mask)['features'] is None:
-                raise ValueError()
-        except Exception:
-            raise AppError('Reference is not measurable; review hen/empty images and recognition thresholds.', 'invalid_reference') from None
+                raise AppError('Reference is not measurable; review hen/empty images and recognition thresholds.',
+                               'invalid_reference')
+        except AppError as error:
+            raise AppError(str(error), 'invalid_reference', error.diagnostic) from None
+        except Exception as error:
+            diagnostic = exception_details(error)
+            LOG.warning('Reference validation failed. Diagnostic: %s', diagnostic)
+            raise AppError('Reference validation failed; check app logs.', 'invalid_reference', diagnostic) from None
 
     def predict(self, path, references=None):
         """The same bounded image/appearance pipeline for HA and offline review."""
@@ -132,8 +143,9 @@ class Runtime:
                 prediction['egg_count'] = len(detect_eggs(
                     gray, self.options['texture_threshold'],
                     self.options['egg_min_area'], self.options['egg_max_area']))
-            except Exception:
-                raise AppError('Egg detection failed; check the image and egg size settings.') from None
+            except Exception as error:
+                raise AppError('Egg detection failed; check app logs.',
+                               diagnostic=exception_details(error)) from None
         return prediction
 
     def status(self):
@@ -146,7 +158,8 @@ class Runtime:
             if self.options['box_split'] != 'none':
                 try:
                     self._references()
-                except AppError:
+                except AppError as error:
+                    self.events.failed('references', str(error), error.diagnostic)
                     compatible = False
             return {'version': VERSION, 'capture_enabled': self.options['capture_enabled'],
                     'mqtt_enabled': self.options['mqtt_enabled'],
@@ -213,9 +226,13 @@ class Runtime:
                                    if self.options['box_split'] != 'none' else
                                    load_references(root, self.options['chicken_area'],
                                                    self.options['texture_threshold']))
-            except Exception:
-                raise AppError('References are not usable with these settings; review hen and empty references.') from None
+            except AppError:
+                raise
+            except Exception as error:
+                raise AppError('Reference loading failed; check app logs.',
+                               diagnostic=exception_details(error)) from None
             self.reference_revision = self.store.revision
+            self.events.recovered('references', 'Reference loading recovered.')
             LOG.info('Loaded %d reviewed references for %d identities.', len(self.references),
                      len({item[0] for item in self.references}))
         return self.references
@@ -346,9 +363,9 @@ class Runtime:
                 else:
                     self.events.recovered('mqtt', 'MQTT connected.')
             except AppError as error:
-                self.events.failed('round', str(error))
-            except Exception:
-                self.events.failed('round', 'Round failed; check dependencies, reviewed references and storage permissions.')
+                self.events.failed('round', str(error), error.diagnostic)
+            except Exception as error:
+                self.events.failed('round', 'Round failed; check app logs.', exception_details(error))
             finally:
                 if self.last_observation is previous_observation:
                     self.nest.reset_confirmation()
@@ -356,8 +373,11 @@ class Runtime:
                 try:
                     self.store.retain()
                     self.events.recovered('retention', 'Capture retention recovered.')
-                except Exception:
-                    self.events.failed('retention', 'Capture retention failed; check storage permissions.')
+                except AppError as error:
+                    self.events.failed('retention', str(error), error.diagnostic)
+                except Exception as error:
+                    self.events.failed('retention', 'Capture retention failed; check storage permissions.',
+                                       exception_details(error))
             LOG.debug('Scheduled round finished in %.2f seconds.', time.monotonic() - started)
             deadline = next_deadline(deadline, time.monotonic(), self.options['capture_interval'])
             stop.wait(max(0, deadline - time.monotonic()))
