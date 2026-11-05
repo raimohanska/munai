@@ -47,6 +47,10 @@ def state_summary(raw):
         summary = ' | '.join(name(zones.get(zone, {})) for zone in order)
     else:
         summary = name(raw)
+    def obscured(item):
+        return item.get('obscured') or item.get('label', item.get('occupant')) == 'obscured'
+    if obscured(raw) or any(obscured(item) for item in (zones or {}).values()):
+        return summary
     eggs = raw.get('egg_count')
     if type(eggs) is not int or eggs < 0:
         return summary
@@ -95,12 +99,12 @@ def render(store, day=None, base='', confirmations=None):
     older = [value for value in days if value < day] if day else []
     newer = [value for value in days if value > day] if day else []
     if older:
-        parts.append('<a href="?date={}">← Older day</a>'.format(older[-1]))
+        parts.append('<a href="?date={}">← Previous day</a>'.format(older[-1]))
     else:
         parts.append('<span></span>')
     parts.append('<h2>{}</h2>'.format(escape(day or 'No stored days')))
     if newer:
-        parts.append('<a href="?date={}">Newer day →</a>'.format(newer[0]))
+        parts.append('<a href="?date={}">Next day →</a>'.format(newer[0]))
     else:
         parts.append('<span></span>')
     parts.append('</nav><p>{} stored photos</p></header><main><article>'.format(len(selected)))

@@ -1,9 +1,13 @@
 """Private training archive transfer and checksum-guarded acknowledgement."""
+from datetime import datetime, timezone
 import json
+import os
 import re
+import tempfile
 
+from . import VERSION
 from .options import AppError
-from .storage import Conflict, MAX_FILE_BYTES, digest, safe_path, sync_directory
+from .storage import Conflict, MAX_FILE_BYTES, atomic_json, digest, image_valid, safe_path, sync_directory
 
 MAX_ANNOTATIONS = 10000
 TRAINING_PATH = re.compile(r'^(?:images/[a-f0-9]{64}\.jpg|annotations/[a-f0-9]{64}\.json)$')
@@ -36,6 +40,39 @@ class TrainingArchive:
         if not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
             raise AppError('Invalid training file.')
         return path.read_bytes()
+
+    def save(self, snapshot, data, key):
+        """Retain a human-confirmed interpretation and its original image."""
+        annotation = safe_path(self.root / 'annotations', key + '.json')
+        if annotation.exists():
+            return 'annotations/' + annotation.name
+        image_valid(data)
+        if len(list((self.root / 'annotations').glob('*.json'))) >= MAX_ANNOTATIONS:
+            raise AppError('Training archive limit reached. Back up and manage training storage.')
+        checksum = digest(data)
+        image = safe_path(self.root / 'images', checksum + '.jpg')
+        record = dict(snapshot)
+        record['interpretation'] = without_center_eggs(record['interpretation'], record['region'])
+        record.update(schema=1, human_confirmed=True, image='images/' + checksum + '.jpg',
+                      sha256=checksum, app_version=VERSION,
+                      confirmed_at=datetime.now(timezone.utc).isoformat())
+        needed = len(json.dumps(record, allow_nan=False).encode('utf-8')) + (0 if image.exists() else len(data))
+        self.require_capacity(needed)
+        self.store.require_space(needed)
+        if not image.exists():
+            descriptor, temporary = tempfile.mkstemp(prefix='.pending-', dir=str(image.parent))
+            try:
+                with os.fdopen(descriptor, 'wb') as output:
+                    output.write(data)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(temporary, str(image))
+                sync_directory(image.parent)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+        atomic_json(annotation, record)
+        return 'annotations/' + annotation.name
 
     def require_capacity(self, additional):
         usage = 0

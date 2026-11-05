@@ -9,6 +9,13 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.32
+
+- Make Review & teach confirm edited labels for the training archive by default;
+  add an unchecked Add as Reference checkbox for optional reference activation.
+- Rename capture navigation to Previous day and Next day.
+- Hide egg-count lines for obscured frames and regions.
+
 ## 0.1.31
 
 - Use Home Assistant local time for UI timestamps and capture/journal day grouping.

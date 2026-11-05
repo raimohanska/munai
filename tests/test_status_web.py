@@ -119,7 +119,7 @@ class StatusWebTests(unittest.TestCase):
                         b'not human-reviewed', b'after confirmation rules',
                         b'retain an earlier confirmed value'):
             self.assertNotIn(removed, page)
-        self.assertIn(b'Egg count unavailable', page)
+        self.assertNotIn(b'Egg count unavailable', page)
 
     def test_split_sections_follow_spatial_order(self):
         self.observe()
@@ -131,6 +131,17 @@ class StatusWebTests(unittest.TestCase):
             page = render(snapshot)
             headings = [part.split(b'</dt>', 1)[0] for part in page.split(b'<dt>')[1:]]
             self.assertEqual(headings, [name.encode() for name in expected] * 2)
+
+    def test_obscured_hides_all_egg_counts(self):
+        for raw in (False, True):
+            for count in (None, 0, 2):
+                for obscured in ({'label': 'obscured', 'occupant': 'obscured'},
+                                 {'label': 'no_chicken', 'occupant': 'empty', 'obscured': True}):
+                    item = dict(obscured, egg_count=count)
+                    for state in (item, {'zones': {'left': item}}):
+                        page = state_html(state, raw=raw)
+                        self.assertNotIn('eggs', page)
+                        self.assertNotIn('Egg count unavailable', page)
 
     def test_center_is_presence_only_in_raw_confirmed_and_diagnostics(self):
         for sides in (('left', 'right'), ('top', 'bottom')):

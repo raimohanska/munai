@@ -20,10 +20,10 @@ def dialog(base=''):
 <label id="review-new-field" hidden>New hen name
 <input id="review-new" maxlength="48" placeholder="e.g. hen_c" autocomplete="off">
 <small>Lowercase letters, digits, hyphens or underscores.</small></label>
-<p id="review-help" class="muted"></p>
+<label><input type="checkbox" id="review-reference"> Add as Reference</label>
 <p id="review-message" role="status" aria-live="polite"></p>
 <div class="review-actions"><button type="button" id="review-undo" hidden>Undo review</button>
-<button type="button" id="review-save">Save &amp; use</button></div>
+<button type="button" id="review-save">Confirm</button></div>
 </dialog>'''.format(escape(base, quote=True))
 
 

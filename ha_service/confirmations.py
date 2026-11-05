@@ -1,18 +1,13 @@
 """Explicit confirmation of displayed interpretations, never reference promotion."""
-from datetime import datetime, timezone
 from html import escape
 import hmac
 import json
-import os
 import re
 import secrets
-import tempfile
 
-from . import VERSION
 from .journal import ID
 from .options import AppError
-from .storage import (Conflict, MAX_FILE_BYTES, VERSION_ID, atomic_json, digest,
-                      image_valid, safe_path, sync_directory)
+from .storage import Conflict, MAX_FILE_BYTES, VERSION_ID, digest, safe_path
 from .training import MAX_ANNOTATIONS, TrainingArchive, without_center_eggs
 
 MAX_CONFIRMATIONS = MAX_ANNOTATIONS
@@ -99,32 +94,9 @@ class Confirmations:
             after, unused = self.image(snapshot['source'])
             if fingerprint != snapshot['fingerprint'] or after != fingerprint:
                 raise Conflict('Image changed. Refresh the page.')
-            image_valid(data)
             if len(list((self.root / 'annotations').glob('*.json'))) >= MAX_CONFIRMATIONS:
                 raise AppError('Training archive limit reached. Back up and manage training storage.')
-            checksum = digest(data)
-            image = safe_path(self.root / 'images', checksum + '.jpg')
             record = dict(snapshot)
             record.pop('fingerprint')
-            record['interpretation'] = without_center_eggs(record['interpretation'], record['region'])
-            record.update(schema=1, human_confirmed=True, image='images/' + checksum + '.jpg',
-                          sha256=checksum, app_version=VERSION,
-                          confirmed_at=datetime.now(timezone.utc).isoformat())
-            needed = len(json.dumps(record, allow_nan=False).encode('utf-8')) + (0 if image.exists() else len(data))
-            TrainingArchive(self.store).require_capacity(needed)
-            self.store.require_space(needed)
-            if not image.exists():
-                descriptor, temporary = tempfile.mkstemp(prefix='.pending-', dir=str(image.parent))
-                try:
-                    with os.fdopen(descriptor, 'wb') as output:
-                        output.write(data)
-                        output.flush()
-                        os.fsync(output.fileno())
-                    os.replace(temporary, str(image))
-                    sync_directory(image.parent)
-                finally:
-                    if os.path.exists(temporary):
-                        os.unlink(temporary)
-            # The durable image precedes the annotation; retries are idempotent.
-            atomic_json(annotation, record)
+            TrainingArchive(self.store).save(record, data, digest(payload))
             return {'confirmed': True}

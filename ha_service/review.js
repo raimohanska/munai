@@ -27,14 +27,8 @@
       label.value !== 'obscured' && ((label.value === 'empty' && region.value === 'whole') ||
       (hen && ((context.layout === 'none' && region.value === 'whole') ||
                (['vertical', 'horizontal'].includes(context.layout) && region.value !== 'whole'))));
-    get('help').textContent = promotable
-      ? (label.value === 'empty' ? 'Adds empty-nest calibration.' : 'Adds a hen reference.')
-      : label.value === 'obscured' ? 'Annotation only.'
-      : label.value === 'empty' && region.value !== 'whole' ? 'Annotation only. Empty calibration requires the entire frame to be hen-free.'
-      : context.layout === 'unknown' ? 'Annotation only. This image’s capture-time layout is unavailable.'
-      : context.layout !== context.current_layout ? 'Annotation only. This image uses a different recognition layout.'
-      : 'Annotation only. Select a half-frame or center view to teach a hen in split mode.';
-    get('save').textContent = promotable ? 'Save & use' : 'Save annotation';
+    get('reference').disabled = busy || !promotable || !!record();
+    if (!promotable) get('reference').checked = false;
     get('undo').hidden = !record();
     get('save').disabled = busy || !!record();
     const zone = get('zone');
@@ -55,8 +49,8 @@
     currentButton.dataset.reviewImage = next.image;
     markButtons(next.image, next.records);
     help();
-    if (saved) message.textContent = saved.status === 'active' ? 'Reviewed · reference activated. Undo before changing this region.'
-      : saved.status === 'pending' ? 'Activation interrupted. Undo this review before retrying.' : 'Reviewed · annotation only.';
+    if (saved) message.textContent = saved.status === 'active' ? 'Confirmed · reference activated.'
+      : saved.status === 'pending' ? 'Activation interrupted. Undo this review before retrying.' : 'Confirmed.';
   }
   async function load(button, quiet) {
     const response = await fetch(api + '?source=' + encodeURIComponent(button.dataset.reviewSource), {cache: 'no-store'});
@@ -74,6 +68,7 @@
     context = null;
     region.disabled = true; label.disabled = true;
     get('new-field').hidden = true; get('new').value = '';
+    get('reference').checked = false; get('reference').disabled = true;
     source = button.dataset.reviewSource;
     get('image').src = button.parentElement.querySelector('img').src;
     get('filename').textContent = source.split('/').pop();
@@ -91,6 +86,7 @@
     } catch (error) { if (ticket === sequence) message.textContent = error.message; }
   });
   region.addEventListener('change', () => {
+    get('reference').checked = false;
     const saved = record();
     if (saved) {
       if (!Array.from(label.options).some(item => item.value === saved.label)) label.add(option(saved.label, saved.label));
@@ -116,7 +112,7 @@
         'Content-Type': 'application/json', 'X-Munai-Review': context.token
       }, body: JSON.stringify({source, image: context.image, layout: context.layout,
         revision: context.revision, references: context.references, region: region.value,
-        label: chosen, action})});
+        label: chosen, action, add_reference: get('reference').checked})});
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || 'Review failed; reopen and try again.');
       lastRegion = region.value; lastLabel = chosen;
@@ -125,7 +121,7 @@
       } else {
         fill(value, lastRegion);
         const saved = record();
-        const text = saved.status === 'active' ? 'Reference saved and activated.' : 'Annotation saved.';
+        const text = saved.status === 'active' ? 'Confirmed · reference activated.' : 'Confirmed.';
         message.textContent = text;
         currentButton.title = text;
         let toast = document.getElementById('review-feedback');

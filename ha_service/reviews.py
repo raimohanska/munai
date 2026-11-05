@@ -12,6 +12,7 @@ from .options import AppError
 from .references_web import inventory as reference_inventory
 from .storage import (Conflict, MAX_FILE_BYTES, atomic_json, digest, image_valid,
                       safe_path)
+from .training import TrainingArchive
 
 MAX_REVIEWS = 10000
 
@@ -90,6 +91,19 @@ class Reviews:
                         references=self.store.revision, token=self.token,
                         current_layout=self.store.options['box_split'])
 
+    def remove_training(self, record):
+        relative = record.get('training')
+        if not relative:
+            return
+        archive = TrainingArchive(self.store)
+        if not safe_path(archive.root, relative).exists():
+            return  # Already transferred and acknowledged.
+        payload = archive.read(relative)
+        saved = json.loads(payload.decode('utf-8'))
+        image = archive.read(saved['image'])
+        archive.prune([dict(path=relative, bytes=len(payload), sha256=digest(payload)),
+                       dict(path=saved['image'], bytes=len(image), sha256=digest(image))])
+
     def save(self, request):
         with self.store.lock:
             context = self.context(request['source'])
@@ -117,10 +131,13 @@ class Reviews:
                                     raise Conflict('Another review uses this reference. Undo that review first.')
                         self.store.remove_review_reference(reference, previous['sha256'])
                     del records[key]
+                    self.remove_training(previous)
                     atomic_json(safe_path(self.root, context['image'] + '.json'), records)
                 return self.context(request['source'])
             if request.get('action') != 'save' or not isinstance(label, str):
                 raise AppError('Invalid review action.')
+            if type(request.get('add_reference', False)) is not bool:
+                raise AppError('Invalid reference selection.')
             if label not in ('empty', 'obscured') and (not LABEL.fullmatch(label) or label in RESERVED):
                 raise AppError('Use a hen name of 1–48 lowercase letters, digits, hyphens or underscores.')
             if previous:
@@ -130,12 +147,16 @@ class Reviews:
             if context['revision'] == 'none' and len(list(self.root.glob('*.json'))) >= MAX_REVIEWS:
                 raise AppError('Review limit reached. Back up and manage review storage first.')
             data, layout = self.source(request['source'])
-            promote = (label != 'obscured' and layout == self.store.options['box_split']
+            promote = (request.get('add_reference', False) and label != 'obscured' and layout == self.store.options['box_split']
                        and ((label == 'empty' and region == 'whole') or
                             (label != 'empty' and ((layout == 'none' and region == 'whole') or
                                                   (layout in ('vertical', 'horizontal') and region != 'whole')))))
             record = dict(label=label, region=region, layout=layout, source=request['source'],
                           created=False, status='annotation', reference=None)
+            snapshot = dict(source=request['source'], layout=layout, region=region, view='review',
+                            interpretation=dict(label=label))
+            training_key = digest(json.dumps(dict(image=context['image'], **snapshot), sort_keys=True).encode('utf-8'))
+            record['training'] = TrainingArchive(self.store).save(snapshot, data, training_key)
             if promote:
                 if region != 'whole':
                     with Image.open(io.BytesIO(data)) as image:
@@ -167,6 +188,7 @@ class Reviews:
                 except Exception:
                     # Keep pending intent if activation succeeded but final sync failed.
                     if not safe_path(self.store.reference_root(), reference).exists():
+                        self.remove_training(record)
                         del records[key]
                         atomic_json(safe_path(self.root, context['image'] + '.json'), records)
                     raise

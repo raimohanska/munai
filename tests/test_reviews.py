@@ -49,7 +49,7 @@ class ReviewTests(unittest.TestCase):
     def request(self, label='hen_a', region='right', action='save', source=SOURCE, **overrides):
         context = self.reviews.context(source)
         value = {key: context[key] for key in ('image', 'layout', 'revision', 'references')}
-        value.update(source=source, label=label, region=region, action=action)
+        value.update(source=source, label=label, region=region, action=action, add_reference=True)
         value.update(overrides)
         return value
 
@@ -61,7 +61,29 @@ class ReviewTests(unittest.TestCase):
                          ['whole', 'left', 'center', 'right'])
         self.result.write_text(json.dumps(dict(timestamp=STAMP, raw_prediction={'zones': {'top': {}}})))
         self.assertEqual(self.reviews.context(SOURCE)['regions'],
-                         ['whole', 'top', 'center', 'bottom'])
+                          ['whole', 'top', 'center', 'bottom'])
+
+    def test_confirm_defaults_to_training_without_reference(self):
+        request = self.request()
+        del request['add_reference']
+        value = self.reviews.save(request)
+        record = value['records']['vertical-right']
+        self.assertEqual(record['status'], 'annotation')
+        self.assertFalse(self.store.files('references'))
+        self.validator.assert_not_called()
+        archive = self.store.root / 'training'
+        annotation = json.loads((archive / record['training']).read_text())
+        self.assertTrue(annotation['human_confirmed'])
+        self.assertEqual(annotation['interpretation'], {'label': 'hen_a'})
+        self.assertEqual(annotation['region'], 'right')
+        self.assertEqual((archive / annotation['image']).read_bytes(), self.image)
+        self.save(action='undo')
+        self.assertFalse(list((archive / 'annotations').glob('*.json')))
+        self.assertFalse(list((archive / 'images').glob('*.jpg')))
+
+    def test_reference_selection_must_be_boolean(self):
+        with self.assertRaises(AppError):
+            self.save(add_reference='false')
 
     def test_promote_correct_crop_validate_activate_and_undo(self):
         original_result = self.result.read_bytes()
@@ -75,6 +97,8 @@ class ReviewTests(unittest.TestCase):
             self.assertEqual(crop.size, (128, 128))
             self.assertGreater(crop.getpixel((64, 64))[0], 150)
         self.validator.assert_called_once()
+        annotation = json.loads((self.store.root / 'training' / record['training']).read_text())
+        self.assertEqual((self.store.root / 'training' / annotation['image']).read_bytes(), self.image)
         revision = self.store.revision
         self.save()
         self.assertEqual(revision, self.store.revision)
@@ -137,6 +161,7 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(capture['records'], context['records'])
         self.save(action='undo', source=source)
         self.assertFalse(self.reviews.context(SOURCE)['records'])
+
         self.assertEqual(path.read_bytes(), original)
         for page in (captures_page(self.store), journal_page(self.journal, 0)):
             self.assertIn(b'data-review-source=', page)
@@ -144,7 +169,17 @@ class ReviewTests(unittest.TestCase):
             self.assertIn(b'src="review.js"', page)
             self.assertNotIn(b'review-confirm', page)
             self.assertNotIn(b'I checked this view', page)
+            self.assertIn(b'id="review-save">Confirm</button>', page)
+            self.assertIn(b'type="checkbox" id="review-reference"> Add as Reference', page)
         self.assertIn(b'data-review-region="right"', journal_page(self.journal, 0))
+
+    def test_undo_after_training_transfer(self):
+        from ha_service.training import TrainingArchive
+        self.save(add_reference=False)
+        archive = TrainingArchive(self.store)
+        archive.prune(archive.files())
+        self.save(action='undo')
+        self.assertFalse(self.reviews.context(SOURCE)['records'])
 
     def test_validation_failure_does_not_activate_or_mark_success(self):
         self.validator.side_effect = AppError('Synthetic invalid reference.')

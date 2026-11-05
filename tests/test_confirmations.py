@@ -170,7 +170,7 @@ class ConfirmationTests(unittest.TestCase):
         with patch('ha_service.confirmations.MAX_CONFIRMATIONS', 0):
             with self.assertRaises(AppError):
                 self.confirmations.save(request)
-        with patch('ha_service.confirmations.atomic_json', side_effect=OSError('Synthetic interruption')):
+        with patch('ha_service.training.atomic_json', side_effect=OSError('Synthetic interruption')):
             with self.assertRaises(OSError):
                 self.confirmations.save(request)
         self.assertFalse(self.records())

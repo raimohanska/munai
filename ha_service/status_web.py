@@ -24,7 +24,7 @@ def state_html(state, raw=False):
         if raw and item.get('obscured'):
             occupant = 'obscured'
         egg_line = ''
-        if zone != 'center':
+        if zone != 'center' and occupant != 'obscured' and not item.get('obscured'):
             count = item.get('egg_count')
             eggs = ('{} eggs'.format(count) if count is not None and
                     (not raw or occupant in ('no_chicken', 'empty')) else 'Egg count unavailable')

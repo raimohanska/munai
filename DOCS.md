@@ -170,7 +170,9 @@ same optional removal flags. Keep a separate backup of the local dataset.
 The small **✎** button on Captures and Journal photos opens the same quick-review
 popup. Pick a region and **Empty**, **Obscured**, an existing hen, or **＋ New hen…**.
 New hen names use 1–48 lowercase letters, digits, hyphens or underscores. Inspect
-the highlighted view, tick the visual confirmation, then save. The popup remembers
+the highlighted view, then choose **Confirm** to retain the original image and
+edited region label in the training archive. **Add as Reference** is unchecked
+by default; check it to also activate an eligible reference. The popup remembers
 the last region/hen during the page session; Journal initially selects its event's
 region. A **✓** indicator reopens the saved review, including from the other page
 when the underlying full-frame image bytes match. Status loads as photos become visible.
@@ -185,7 +187,8 @@ when the underlying full-frame image bytes match. Status loads as photos become 
 - **Annotation only:** Obscured is not a trainable category yet. Partial Empty,
   whole-frame hen labels in split mode, unknown capture-time layouts, and layouts
   different from the current app configuration do not create training references.
-  The popup explicitly says **Save annotation** rather than **Save & use**.
+  **Add as Reference** is disabled for these selections; **Confirm** still retains
+  the edited annotation for training.
 
 Capture layout comes from its matching result JSON; Journal layout comes from
 the event archive. Missing metadata is never replaced with an assumed current
@@ -196,7 +199,8 @@ egg totals are not rewritten by reviews.
 
 Reopen a reviewed photo and choose **Undo review** before changing that region.
 Undo removes only the exact reference created by that review, checked by path
-and content hash. Pre-existing duplicate references are never removed. If another
+and content hash, and removes its training annotation if still present (preserving
+images shared with other annotations). Pre-existing duplicate references are never removed. If another
 review uses the same reference, undo that dependent review first. An interrupted
 activation is shown as pending and can be undone before retrying. Undo requires
 the source photo still to be available in the selected gallery. Review metadata
