@@ -132,6 +132,23 @@ class StatusWebTests(unittest.TestCase):
             headings = [part.split(b'</dt>', 1)[0] for part in page.split(b'<dt>')[1:]]
             self.assertEqual(headings, [name.encode() for name in expected] * 2)
 
+    def test_empty_states_show_only_empty_or_egg_count(self):
+        for raw in (False, True):
+            for occupant in ('no_chicken', 'empty'):
+                for count, expected in ((0, 'Empty'), (1, '1 egg'), (2, '2 eggs')):
+                    item = {'label': occupant, 'occupant': occupant, 'egg_count': count}
+                    for state, zone in ((item, 'Nest'), ({'zones': {'left': item}}, 'Left')):
+                        self.assertEqual(state_html(state, raw=raw),
+                                         '<dl class="states"><div><dt>{}</dt><dd>{}</dd></div></dl>'.format(
+                                             zone, expected))
+
+    def test_empty_with_unknown_count_keeps_unavailable_status(self):
+        for raw in (False, True):
+            page = state_html({'label': 'no_chicken', 'occupant': 'empty',
+                               'egg_count': None}, raw=raw)
+            self.assertIn('<dd>Empty<br>', page)
+            self.assertIn('Egg count unavailable', page)
+
     def test_obscured_hides_all_egg_counts(self):
         for raw in (False, True):
             for count in (None, 0, 2):

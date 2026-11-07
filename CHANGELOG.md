@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.38
+
+- Simplify predicted and confirmed empty-nest states to Empty for zero eggs,
+  or just the egg count (1 egg, 2 eggs) when eggs are present.
+
 ## 0.1.36
 
 - Preserve specific reference validation errors instead of replacing them with

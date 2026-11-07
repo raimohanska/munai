@@ -23,14 +23,18 @@ def state_html(state, raw=False):
         occupant = item.get('label') if raw else item.get('occupant')
         if raw and item.get('obscured'):
             occupant = 'obscured'
+        display = label(occupant)
         egg_line = ''
         if zone != 'center' and occupant != 'obscured' and not item.get('obscured'):
             count = item.get('egg_count')
-            eggs = ('{} eggs'.format(count) if count is not None and
+            eggs = ('{} egg{}'.format(count, '' if count == 1 else 's') if count is not None and
                     (not raw or occupant in ('no_chicken', 'empty')) else 'Egg count unavailable')
-            egg_line = '<br><span class="muted">{}</span>'.format(escape(eggs))
+            if occupant in ('no_chicken', 'empty') and count is not None:
+                display = eggs if count else 'Empty'
+            else:
+                egg_line = '<br><span class="muted">{}</span>'.format(escape(eggs))
         parts.append('<div><dt>{}</dt><dd>{}{}</dd></div>'.format(
-            escape(zone.capitalize()), escape(label(occupant)), egg_line))
+            escape(zone.capitalize()), escape(display), egg_line))
     parts.append('</dl>')
     return ''.join(parts)
 
