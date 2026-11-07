@@ -8,6 +8,7 @@ OPTIONAL_DEFAULTS = {'transfer_token_sha256': '', 'transfer_tokens': []}
 # Ignore retired settings on upgrade; never read a local camera profile.
 RETIRED_MASK_OPTIONS = frozenset(('horizontal_bounds', 'horizontal_left', 'horizontal_right',
                                   'excluded_rectangles'))
+RETIRED_OPTIONS = RETIRED_MASK_OPTIONS | frozenset(('capture_pause_start', 'capture_pause_end'))
 
 
 class AppError(Exception):
@@ -33,16 +34,13 @@ def validate(raw):
     # Defaults live in the single HA metadata file, not a developer env file.
     with (Path(__file__).resolve().parent.parent / 'config.json').open() as handle:
         defaults = json.load(handle)['options']
-    if not isinstance(raw, dict) or set(raw) - (set(defaults) | set(OPTIONAL_DEFAULTS) | RETIRED_MASK_OPTIONS):
+    if not isinstance(raw, dict) or set(raw) - (set(defaults) | set(OPTIONAL_DEFAULTS) | RETIRED_OPTIONS):
         raise AppError('Unknown or invalid app options; check the HA Configuration tab.')
     options = dict(defaults, **OPTIONAL_DEFAULTS)
-    options.update({key: value for key, value in raw.items() if key not in RETIRED_MASK_OPTIONS})
+    options.update({key: value for key, value in raw.items() if key not in RETIRED_OPTIONS})
     for key in ('capture_enabled', 'mqtt_enabled', 'mqtt_tls', 'transfer_enabled', 'store_captures', 'capture_deduplicate'):
         if type(options[key]) is not bool:
             raise AppError('Enable/disable options must be booleans.')
-    for key in ('capture_pause_start', 'capture_pause_end'):
-        if not isinstance(options[key], str) or not re.fullmatch(r'([01][0-9]|2[0-3]):[0-5][0-9]', options[key]):
-            raise AppError('Capture pause times must use HH:MM (00:00 through 23:59).')
     for key in ('camera_url', 'mqtt_host', 'mqtt_user', 'mqtt_password', 'device_name'):
         if not isinstance(options[key], str) or len(options[key]) > 2048 or '\x00' in options[key]:
             raise AppError('Invalid text option; check camera and MQTT configuration.')

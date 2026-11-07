@@ -9,6 +9,13 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.40
+
+- Remove the nighttime capture pause and its configuration controls. Capture and
+  recognition run around the clock when enabled; ignore retired saved pause options.
+- Remove sleep mode and the morning latest-event reset, preserving the latest
+  event in the UI and MQTT until another event replaces it.
+
 ## 0.1.39
 
 - Add a confirmed × removal button to active reference photos. Reject stale

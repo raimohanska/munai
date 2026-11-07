@@ -3,8 +3,6 @@
     "capture_enabled": {"name": "Enable camera capture", "description": "Leave off until references and MQTT have been checked. Restart after changing options."},
     "camera_url": {"name": "Camera RTSP URL", "description": "Full RTSP URL, including camera credentials when needed. Never included in logs."},
     "capture_interval": {"name": "Capture interval (seconds)", "description": "One serial recognition round per interval; missed rounds are skipped."},
-    "capture_pause_start": {"name": "Sleep-time pause starts", "description": "Local Home Assistant time in HH:MM, default 23:00. No camera rounds during the pause. Set start and end equal to disable."},
-    "capture_pause_end": {"name": "Sleep-time pause ends", "description": "Local Home Assistant time in HH:MM, default 05:00. Capture resumes on the next scheduled round. Restart after changing times."},
     "capture_timeout": {"name": "Camera timeout (seconds)"},
     "expire_after": {"name": "Observation expiry (seconds)", "description": "Must exceed capture interval + camera timeout + 10. Stale observations become unavailable."},
     "mqtt_enabled": {"name": "Enable MQTT discovery and states", "description": "Enable before capture to discover the initially unavailable Occupant and Egg count sensors."},

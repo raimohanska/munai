@@ -242,7 +242,7 @@ class DailyEggTests(unittest.TestCase):
             with self.assertRaises(AppError):
                 daily_discovery(options, identity)
 
-    def test_runtime_rolls_over_while_paused_and_mqtt_failure_does_not_block_local_state(self):
+    def test_runtime_rolls_over_while_disabled_and_mqtt_failure_does_not_block_local_state(self):
         store = MagicMock(root=self.root)
         store.reference_root.return_value = None
         publisher = Mock()

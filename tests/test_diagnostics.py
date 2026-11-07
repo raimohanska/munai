@@ -132,8 +132,7 @@ class RuntimeDiagnosticTests(unittest.TestCase):
         runtime.round = Mock(side_effect=error)
         stop = Mock()
         stop.is_set.side_effect = [False, True]
-        with patch('ha_service.runtime.capture_paused', return_value=False), \
-                self.assertLogs('munai', level='WARNING') as logs:
+        with self.assertLogs('munai', level='WARNING') as logs:
             runtime.run(stop)
         return logs
 

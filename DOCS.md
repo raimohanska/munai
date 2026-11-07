@@ -19,17 +19,16 @@ separately from the confirmed state at that capture. Confirmation may lag the ra
 prediction. Unknown/obscured means uncertainty, not definite hen presence. Expand
 recognition diagnostics to inspect raw per-zone predictions and available scores.
 
-Capture enabled/paused/failed state, MQTT connectivity and current sanitized errors
+Capture enabled/disabled/failed state, MQTT connectivity and current sanitized errors
 appear above the image. A stale warning appears once the image age exceeds the
-larger of `expire_after` and twice `capture_interval`, including during sleep time.
+larger of `expire_after` and twice `capture_interval`.
 This is not a live stream or a new on-demand camera request. Failed recognition
 keeps the previous successful observation visible with its original timestamp.
 
-From 0.1.31, all UI times and day boundaries use Home Assistant's local timezone,
-also used by the sleep schedule. Stored filenames and result timestamps stay UTC.
-The latest-event display and MQTT sensor show **Sleep mode** during scheduled
-sleep, then **No events yet** until a new event after waking. This does not erase
-journal entries, nest state, or egg totals, and survives app restarts.
+From 0.1.31, all UI times and day boundaries use Home Assistant's local timezone.
+Stored filenames and result timestamps stay UTC. The latest-event display and
+MQTT sensor retain the latest event across nights and app restarts, showing
+**No events yet** only when no event exists.
 
 At most two full images (8 MiB each maximum) are held in memory, independent of
 `store_captures`, photo deduplication and journal cleanup. Timestamp-pinned URLs
@@ -253,24 +252,16 @@ Stale pages must be refreshed before removal. This changes HA only, not the loca
 production reference folder; pull and reconcile before uploading it again.
 Use **Review & teach** on Captures or Journal photos for explicit promotion.
 
-## Overnight capture pause
+## Capture schedule
 
 All HA service log messages include a local timestamp and UTC offset, for
 example `2000-01-01 19:00:00 +0200 INFO: Munai started.` The timezone matches
-the overnight schedule; capture filenames still use UTC.
+Home Assistant's local timezone; capture filenames still use UTC.
 
-The HA capture loop skips camera capture and recognition from **23:00 inclusive
-to 05:00 exclusive** by default, using the service's local Home Assistant timezone
-(not the UTC timestamps used for filenames). Configure `capture_pause_start` and
-`capture_pause_end` as quoted `HH:MM` strings in the app options, then restart.
-Matching times disable the pause; daytime pause windows also work. Capture
-resumes on the next scheduled round after the window ends. A round already in
-progress may finish when the pause starts.
-
-MQTT connectivity, reference transfers, and storage retention remain running.
-No overnight observations are fabricated or replayed: live sensors expire
-normally until fresh morning observations arrive. Legacy Pi/cron commands are
-unchanged.
+When `capture_enabled` is true, capture and recognition run around the clock at
+`capture_interval`. There is no nighttime pause or sleep mode. Retired pause
+settings in saved app options are ignored on upgrade. The latest event remains
+visible until another event replaces it; journal history and counts are preserved.
 
 ## Capture history and a 24-hour review window
 
@@ -309,7 +300,7 @@ capture_storage_mb: 2048
 The 2,048 MiB default is for new installations; upgrades do not override an
 explicit existing limit. Change the byte budget in HA Configuration too. These
 settings are a target, not a storage guarantee: image sizes, free disk space,
-scheduled pauses and failed observations affect coverage. Do not disable the
+disabled capture and failed observations affect coverage. Do not disable the
 free-space reserve to extend history. Archived journal evidence has separate
 retention and is not a complete capture archive.
 
@@ -899,9 +890,9 @@ occupants; egg counting does not influence hen identity.
 Keys are the exact identity folder names, without display capitalization. Reviewed
 identities are initialized to zero; `unknown` is always present. Identities already
 counted remain in the object if references change, so their totals are not lost.
-The date uses the service's local/Home Assistant timezone, as capture pause times
-do. Counts reset on the first scheduler iteration of a new day, even while capture
-is paused or disabled. An offline service cannot publish a midnight reset; always
+The date uses the service's local/Home Assistant timezone.
+Counts reset on the first scheduler iteration of a new day, even while capture
+is disabled. An offline service cannot publish a midnight reset; always
 check the payload date rather than assuming a retained payload describes today.
 
 Every confirmed visible-egg count above the **highest confirmed count since the

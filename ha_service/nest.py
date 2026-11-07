@@ -145,7 +145,7 @@ class NestState:
         self.state = state
 
     def update_day(self, identities=()):
-        """Roll over even during scheduled capture pauses, without changing streaks."""
+        """Roll over even with capture disabled, without changing streaks."""
         state = self._dated_state(identities)
         if state != self.state:
             self._commit(state)

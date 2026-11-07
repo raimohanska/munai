@@ -11,7 +11,7 @@ class SplitMQTTTests(unittest.TestCase):
     def test_event_only_publication_does_not_replay_live_state(self):
         publisher = MQTT(validate({}))
         publisher.send = Mock()
-        for text, expected in (('Sleep mode', 'Sleep mode'), (None, 'No events yet'),
+        for text, expected in (('Hen_a departed', 'Hen_a departed'), (None, 'No events yet'),
                                ('Center: Hen_a arrived', 'Hen_a arrived')):
             publisher.publish_event(text)
             publisher.send.assert_called_with(publisher.base + '/latest_event', expected, True)

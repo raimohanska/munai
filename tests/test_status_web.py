@@ -1,7 +1,6 @@
 """Synthetic status/Ingress tests; never connect to or exercise camera capture."""
 import io
 import json
-from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
@@ -182,15 +181,12 @@ class StatusWebTests(unittest.TestCase):
         self.assertEqual(snapshot['observation']['raw_prediction']['zones']['center']['egg_count'], 999)
 
     def test_health_states_and_sanitized_errors(self):
-        with patch('ha_service.runtime.capture_paused', return_value=False):
-            self.assertEqual(self.runtime.web_status()['capture_state'], 'Active')
-            self.runtime.events.failed('round', 'Synthetic recognition failure.')
-            self.assertEqual(self.runtime.web_status()['capture_state'], 'Failed')
-            self.assertIn(b'Synthetic recognition failure.', self.request('/')[1])
-            self.runtime.events.recovered('round', 'Recovered.')
-            self.assertEqual(self.runtime.web_status()['errors'], [])
-        with patch('ha_service.runtime.capture_paused', return_value=True):
-            self.assertEqual(self.runtime.web_status()['capture_state'], 'Paused for sleep time')
+        self.assertEqual(self.runtime.web_status()['capture_state'], 'Active')
+        self.runtime.events.failed('round', 'Synthetic recognition failure.')
+        self.assertEqual(self.runtime.web_status()['capture_state'], 'Failed')
+        self.assertIn(b'Synthetic recognition failure.', self.request('/')[1])
+        self.runtime.events.recovered('round', 'Recovered.')
+        self.assertEqual(self.runtime.web_status()['errors'], [])
         self.options['capture_enabled'] = False
         self.assertEqual(self.runtime.web_status()['capture_state'], 'Disabled')
         self.options['mqtt_enabled'] = True
@@ -217,23 +213,15 @@ class StatusWebTests(unittest.TestCase):
         self.assertEqual(json.loads((root / 'config.json').read_text())['version'], VERSION)
         self.assertIn('## ' + VERSION, (root / 'CHANGELOG.md').read_text())
 
-    def test_sleep_and_morning_event_display_preserve_history_and_counts(self):
+    def test_latest_event_display_preserves_history_and_counts(self):
+        self.assertEqual(self.runtime.latest_display_event(), 'No events yet')
         self.runtime.nest.state['latest_event'] = 'Center: Hen_a arrived'
-        self.runtime.latest_event_stamp = '20000101T120000_000000Z'
         before = json.dumps(self.runtime.nest.state, sort_keys=True)
-        with patch('ha_service.runtime.local_time', return_value=datetime(2000, 1, 1, 12)):
-            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 1, 22, 59)),
-                             'Hen_a arrived')
-            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 1, 23)), 'Sleep mode')
-            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 2, 4, 59)), 'Sleep mode')
-            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 2, 5)), 'No events yet')
-        with patch('ha_service.runtime.local_time', return_value=datetime(2000, 1, 2, 6)):
-            self.assertEqual(self.runtime.latest_display_event(datetime(2000, 1, 2, 6)), 'Hen_a arrived')
+        self.assertEqual(self.runtime.latest_display_event(), 'Hen_a arrived')
+        self.assertIn(b'Latest event: Hen_a arrived', render(self.runtime.web_status()))
         self.assertEqual(json.dumps(self.runtime.nest.state, sort_keys=True), before)
-        with patch('ha_service.runtime.capture_paused', return_value=True):
-            self.assertIn(b'Latest event: Sleep mode', render(self.runtime.web_status()))
 
-    def test_restart_restores_event_timestamp_from_journal(self):
+    def test_restart_preserves_latest_event(self):
         source = Path(self.temp.name) / 'synthetic.jpg'
         source.write_bytes(self.image)
         for index in range(3):
@@ -242,6 +230,4 @@ class StatusWebTests(unittest.TestCase):
             evidence = self.runtime.journal.save_frame(source, prediction, stamp=stamp)
             self.runtime.observe(stamp, prediction, evidence)
         restarted = Runtime(self.options, self.runtime.store)
-        self.assertTrue(restarted.latest_event_stamp.startswith('20000101T120000_'))
-        with patch('ha_service.runtime.local_time', return_value=datetime(2000, 1, 1, 12)):
-            self.assertEqual(restarted.latest_display_event(datetime(2000, 1, 2, 5)), 'No events yet')
+        self.assertEqual(restarted.latest_display_event(), 'Hen_a arrived')
