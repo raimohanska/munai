@@ -70,7 +70,7 @@ def background_mask(directory, texture_threshold=8):
 
 
 def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None, size=(640, 360),
-            describe=None):
+            describe=None, feather_detector=None):
     gray, pixels, std = image_statistics(path, size)
     valid = np.full(gray.shape, 255, np.uint8)
     if background_mask is not None:
@@ -78,6 +78,12 @@ def measure(path, chicken_area=4500, texture_threshold=8, background_mask=None, 
     smooth = ((std < texture_threshold) & (valid != 0)).astype(np.uint8) * 255
     smooth = cv2.morphologyEx(smooth, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     contour, area, chicken = chicken_region(smooth, valid, chicken_area)
+    if not chicken and feather_detector is not None:
+        textured = feather_detector.mask(gray, std, valid == 0, chicken_area, texture_threshold)
+        contours = cv2.findContours(textured, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
+        if contours:
+            contour = max(contours, key=cv2.contourArea)
+            area, chicken = float(cv2.contourArea(contour)), True
     result = {'area': area, 'chicken': chicken,
               'box': None, 'features': None}
     if not chicken:

@@ -1,6 +1,6 @@
 {
   "name": "Munai",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "slug": "munai",
   "description": "Recognize nest occupants and publish an MQTT device",
   "arch": ["aarch64", "amd64"],

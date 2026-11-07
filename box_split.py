@@ -107,7 +107,7 @@ def assign_regions(masks, split, fragment_gap=24):
 
 def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
            novelty_mask=None, texture_mask=None, fragment_area=None,
-           minimum_fragment_change=None):
+            minimum_fragment_change=None, feather_mask=None):
     """Find every accepted presence component, then assign spatial occupancy.
 
     Reviewed full-frame empty calibration is required. No identity reference or
@@ -138,7 +138,12 @@ def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
                                                         region, candidate_area)
         if hen:
             masks.append(region != 0)
-    if novelty_mask is not None or texture_mask is not None:
+    if feather_mask is not None:
+        for contour in cv2.findContours(feather_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]:
+            region = np.zeros(gray.shape, np.uint8)
+            cv2.drawContours(region, [contour], -1, 255, -1)
+            masks.append((region != 0) & (~background_mask))
+    if novelty_mask is not None or texture_mask is not None or feather_mask is not None:
         # Broad changes relative to reviewed empty backgrounds catch patterned
         # bodies whose smooth feather patches are individually too fragmented.
         for change, texture_only in ((novelty_mask, False), (texture_mask, True)):

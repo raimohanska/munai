@@ -824,6 +824,16 @@ folders. Extra live descriptors are computed only for measurable unknown hens.
 Raw upgraded zones carry `identity_method: plumage_consensus`; their distance and
 margin retain the original seven-feature diagnostics, not second-opinion scores.
 
+From 0.1.41, split mode also checks multi-scale feather texture when smooth body
+patches are insufficient. A bounded in-memory dictionary of reviewed empty-nest
+textures supplies the background comparison; it contains no identities or patch
+coordinates. Broad, textured foreground can supply presence and reference/body
+measurements without lowering `texture_threshold` or identity confidence checks.
+Thin fragments and smooth egg piles remain excluded. Reference upload validation,
+reference loading and live measurements share this fallback. A newly measurable
+photo may still be unknown if its appearance does not match reviewed references;
+reviewed photos are never added automatically. Whole-box mode is unchanged.
+
 From 0.1.36, unexpected runtime failures include a safe `Diagnostic:` in app logs:
 exception categories, public application file/line locations, supported OpenCV
 function/error codes, and NumPy/OpenCV versions. Wrapped recognition errors retain

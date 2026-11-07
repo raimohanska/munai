@@ -14,6 +14,7 @@ from ha_service.options import AppError, validate
 from ha_service import split_recognition as split
 from recognize_chickens import image_statistics, measure
 from count_eggs import detect_eggs
+from feather_texture import FeatherTexture
 
 
 class SplitRecognitionTests(unittest.TestCase):
@@ -112,6 +113,7 @@ class SplitRecognitionTests(unittest.TestCase):
         refs = copy.copy(self.refs)
         refs.full_background_mask = np.zeros(gray.shape, dtype=bool)
         refs.background_frames = [gray]
+        refs.feather_detector = FeatherTexture(refs.background_frames)
         blurred = cv2.GaussianBlur(gray, (21, 21), 0).astype(np.int16)
         refs.background_low = refs.background_high = blurred
         refs.background_texture_low = cv2.GaussianBlur(std, (21, 21), 0)

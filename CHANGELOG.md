@@ -9,6 +9,16 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.41
+
+- Detect broad patterned plumage using position-independent, multi-scale texture
+  comparisons against reviewed empty images when smooth feather patches fail.
+  Share the fallback between split reference validation, loading and live
+  measurement; retain existing identity distance and margin requirements.
+- Bound the in-memory empty-texture dictionary, reject thin fragments and smooth
+  egg piles, and preserve split ambiguity, duplicate-identity and center egg rules.
+  Do not automatically add predictions or captures to reviewed references.
+
 ## 0.1.40
 
 - Remove the nighttime capture pause and its configuration controls. Capture and

@@ -102,10 +102,11 @@ class Runtime:
             if self.options['box_split'] != 'none':
                 root = Path(path).parent.parent
                 split_recognition.validate_half(path, root, self.options['box_split'])
-                unused_full, mask = split_recognition.calibration(root, self.options)
+                measured = split_recognition.measure_reference(path, root, self.options)
             else:
                 mask = background_mask(Path(path).parent.parent, self.options['texture_threshold'])
-            if self.measurement(path, mask)['features'] is None:
+                measured = self.measurement(path, mask)
+            if measured['features'] is None:
                 raise AppError('Reference is not measurable; review hen/empty images and recognition thresholds.',
                                'invalid_reference')
         except AppError as error:

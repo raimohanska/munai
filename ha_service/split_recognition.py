@@ -7,6 +7,7 @@ import numpy as np
 from box_split import detect, half_boxes
 from count_eggs import detect_eggs
 from data_layout import RESERVED
+from feather_texture import FeatherTexture
 from recognize_chickens import References, background_mask, identify, measure, image_statistics
 from sort_captures import capture_files
 from .options import AppError
@@ -98,19 +99,29 @@ def load(root, options):
             np.minimum(refs.background_texture_low, texture, out=refs.background_texture_low)
             np.minimum(refs.background_low, blurred, out=refs.background_low)
             np.maximum(refs.background_high, blurred, out=refs.background_high)
+    refs.feather_detector = FeatherTexture(refs.background_frames)
     for folder in sorted(Path(root).iterdir()):
         if not folder.is_dir() or folder.is_symlink() or folder.name in RESERVED or folder.name.startswith('.'):
             continue
         for path in capture_files(folder):
             validate_half(path, root, options['box_split'])
             result = measure(path, options['chicken_area'], options['texture_threshold'],
-                             common, measurement_size(options['box_split']), describe=describe)
+                             common, measurement_size(options['box_split']), describe=describe,
+                             feather_detector=refs.feather_detector)
             if result['features'] is None:
                 raise AppError('Split reference has insufficient measurable plumage; review the half-frame crop.')
             refs.append((folder.name, path, result))
     if len({r[0] for r in refs}) < 2:
         raise AppError('Split recognition requires reviewed half-frame references for at least two identities.')
     return refs
+
+
+def measure_reference(path, root, options):
+    """Validate new references using the same reviewed-empty texture fallback."""
+    unused_full, common = calibration(root, options)
+    frames = [image_statistics(empty)[0] for empty in capture_files(Path(root) / 'empty')]
+    return measure(path, options['chicken_area'], options['texture_threshold'], common,
+                   measurement_size(options['box_split']), feather_detector=FeatherTexture(frames))
 
 
 def changed_textured_body(view, empty_views, exclusions, options):
@@ -162,6 +173,19 @@ def predict(path, references, options):
                       fragment_area=options['egg_max_area'],
                       minimum_fragment_change=options['chicken_area'])
     sides = ('left', 'right') if split == 'vertical' else ('top', 'bottom')
+    covered = {body['zone'] for body in presence['bodies']}
+    detector = getattr(references, 'feather_detector', None)
+    if (detector is not None and not presence['ambiguous']
+            and not presence['center_present'] and not set(sides) <= covered):
+        feather_mask = detector.mask(frame, std, references.full_background_mask,
+                                    minimum_body, options['texture_threshold'])
+        if feather_mask.any():
+            presence = detect(path, split, references.full_background_mask,
+                              minimum_body, options['texture_threshold'],
+                              novelty_mask=novelty, texture_mask=texture_change,
+                              fragment_area=options['egg_max_area'],
+                              minimum_fragment_change=options['chicken_area'],
+                              feather_mask=feather_mask)
     zones = {}
     upgraded = set()
     for zone in sides + ('center',):
@@ -188,12 +212,14 @@ def predict(path, references, options):
         # that could include feathers from two separate side occupants.
         if not obscured and detected:
             result = measure(view, options['chicken_area'], options['texture_threshold'],
-                             references.background_mask, measurement_size(split))
+                             references.background_mask, measurement_size(split),
+                             feather_detector=detector)
             decision = identify(result, references, options['max_distance'], options['min_margin'])
             if (decision['label'] == 'unknown' and decision['distance'] is not None
                     and decision['distance'] <= options['max_distance']):
                 detailed = measure(view, options['chicken_area'], options['texture_threshold'],
-                                   references.background_mask, measurement_size(split), describe=describe)
+                                   references.background_mask, measurement_size(split), describe=describe,
+                                   feather_detector=detector)
                 decision = recover(decision, detailed, references, options['max_distance'])
                 if decision['label'] != 'unknown':
                     upgraded.add(zone)
