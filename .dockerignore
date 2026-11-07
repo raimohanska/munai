@@ -3,11 +3,7 @@
 !Dockerfile
 !requirements-app.txt
 !config.json
-!capture.py
-!count_eggs.py
-!data_layout.py
-!recognize_chickens.py
-!sort_captures.py
-!box_split.py
+!*.py
 !ha_service/
 !ha_service/*.py
+!ha_service/*.js

@@ -9,6 +9,13 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.42
+
+- Include `feather_texture.py` in the Docker build context so HA can build the app.
+- Copy root Python source files by pattern so new modules need no duplicate
+  Docker build allowlist entry; keep private data and credentials excluded.
+- Include the web UI JavaScript files in the image instead of filtering them out.
+
 ## 0.1.41
 
 - Detect broad patterned plumage using position-independent, multi-scale texture
