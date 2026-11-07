@@ -20,6 +20,10 @@ produced each egg.
 
 ## UI copy
 
+- When sharing local images in chat, give a plain-text workspace-relative file
+  path, not a Markdown image or file link; those links do not work in this
+  devcontainer setup.
+
 - Keep app screens terse: labels, values, controls, and actionable errors only.
   Do not add explanatory filler, prediction/review disclaimers, obvious interface
   instructions, or paragraphs describing internal confirmation rules. Put
