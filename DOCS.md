@@ -389,7 +389,7 @@ on shared full-frame evidence photos. The outline is a view, not an exact body
 boundary. Each event retains its own real confirmation/baseline frames; simultaneous
 events may share one physical JPEG. All region outboxes replay idempotently after
 crashes, and active evidence from all regions is protected from archive cleanup.
-Every caption exposes the stable full Photo ID: use **Photo ID plus zone** when
+Every caption shows the full JPEG filename: use **filename plus zone** when
 reporting a wrong identity. From 0.1.19, **Review & teach** can explicitly annotate
 that region and promote a validated copy to references. The original prediction
 and shared journal photo remain unchanged; no historical egg totals are rewritten.

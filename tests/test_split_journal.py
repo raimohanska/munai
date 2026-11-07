@@ -66,8 +66,9 @@ class SplitJournalTests(unittest.TestCase):
         page = render(self.journal, 0).decode()
         self.assertIn('vertical-left', page)
         self.assertIn('vertical-right', page)
-        self.assertIn('Photo ID:', page)
-        self.assertIn(frames[0]['id'], page)
+        self.assertNotIn('Photo ID', page)
+        for frame in baseline + frames:
+            self.assertIn('<code>{}.jpg</code>'.format(frame['id']), page)
 
     def test_retry_selection_preserves_each_regions_source_frame(self):
         from ha_service.identity_retry import IdentityRetry

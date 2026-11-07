@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.43
+
+- Show full JPEG filenames instead of photo IDs in journal evidence captions,
+  matching the capture gallery and review dialog.
+
 ## 0.1.42
 
 - Include `feather_texture.py` in the Docker build context so HA can build the app.

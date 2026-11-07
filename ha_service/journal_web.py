@@ -53,7 +53,7 @@ figure { margin: 0; } img { width: 100%; height: auto; border-radius: 8px; }
 .vertical-center { inset: 0 25%; } .horizontal-top { inset: 0 0 50% 0; }
 .horizontal-bottom { inset: 50% 0 0 0; } .horizontal-center { inset: 25% 0; }
 figcaption { font-size: .85rem; overflow-wrap: anywhere; }
-.photo-id { display: block; font-size: .75rem; margin-top: 6px; user-select: all; }
+.photo-filename { display: block; font-size: .75rem; margin-top: 6px; user-select: all; }
 .event-details { margin-top: 16px; }
 .day-navigation { align-items: center; gap: 12px; padding: 0; }
 .day-navigation > :first-child, .day-navigation > :last-child { flex: 1; }
@@ -139,10 +139,10 @@ def render(journal, page, base='', confirmations=None):
                            if confirmations is not None else '')
                 parts.append('<figure><div class="review-photo"><a href="{0}" target="_blank" rel="noopener">'
                              '<div class="frame"><img src="{0}" loading="lazy" alt="{1}">{3}</div></a>{5}</div>'
-                             '<figcaption>{2}<br>{1}<span class="photo-id">Photo ID: '
+                             '<figcaption>{2}<br>{1}<span class="photo-filename">'
                               '<code>{4}</code></span>{6}</figcaption></figure>'.format(
                                   source, escape(caption, quote=True), time_html(frame['id']), overlay,
-                                   escape(frame['id']), button('images/' + frame['id'] + '.jpg',
+                                    escape(frame['id'] + '.jpg'), button('images/' + frame['id'] + '.jpg',
                                                                entry.get('zone', 'whole')), confirm))
             parts.append('</div>')
         present_roles = {group['role'] for group in entry['evidence'] if group['frames']}
