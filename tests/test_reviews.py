@@ -61,7 +61,33 @@ class ReviewTests(unittest.TestCase):
                          ['whole', 'left', 'center', 'right'])
         self.result.write_text(json.dumps(dict(timestamp=STAMP, raw_prediction={'zones': {'top': {}}})))
         self.assertEqual(self.reviews.context(SOURCE)['regions'],
-                          ['whole', 'top', 'center', 'bottom'])
+                           ['whole', 'top', 'center', 'bottom'])
+
+    def test_gallery_removal_preserves_review_and_training(self):
+        context = self.save()
+        record = context['records']['vertical-right']
+        training = self.store.root / 'training' / record['training']
+        old = self.store.revision
+        self.reviews.remove_reference(dict(source=record['reference'], references=old))
+        self.assertNotEqual(self.store.revision, old)
+        self.assertEqual(self.store.files('references'), [])
+        self.assertTrue(training.is_file())
+        saved = self.reviews.context(SOURCE)['records']['vertical-right']
+        self.assertEqual(saved['label'], 'hen_a')
+        self.assertEqual(saved['status'], 'annotation')
+        self.assertIsNone(saved['reference'])
+        self.assertEqual((self.store.root / SOURCE).read_bytes(), self.image)
+        self.save(action='undo')
+
+    def test_gallery_removal_rejects_stale_and_unsafe_requests(self):
+        context = self.save()
+        relative = context['records']['vertical-right']['reference']
+        with self.assertRaises(Conflict):
+            self.reviews.remove_reference(dict(source=relative, references='none'))
+        for source in ('../options.json', SOURCE, 'hen_a/../../file.jpg', None):
+            with self.assertRaises(AppError):
+                self.reviews.remove_reference(dict(source=source, references=self.store.revision))
+        self.assertEqual(len(self.store.files('references')), 1)
 
     def test_confirm_defaults_to_training_without_reference(self):
         request = self.request()
@@ -300,6 +326,26 @@ class ReviewTests(unittest.TestCase):
         handler.do_POST()
         self.assertEqual(handler.send_response.call_args.args[0], 200)
         handler = self.handler(body)
+        handler.do_POST()
+        self.assertEqual(handler.send_response.call_args.args[0], 409)
+
+    def test_reference_removal_endpoint_authorization_and_conflicts(self):
+        context = self.save()
+        record = context['records']['vertical-right']
+        body = json.dumps(dict(source=record['reference'], references=self.store.revision)).encode()
+        for kwargs in ({'token': False}, {'address': '127.0.0.1'}):
+            handler = self.handler(body, **kwargs)
+            handler.path = '/references/remove'
+            handler.do_POST()
+            self.assertEqual(handler.send_response.call_args.args[0], 403)
+            self.assertEqual(len(self.store.files('references')), 1)
+        handler = self.handler(body)
+        handler.path = '/references/remove'
+        handler.do_POST()
+        self.assertEqual(handler.send_response.call_args.args[0], 200)
+        self.assertEqual(self.store.files('references'), [])
+        handler = self.handler(body)
+        handler.path = '/references/remove'
         handler.do_POST()
         self.assertEqual(handler.send_response.call_args.args[0], 409)
 

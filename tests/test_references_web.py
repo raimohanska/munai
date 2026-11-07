@@ -1,4 +1,4 @@
-"""Synthetic, read-only Ingress gallery tests. No HA or real reference images."""
+"""Synthetic Ingress gallery tests. No HA or real reference images."""
 import io
 from pathlib import Path
 import tempfile
@@ -12,6 +12,7 @@ from ha_service.confirmations import Confirmations
 from ha_service.journal_web import JournalHandler, render as render_journal
 from ha_service.options import validate
 from ha_service.references_web import inventory, render
+from ha_service.reviews import Reviews
 from ha_service.storage import Store, digest
 
 NAME = '20000101T120000_000000Z-left.jpg'
@@ -38,7 +39,8 @@ class ReferenceGalleryTests(unittest.TestCase):
         handler = JournalHandler.__new__(JournalHandler)
         handler.path = path
         handler.client_address = (address, 12345)
-        handler.server = Mock(journal=self.journal, confirmations=Confirmations(self.journal))
+        handler.server = Mock(journal=self.journal, confirmations=Confirmations(self.journal),
+                              reviews=Reviews(self.journal, lambda path: None))
         handler.wfile = io.BytesIO()
         handler.send_response = Mock()
         handler.send_header = Mock()
@@ -84,6 +86,9 @@ class ReferenceGalleryTests(unittest.TestCase):
         self.assertIn(b'href="../journal.css"', page)
         self.assertIn(b'href="../journal">Journal', page)
         self.assertIn(('../references/' + revision + '/hen_a/').encode(), page)
+        self.assertIn(b'src="../references.js" data-api="../references/remove"', page)
+        self.assertIn(b'aria-label="Remove reference hen_a/', page)
+        self.assertIn(b'class="reference-remove"', page)
 
     def test_only_current_folder_no_staging_or_predictions(self):
         first = self.upload()

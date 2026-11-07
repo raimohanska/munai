@@ -1,4 +1,4 @@
-"""Read-only active-reference gallery; never includes staging or predictions."""
+"""Active-reference gallery; never includes staging or predictions."""
 from collections import Counter
 from html import escape
 
@@ -28,7 +28,7 @@ def inventory(store):
     return revision, items
 
 
-def render(store, base='', confirmations=None):
+def render(store, base='', confirmations=None, token=None):
     with store.lock:
         revision, items = inventory(store)
         layout = store.options['box_split']
@@ -43,6 +43,10 @@ def render(store, base='', confirmations=None):
                  sum(counts[label] for label in identities), len(identities), counts['empty'])]
     if identities:
         parts.append('<p>' + ' · '.join('{} ({})'.format(escape(label), counts[label]) for label in identities) + '</p>')
+    if token is not None:
+        parts.append('<script src="{0}references.js" data-api="{0}references/remove" '
+                     'data-token="{1}" data-revision="{2}" defer></script>'.format(
+                         escape(base, quote=True), escape(token, quote=True), escape(revision, quote=True)))
     parts.append('</header><main>')
     if not items:
         parts.append('<article><h2>No active reference photos</h2><p>Upload reviewed identity and '
@@ -62,13 +66,17 @@ def render(store, base='', confirmations=None):
                                        {'label': label}, layout,
                                        'whole' if label == 'empty' or layout == 'none' else 'crop',
                                        'reference') if confirmations is not None else '')
-        parts.append('<figure><a href="{0}" target="_blank" rel="noopener">'
-                     '<img src="{0}" loading="lazy" alt="{1}"></a>'
+        remove = ('<button type="button" class="reference-remove" data-path="{}" '
+                  'aria-label="Remove reference {}" title="Remove reference">×</button>'.format(
+                      escape(item['path'], quote=True), escape(item['path'], quote=True))
+                  if token is not None else '')
+        parts.append('<figure><div class="frame"><a href="{0}" target="_blank" rel="noopener">'
+                      '<img src="{0}" loading="lazy" alt="{1}"></a>{5}</div>'
                      '<figcaption><code>{2}</code><br>{3:.1f} KiB · '
                      '<a href="{0}" target="_blank" rel="noopener">Full-size photo</a>'
                       ' {4}</figcaption></figure>'.format(
                          escape(source, quote=True), escape(label + ': ' + name, quote=True),
-                          escape(item['path']), item['bytes'] / 1024.0, confirm))
+                           escape(item['path']), item['bytes'] / 1024.0, confirm, remove))
     if previous is not None:
         parts.append('</div></article>')
     parts.append('</main>' + end())

@@ -230,7 +230,7 @@ In Munai's **Open Web UI**, select **References** in the MunAI sidebar. The
 page shows the reference content checksum on the server, configured box split,
 counts for each identity, and the original reference photos grouped by hen.
 Reviewed full-frame empty-nest calibration is shown separately. Photos are
-paginated (20 per page), lazy-loaded and linked to their full-size JPEGs; their
+lazy-loaded and linked to their full-size JPEGs; their
 filenames are visible so you can report a specific reference.
 
 This reads the server's current reference directory, not the devcontainer's
@@ -245,9 +245,13 @@ the active set while a page is open, old image requests ask you to refresh rathe
 than silently displaying new content under an old label. All links remain behind
 HA Ingress; there is no public `/local` gallery or additional host port.
 
-The References page itself remains read-only. Use **Review & teach** on Captures
-or Journal photos for explicit promotion; browsing alone does not modify active
-references, predictions, events or daily egg totals.
+Use the **×** in a photo's corner to remove it after confirmation. Removal is
+permanent and affects the next recognition round, but preserves review labels,
+training examples, captures, journal history and daily egg totals. Removing the
+last required identity or empty calibration photo can make recognition unavailable.
+Stale pages must be refreshed before removal. This changes HA only, not the local
+production reference folder; pull and reconcile before uploading it again.
+Use **Review & teach** on Captures or Journal photos for explicit promotion.
 
 ## Overnight capture pause
 

@@ -104,6 +104,31 @@ class Reviews:
         archive.prune([dict(path=relative, bytes=len(payload), sha256=digest(payload)),
                        dict(path=saved['image'], bytes=len(image), sha256=digest(image))])
 
+    def remove_reference(self, request):
+        """Remove an active photo, preserving human labels and training examples."""
+        relative = request.get('source')
+        if not isinstance(relative, str) or not self.store.valid_file('references', relative):
+            raise AppError('Invalid reference path.')
+        with self.store.lock:
+            if request.get('references') != self.store.revision:
+                raise Conflict('References changed; refresh the References page and retry.')
+            checksum = digest(self.store.read('references', relative))
+            updates = []
+            for path in self.root.glob('*.json'):
+                records, _ = self.load(path.stem)
+                changed = False
+                for record in records.values():
+                    if record.get('reference') == relative:
+                        record.update(reference=None, created=False, status='annotation')
+                        record.pop('sha256', None)
+                        changed = True
+                if changed:
+                    updates.append((path, records))
+            self.store.remove_review_reference(relative, checksum)
+            for path, records in updates:
+                atomic_json(safe_path(self.root, path.name), records)
+            return {'references': self.store.revision}
+
     def save(self, request):
         with self.store.lock:
             context = self.context(request['source'])

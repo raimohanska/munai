@@ -44,6 +44,10 @@ a { color: light-dark(#235e45,#a0d6b3); } .muted, time { opacity: .8; font-size:
 .photos { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; }
 figure { margin: 0; } img { width: 100%; height: auto; border-radius: 8px; }
 .frame { position: relative; } .frame img { display: block; }
+.reference-remove { position: absolute; top: 6px; right: 6px; width: 36px; height: 36px;
+ border: 1px solid #fff8; border-radius: 50%; background: #222d; color: white;
+ font-size: 26px; line-height: 1; cursor: pointer; }
+.reference-remove:disabled { opacity: .5; cursor: wait; }
 .zone { position: absolute; border: 3px solid #ffb72b; box-sizing: border-box; pointer-events: none; }
 .vertical-left { inset: 0 50% 0 0; } .vertical-right { inset: 0 0 0 50%; }
 .vertical-center { inset: 0 25%; } .horizontal-top { inset: 0 0 50% 0; }
@@ -228,6 +232,9 @@ class JournalHandler(BaseHTTPRequestHandler):
                                'text/javascript; charset=utf-8')
             elif parsed.path == '/confirm.js' and not parsed.query:
                 self.response(200, Path(__file__).with_name('confirm.js').read_bytes(),
+                               'text/javascript; charset=utf-8')
+            elif parsed.path == '/references.js' and not parsed.query:
+                self.response(200, Path(__file__).with_name('references.js').read_bytes(),
                               'text/javascript; charset=utf-8')
             elif parsed.path in ('/captures', '/captures/'):
                 query = parse_qs(parsed.query, strict_parsing=True, keep_blank_values=True) if parsed.query else {}
@@ -260,7 +267,8 @@ class JournalHandler(BaseHTTPRequestHandler):
                 base = '../' if parsed.path not in ('/',) and parsed.path.endswith('/') else ''
                 if parsed.path in ('/references', '/references/'):
                     data = render_references(self.server.journal.store, base=base,
-                                             confirmations=self.server.confirmations)
+                                             confirmations=self.server.confirmations,
+                                             token=self.server.reviews.token)
                 elif parsed.path in ('/journal', '/journal/'):
                     data = render(self.server.journal, int(page), base=base,
                                   confirmations=self.server.confirmations)
@@ -324,7 +332,7 @@ class JournalHandler(BaseHTTPRequestHandler):
             self.response(403, b'Home Assistant Ingress required.', 'text/plain')
             return
         try:
-            if self.path not in ('/review', '/confirm'):
+            if self.path not in ('/review', '/confirm', '/references/remove'):
                 raise AppError('Invalid review endpoint.')
             confirming = self.path == '/confirm'
             if not confirming:
@@ -343,7 +351,10 @@ class JournalHandler(BaseHTTPRequestHandler):
             request = json.loads(data.decode('utf-8'))
             if not isinstance(request, dict) or (not confirming and not isinstance(request.get('source'), str)):
                 raise AppError('Invalid review request.')
-            value = (self.server.confirmations.save(request) if confirming else self.server.reviews.save(request))
+            if self.path == '/references/remove':
+                value = self.server.reviews.remove_reference(request)
+            else:
+                value = (self.server.confirmations.save(request) if confirming else self.server.reviews.save(request))
             self.response(200, json.dumps(value).encode('utf-8'), 'application/json')
         except Conflict as error:
             self.response(409, json.dumps({'error': str(error)}).encode('utf-8'), 'application/json')
@@ -353,6 +364,7 @@ class JournalHandler(BaseHTTPRequestHandler):
             text = str(error) if isinstance(error, AppError) else 'Invalid review request.'
             self.response(400, json.dumps({'error': text}).encode('utf-8'), 'application/json')
         except Exception:
-            text = ('Confirmation could not be saved. Refresh and try again.' if self.path == '/confirm' else
+            text = ('Reference could not be removed. Refresh and try again.' if self.path == '/references/remove' else
+                    'Confirmation could not be saved. Refresh and try again.' if self.path == '/confirm' else
                     'Review could not be completed. Reopen the popup to check its status.')
             self.response(500, json.dumps({'error': text}).encode('utf-8'), 'application/json')
