@@ -499,11 +499,15 @@ both its visible area and fitted ellipse. It fits the outer convex envelope
 rather than penalizing every straw notch or jagged contact seam. Touching
 candidates are separated using distance-transform peaks with a substantial neck
 between them, so small notches do not automatically split one egg into two.
+From 0.1.44, at least 70% of the visible contour perimeter must follow the fitted
+ellipse within a 15% radial tolerance. Straight image borders provide no shell
+evidence; an egg-shaped convex hull alone is insufficient.
 
-Mostly visible border-clipped eggs can be counted if at least 70% of the fitted
-ellipse area is supported by the visible region. Border-connected components
-are never split into smaller candidates, to avoid turning walls into eggs.
-These are conservative heuristics, not proof that a partial shape is an egg.
+No exclusion buffer is applied at picture edges or split dividers. Mostly visible
+border-clipped eggs can be counted if at least 70% of the fitted ellipse area is
+supported by the visible region and the curved-boundary check passes.
+Border-connected components are never split into smaller candidates, to avoid
+turning walls into eggs. Hen presence and identity recognition are unchanged.
 
 `--texture-threshold`,
 `--min-area`, `--max-area`, and `--chicken-area` are experimental controls in the

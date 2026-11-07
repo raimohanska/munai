@@ -9,6 +9,13 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.44
+
+- Require curved perimeter support for fitted egg ellipses instead of accepting
+  an egg-shaped convex hull alone, reducing irregular wall-corner detections.
+- Keep egg detection near picture edges and split dividers; no exclusion buffer
+  is applied. Hen recognition is unchanged.
+
 ## 0.1.43
 
 - Show full JPEG filenames instead of photo IDs in journal evidence captions,

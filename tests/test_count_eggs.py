@@ -59,6 +59,27 @@ class EggTests(unittest.TestCase):
             self.assertEqual(len(result), 1)
             self.assertTrue(result[0]['partial'])
 
+    def test_smooth_wall_corner_candidate_is_ignored(self):
+        # A clipped smooth arc ending in a flat intrusion fits an egg-shaped
+        # hull, but lacks enough curved perimeter. No edge exclusion is needed.
+        image = nest()
+        background = image.copy()
+        cv2.ellipse(image, (620, 180), (27, 30), 15, 0, 360, 140, -1)
+        image[185:230, 610:660] = background[185:230, 610:660]
+        with patch('count_eggs.ellipse_boundary_support', return_value=1):
+            self.assertEqual(len(detect_eggs(image)), 1)
+        self.assertEqual(detect_eggs(image), [])
+
+    def test_split_crops_retain_eggs_near_edges_and_divider(self):
+        for size in ((320, 360), (640, 180)):
+            width, height = size
+            for center in ((width // 2, height // 2),
+                           (30, height // 2), (width - 30, height // 2),
+                           (width // 2, 40), (width // 2, height - 40)):
+                image = nest()[:height, :width].copy()
+                cv2.ellipse(image, center, (23, 30), 15, 0, 360, 140, -1)
+                self.assertEqual(len(detect_eggs(image, size=size)), 1)
+
     def test_smooth_border_wall_is_not_split_into_eggs(self):
         image = nest()
         for center in ((0, 80), (0, 115), (0, 150), (0, 185)):

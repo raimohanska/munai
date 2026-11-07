@@ -20,6 +20,29 @@ from data_layout import reference_directory
 from recognize_chickens import background_mask, measure
 
 
+def ellipse_boundary_support(contour, ellipse, size):
+    """Measure curved-boundary evidence, not just an egg-shaped convex hull."""
+    x, y, w, h = cv2.boundingRect(contour)
+    outline = np.zeros((h, w), np.uint8)
+    local = contour - np.array([[[x, y]]], np.int32)
+    cv2.drawContours(outline, [local], -1, 255, 1)
+    ys, xs = np.where(outline)
+    xs, ys = xs + x, ys + y
+    # The image boundary is not evidence of a curved shell.
+    visible = (xs > 0) & (xs < size[0] - 1) & (ys > 0) & (ys < size[1] - 1)
+    if not np.any(visible):
+        return 0.0
+    (cx, cy), (a, b), angle = ellipse
+    angle = math.radians(angle)
+    dx, dy = xs[visible] - cx, ys[visible] - cy
+    u = (dx * math.cos(angle) + dy * math.sin(angle)) / max(a / 2, 1)
+    v = (-dx * math.sin(angle) + dy * math.cos(angle)) / max(b / 2, 1)
+    radius = np.sqrt(u * u + v * v)
+    # Allow local straw nicks, but require most of the observed perimeter to
+    # follow the fitted ellipse rather than filling gaps with a convex hull.
+    return float(np.mean(np.abs(radius - 1) <= 0.15))
+
+
 def split_region(mask):
     """Separate touching smooth objects at distinct distance-transform peaks."""
     distance = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
@@ -127,6 +150,8 @@ def detect_eggs(gray, texture_threshold=8, min_area=950, max_area=3500, size=(64
             coverage = area / max(ellipse_area, 1)
             if (circularity >= 0.72 and solidity >= 0.82 and aspect >= 0.50 and
                     0.70 <= coverage <= 1.10 and min_area <= ellipse_area <= max_area):
+                if ellipse_boundary_support(piece, ellipse, size) < 0.70:
+                    continue
                 detections.append({'box': [int(v) for v in cv2.boundingRect(piece)],
                                    'ellipse': ellipse, 'area': float(area),
                                    'partial': clipped, 'smooth_fraction': smooth_fraction})
