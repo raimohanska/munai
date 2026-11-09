@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.45
+
+- Mark today's and yesterday's Journal day titles and keep today's section visible
+  on the latest page with “No events yet today” when it has no events.
+
 ## 0.1.44
 
 - Require curved perimeter support for fitted egg ellipses instead of accepting

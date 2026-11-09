@@ -1,5 +1,5 @@
 """HA Ingress pages and explicit human review, separate from the transfer API."""
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import shutil
@@ -97,15 +97,20 @@ def render(journal, page, base='', confirmations=None):
     if free < low_space + 16:
         parts.append('<p class="notice">Storage is low. Back up the archive and free space.</p>')
     parts.append('</header><main>')
-    if not entries:
-        parts.append('<article><h2>No journal events</h2></article>')
+    today = datetime.now().date()
+    today_key = today.isoformat()
+    yesterday_key = (today - timedelta(days=1)).isoformat()
+    if page == 0 and not any(local_time(entry['id']).date() == today for entry in entries):
+        parts.append('<section class="journal-day"><h2>{} (today)</h2>'
+                     '<article>No events yet today</article></section>'.format(today_key))
     day = None
     for entry in entries:
         entry_day = local_time(entry['id']).strftime('%Y-%m-%d')
         if entry_day != day:
             if day is not None:
                 parts.append('</section>')
-            parts.append('<section class="journal-day"><h2>{}</h2>'.format(entry_day))
+            suffix = ' (today)' if entry_day == today_key else ' (yesterday)' if entry_day == yesterday_key else ''
+            parts.append('<section class="journal-day"><h2>{}{}</h2>'.format(entry_day, suffix))
             day = entry_day
         parts.append('<article><h3 class="event-heading">{} <span>{}</span></h3>'.format(
             time_html(entry['id'], clock=True), escape(event_text(entry['text']))))

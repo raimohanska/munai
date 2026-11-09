@@ -3,6 +3,7 @@
 No camera capture calls, live HA, credentials or real images.
 """
 import copy
+from datetime import datetime
 from html.parser import HTMLParser
 import io
 import json
@@ -128,16 +129,44 @@ class JournalTests(unittest.TestCase):
             with patch.dict(os.environ, {'TZ': 'Europe/Helsinki'}):
                 time.tzset()
                 with patch.object(self.journal, 'entries', return_value=[2, 1, 0]), \
-                        patch.object(self.journal, 'read_entry', side_effect=lambda index: entries[index]):
+                        patch.object(self.journal, 'read_entry', side_effect=lambda index: entries[index]), \
+                        patch('ha_service.journal_web.datetime') as clock:
+                    clock.now.return_value = datetime(2000, 1, 2, 0, 30)
                     page = render(self.journal, 0)
         finally:
             time.tzset()
         self.assertEqual(page.count(b'class="journal-day"'), 2)
-        self.assertIn(b'<h2>2000-01-02</h2>', page)
-        self.assertIn(b'<h2>2000-01-01</h2>', page)
+        self.assertIn(b'<h2>2000-01-02 (today)</h2>', page)
+        self.assertIn(b'<h2>2000-01-01 (yesterday)</h2>', page)
+        self.assertNotIn(b'No events yet today', page)
         self.assertIn(b'>01:00:00</time> <span>Hen_a arrived</span></h3>', page)
         self.assertNotIn(b'Confirmed', page)
         self.assertNotIn(b'Center: ', page)
+
+    def test_empty_journal_has_today_section(self):
+        with patch('ha_service.journal_web.datetime') as clock:
+            clock.now.return_value = datetime(2000, 3, 1)
+            page = render(self.journal, 0)
+        self.assertEqual(page.count(b'class="journal-day"'), 1)
+        self.assertIn(b'<h2>2000-03-01 (today)</h2>', page)
+        self.assertIn(b'No events yet today', page)
+
+    def test_empty_today_precedes_history_only_on_latest_page(self):
+        entry = {'id': '20000228T120000_000000Z', 'text': 'Hen_a arrived', 'evidence': []}
+        with patch('ha_service.journal_web.datetime') as clock, \
+                patch('ha_service.journal_web.local_time', return_value=datetime(2000, 2, 28)), \
+                patch.object(self.journal, 'entries', return_value=list(range(21))), \
+                patch.object(self.journal, 'read_entry', return_value=entry):
+            clock.now.return_value = datetime(2000, 2, 29)
+            latest = render(self.journal, 0)
+            older = render(self.journal, 1)
+            clock.now.return_value = datetime(2000, 3, 1)
+            historical = render(self.journal, 1)
+        self.assertLess(latest.index(b'2000-02-29 (today)'), latest.index(b'2000-02-28 (yesterday)'))
+        self.assertEqual(latest.count(b'No events yet today'), 1)
+        self.assertNotIn(b'(today)', older)
+        self.assertNotIn(b'No events yet today', older)
+        self.assertIn(b'<h2>2000-02-28</h2>', historical)
 
     def test_delayed_count_and_visit_evidence_survive_restart(self):
         baseline = self.shots('no_chicken', 1)
