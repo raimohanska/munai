@@ -9,6 +9,19 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.46
+
+- Remember individual eggs across frames and restarts. Retain known eggs from
+  partial shell evidence when straw breaks their outline; missing or uncertain
+  detections alone no longer establish collection.
+- Match modest movement to the same egg and count confirmed new track IDs once,
+  avoiding repeated unknown eggs when an obstructed egg becomes visible again.
+- Require three clear local background observations before retiring an egg,
+  followed by the existing count confirmation. Preserve hen/center gating and
+  raw frame predictions; journal count evidence uses the tracked interpretation.
+- Migrate existing counts conservatively without rewriting historical totals or
+  journal events. Add synthetic coverage and three small real regression crops.
+
 ## 0.1.45
 
 - Mark today's and yesterday's Journal day titles and keep today's section visible

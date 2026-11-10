@@ -83,6 +83,53 @@ appearance-based identity rules change.
 Back up app data before upgrading: older releases cannot read the new nest-state
 format, so a downgrade also requires restoring the matching pre-upgrade backup.
 
+## Stateful egg tracking (0.1.46+)
+
+The frame detector still reports only eggs with a sufficiently complete smooth,
+curved outline. A separate egg-only tracker remembers each accepted egg's local
+ellipse and shell brightness. Locations never participate in hen identification.
+
+Tracking follows four rules:
+
+1. Acquire from strict detections, confirmed across three clear observations.
+   Relaxed shell fragments may retain an existing egg, never create a new one.
+2. Associate detections one-to-one with nearby, similarly sized remembered eggs.
+   Modest rolling preserves the track ID; visible/obstructed rebounds do not
+   increment production. Confirmed new IDs count once, even if another egg was
+   removed and the total count did not change.
+3. Retain an egg while a small smooth, similarly bright shell remnant remains.
+   Intermediate evidence is uncertain, with no expiry timeout. Retirement needs
+   three clear observations of almost entirely textured replacement bedding in
+   the remembered shell interior, followed by the usual three-frame count
+   confirmation before a collection event. A zero from the outline detector is
+   not removal evidence on its own.
+4. Never inspect eggs in a hen-occupied or obscured region, or with an occupied
+   divider. Center remains presence-only. Failures, hidden regions and restarts
+   break acquisition/removal streaks without losing confirmed egg memory.
+
+Memory (up to 32 tracks per egg-counting region) is committed in the same atomic
+nest state/split transaction as events and daily totals. New result JSON includes
+`egg_tracking` for diagnostics. Status/gallery raw predictions stay frame-only;
+confirmed counts and Journal egg-count labels include remembered obstructed eggs.
+An obstructed Journal photo can therefore show a tracked count greater than its
+raw detector count. These are interpretations, not automatic training references.
+
+Complete burial can be visually indistinguishable from removal. Textured straw
+covering the entire shell can still satisfy absence evidence; conversely, smooth
+bedding can leave a removed egg uncertain. This tracker prioritizes retaining
+partially visible eggs, not claiming certainty from invisible ones. No timeout
+forces an uncertain egg to disappear.
+
+Upgrade migrates nest state v5 to v6 without resetting attribution, totals or
+history. Existing eggs without coordinates remain an unlocated retained baseline
+until strict detections anchor them; absence alone cannot clear that baseline.
+Previously inflated daily totals and false Journal entries are not automatically
+repaired. Back up app data before upgrading; restore that backup to downgrade.
+
+Regression coverage uses synthetic scenes and a modest set of authorized small
+real egg/bedding crops in `tests/fixtures/egg_tracking/`; no camera capture tests
+or production recognition references are added.
+
 ## Stored captures page (0.1.15+)
 
 Select **Captures** in the MunAI sidebar to browse retained capture JPEGs.

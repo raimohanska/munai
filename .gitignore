@@ -30,6 +30,7 @@ references/
 *.png
 # Reproducibly drawn, synthetic-only offline regression fixtures.
 !/tests/fixtures/nest_presence/synthetic_*.jpg
+!/tests/fixtures/egg_tracking/*.png
 *.onnx
 *.pt
 *.pth

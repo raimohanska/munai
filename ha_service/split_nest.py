@@ -7,6 +7,7 @@ from .journal import ID, valid_entry
 from .nest import ARRIVAL_FRAMES, NestState, valid_daily, valid_state
 from .options import AppError
 from .storage import atomic_json, safe_path, sync_directory
+from . import egg_tracker
 
 
 class SplitNest:
@@ -104,7 +105,8 @@ class SplitNest:
         self.transition_path.unlink()
         sync_directory(self.root)
 
-    def observe_zones(self, observations, evidence=None, zone_evidence=None):
+    def observe_zones(self, observations, evidence=None, zone_evidence=None,
+                      egg_images=None, texture_threshold=8):
         if set(observations) != set(self.regions):
             raise AppError('Split observation has incorrect zones.')
         self._recover_transition()
@@ -170,6 +172,7 @@ class SplitNest:
             item = observations[zone]
             if item.get('obscured'):
                 blocked.add(zone)
+                nest.state['egg_tracking'] = egg_tracker.pause(nest.state.get('egg_tracking'))
                 # Small edge/body fragments are skipped completely. Genuine
                 # hidden/ambiguous nests still invalidate attribution, without
                 # consuming or erasing a confirmation shot or the clean count.
@@ -184,7 +187,10 @@ class SplitNest:
             frame = None if source_frame is None else dict(source_frame, zone=zone, label=item['label'],
                          egg_count=eggs if item['label'] == 'no_chicken' else None)
             for event in nest.observe(item['label'], eggs, frame, count_allowed=count_allowed,
-                                      arrival_event=moves.get(zone)):
+                                      arrival_event=moves.get(zone),
+                                      egg_image=(egg_images or {}).get(zone),
+                                      egg_detections=item.get('egg_detections'),
+                                      texture_threshold=texture_threshold):
                 events.append(event if ' moved to ' in event else zone.capitalize() + ': ' + event)
         states = {zone: nest.state for zone, nest in regions.items()}
         if not all(valid_state(state) for state in states.values()):

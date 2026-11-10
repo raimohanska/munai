@@ -212,7 +212,7 @@ class NestTests(unittest.TestCase):
         self.shots('hen_a')
         self.shots('no_chicken', 0)
         old = dict(self.nest.state)
-        for key in ('pending_settled', 'egg_high_water'):
+        for key in ('pending_settled', 'egg_high_water', 'egg_tracking'):
             del old[key]
         old['version'] = 4
         self.nest.path.write_text(json.dumps(old))

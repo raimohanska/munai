@@ -66,6 +66,10 @@ produced each egg.
 ## Testing
 
 - Do not write automated tests for camera capture functionality.
+- A modest number of real example pictures may be retained as regression-test fixtures and committed
+  to the repository. This is standing permission, not limited to one task. Prefer
+  the smallest useful image/crop; never include credentials or unrelated private
+  data, and keep real hen names and deployment calibration out of fixture metadata.
 
 ## Chicken recognition
 
@@ -84,9 +88,11 @@ produced each egg.
 - Use appearance, not nest position, to identify the configured hens. Reference
   images do not necessarily cover every hen in every position. Never infer
   identity from that missing coverage.
-- Never commit real hen names, images, reference measurements, models, capture
+- Never commit real hen names, reference measurements, models, capture
   observations, or deployment calibration. Use synthetic identities in tests and
   documentation; keep camera-specific exclusions in ignored camera-profile.json.
+  Real images are allowed only as regression-test fixtures as described above;
+  production references and ordinary capture datasets remain private and ignored.
 - Coordinates, nest zones, and body orientation must not be identity features.
   Camera-specific masks may exclude text/walls, but must not assign identities.
 - Prefer position-independent brightness/texture summaries; changed poses can

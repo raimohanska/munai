@@ -318,6 +318,7 @@ class JournalTests(unittest.TestCase):
         del old['journal']
         del old['pending_settled']
         del old['egg_high_water']
+        del old['egg_tracking']
         old['version'] = 3
         atomic_json(self.nest.path, old)
         migrated = NestState(self.store.root)

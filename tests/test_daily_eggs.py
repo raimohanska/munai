@@ -168,6 +168,7 @@ class DailyEggTests(unittest.TestCase):
         del state['journal']
         del state['pending_settled']
         del state['egg_high_water']
+        del state['egg_tracking']
         state['version'] = 2
         self.nest.path.write_text(json.dumps(state))
         self.restart()

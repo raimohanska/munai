@@ -7,6 +7,7 @@ import time
 import threading
 
 import cv2
+import numpy as np
 
 from capture import CaptureError, capture
 from count_eggs import detect_eggs
@@ -138,9 +139,10 @@ class Runtime:
                 gray = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
                 if gray is None:
                     raise ValueError()
-                prediction['egg_count'] = len(detect_eggs(
+                prediction['egg_detections'] = detect_eggs(
                     gray, self.options['texture_threshold'],
-                    self.options['egg_min_area'], self.options['egg_max_area']))
+                    self.options['egg_min_area'], self.options['egg_max_area'])
+                prediction['egg_count'] = len(prediction['egg_detections'])
             except Exception as error:
                 raise AppError('Egg detection failed; check app logs.',
                                diagnostic=exception_details(error)) from None
@@ -260,10 +262,24 @@ class Runtime:
         if image is not None and len(image) > MAX_FILE_BYTES:
             raise AppError('Image exceeds 8 MiB; lower the camera resolution.')
         self.journal.flush(self.nest)
+        egg_images = {}
+        items = prediction.get('zones', {'whole': prediction})
+        if image is not None and any('egg_detections' in item for item in items.values()):
+            gray = cv2.imdecode(np.frombuffer(image, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+            if gray is None:
+                raise AppError('Egg tracking image could not be decoded.')
+            gray = cv2.resize(gray, (640, 360), interpolation=cv2.INTER_AREA)
+            egg_images = {zone: (gray if zone == 'whole' else
+                                split_recognition.crop(gray, zone, self.options['box_split']))
+                          for zone, item in items.items() if 'egg_detections' in item}
         events = (self.nest.observe_zones(prediction['zones'], evidence,
-                                         zone_evidence=zone_evidence)
+                                         zone_evidence=zone_evidence, egg_images=egg_images,
+                                         texture_threshold=self.options['texture_threshold'])
                   if 'zones' in prediction else
-                  self.nest.observe(prediction['label'], prediction['egg_count'], evidence))
+                   self.nest.observe(prediction['label'], prediction['egg_count'], evidence,
+                                     egg_image=egg_images.get('whole'),
+                                     egg_detections=prediction.get('egg_detections'),
+                                     texture_threshold=self.options['texture_threshold']))
         for event in events:
             LOG.info('Latest event: %s.', event)
         self.journal.flush(self.nest)
@@ -272,7 +288,10 @@ class Runtime:
         observation = dict(state, timestamp=stamp,
                            distance=prediction['distance'], margin=prediction['margin'],
                             raw_prediction={'occupant': occupant(prediction),
-                                            'egg_count': prediction['egg_count']})
+                                             'egg_count': prediction['egg_count']})
+        observation['egg_tracking'] = ({zone: nest.state.get('egg_tracking')
+                                        for zone, nest in self.nest.regions.items() if zone != 'center'}
+                                       if 'zones' in prediction else self.nest.state.get('egg_tracking'))
         if 'zones' in prediction:
             observation['raw_prediction']['zones'] = prediction['zones']
             observation['raw_prediction']['ambiguous'] = prediction['ambiguous']

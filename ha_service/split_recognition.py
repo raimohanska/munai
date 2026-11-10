@@ -249,9 +249,10 @@ def predict(path, references, options):
         for zone in sides:
             if zones[zone]['obscured'] or zones[zone]['label'] != 'no_chicken':
                 continue
-            zones[zone]['egg_count'] = len(detect_eggs(
+            zones[zone]['egg_detections'] = detect_eggs(
                 crop(frame, zone, split), options['texture_threshold'], options['egg_min_area'],
-                options['egg_max_area'], size=measurement_size(split)))
+                options['egg_max_area'], size=measurement_size(split))
+            zones[zone]['egg_count'] = len(zones[zone]['egg_detections'])
     labels = {item['label'] for item in zones.values() if item['label'] != 'no_chicken'}
     label = next(iter(labels)) if len(labels) == 1 else 'unknown' if labels else 'no_chicken'
     counts = [zones[zone]['egg_count'] for zone in sides]
