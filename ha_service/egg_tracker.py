@@ -25,7 +25,9 @@ def finite(value, low, high):
 def valid_tracker(value):
     if value is None:
         return True  # Pre-tracker baseline, not evidence of no eggs.
-    if (not isinstance(value, dict) or set(value) != {'tracks', 'unlocated', 'next_id'}
+    if (not isinstance(value, dict) or set(value) not in (
+            {'tracks', 'unlocated', 'next_id'}, {'tracks', 'unlocated', 'next_id', 'baseline_pending'})
+            or ('baseline_pending' in value and type(value['baseline_pending']) is not bool)
             or type(value['unlocated']) is not int or not 0 <= value['unlocated'] <= 1000000
             or type(value['next_id']) is not int or not 1 <= value['next_id'] <= 1000000000
             or not isinstance(value['tracks'], list) or len(value['tracks']) > MAX_TRACKS):

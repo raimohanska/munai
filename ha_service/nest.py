@@ -71,6 +71,15 @@ def valid_state(state):
                   and not any(ord(c) < 32 for c in state['latest_event']))))
 
 
+def initial_state():
+    return {'version': 6, 'hen': None, 'eggs': None,
+            'baseline': None, 'latest_event': None, 'confirmed': False,
+            'pending_hen': None, 'pending_baseline': None,
+            'pending_settled': False, 'egg_high_water': None,
+            'daily_eggs': {'date': None, 'counts': {'unknown': 0}},
+            'journal': empty_evidence(), 'egg_tracking': None}
+
+
 class NestState:
     def __init__(self, root, today=None, zone=None, layout=None, count_initial_eggs=True):
         self.zone = zone
@@ -78,12 +87,7 @@ class NestState:
         self.count_initial_eggs = count_initial_eggs
         self.today = today or date.today
         self.path = safe_path(root, 'nest-state.json')
-        self.state = {'version': 6, 'hen': None, 'eggs': None,
-                      'baseline': None, 'latest_event': None, 'confirmed': False,
-                      'pending_hen': None, 'pending_baseline': None,
-                      'pending_settled': False, 'egg_high_water': None,
-                      'daily_eggs': {'date': None, 'counts': {'unknown': 0}},
-                      'journal': empty_evidence(), 'egg_tracking': None}
+        self.state = initial_state()
         if self.path.exists():
             try:
                 if not self.path.is_file() or self.path.stat().st_size > 65536:
@@ -275,7 +279,8 @@ class NestState:
             # rule: partial decreases cannot establish removal without pixels.
             increase = (len(new_tracks) if tracking is not None else
                         eggs - (state['egg_high_water'] or 0))
-            if self.state['eggs'] is None and not self.count_initial_eggs:
+            if self.state['eggs'] is None and (not self.count_initial_eggs or
+                    (tracking is not None and tracking.get('baseline_pending', False))):
                 # New split geometry establishes a baseline, not new production.
                 increase = 0
             if (state['pending_hen'] is not None and state['pending_baseline'] is not None
@@ -292,6 +297,8 @@ class NestState:
                 counts[identity] = counts.get(identity, 0) + increase
             for track in new_tracks:
                 track['counted'] = True
+            if tracking is not None and tracking.get('baseline_pending'):
+                tracking['baseline_pending'] = False
             if eggs == 0 and state['eggs'] is not None and state['eggs'] > 0:
                 n = state['eggs']
                 events.append('{} {} collected'.format(n, 'egg' if n == 1 else 'eggs'))

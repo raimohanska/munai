@@ -15,7 +15,7 @@ def start(title, active, base='', script=False, reviews=False):
     parts.append('</head><body><aside class="sidebar"><div class="brand">MunAI</div>'
                  '<nav aria-label="Main navigation">')
     for label, path in (('Status', './'), ('Journal', 'journal'),
-                        ('Captures', 'captures'), ('References', 'references')):
+                        ('Captures', 'captures'), ('References', 'references'), ('Settings', 'settings')):
         parts.append('<a href="{}{}"{}>{}</a>'.format(
             base, path, ' aria-current="page"' if active == label else '', label))
     parts.append('</nav></aside><div class="content">')

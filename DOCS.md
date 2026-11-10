@@ -13,7 +13,7 @@ in usage; do not retire them until the HA pilot works.
 ## Status page (0.1.12+)
 
 **Open Web UI** opens Status by default. The **MunAI** sidebar links **Status**,
-**Journal**, **Captures** and **References**. Status refreshes every 15 seconds and shows the latest
+**Journal**, **Captures**, **References** and **Settings**. Status refreshes every 15 seconds and shows the latest
 successfully processed image with its timestamp, age and image-specific prediction,
 separately from the confirmed state at that capture. Confirmation may lag the raw
 prediction. Unknown/obscured means uncertainty, not definite hen presence. Expand
@@ -82,6 +82,28 @@ sensor or reinterpret historical captures. No MQTT, recognition thresholds or
 appearance-based identity rules change.
 Back up app data before upgrading: older releases cannot read the new nest-state
 format, so a downgrade also requires restoring the matching pre-upgrade backup.
+
+## Settings: reset state (0.1.47+)
+
+Open **Settings** in the MunAI Web UI, choose **Reset state**, and confirm. This
+zeros today's production totals for every identity, including Unknown and split
+carry, and clears current occupants, egg locations/counts, pending attribution,
+confirmation streaks and the latest-event display. It does **not** correct a
+total to a chosen nonzero value or reconstruct earlier laying events.
+
+References, captures, results, training/reviews, journal entries/images, app
+configuration and credentials remain unchanged. Existing MQTT/InfluxDB history
+is not rewritten. The app immediately republishes the zero daily snapshot and
+unknown live state; an MQTT outage is reported as an update pending, with daily
+totals retried by the scheduler. Capture continues if enabled. The first clear
+observations establish fresh egg baselines without counting existing eggs again;
+that baseline-pending state survives restarts. Subsequent new eggs count normally.
+
+Reset is available only through HA Ingress, requires a page-specific authorization
+token and explicit confirmation, and rejects an action from a previous local day.
+If capture processing is busy, try again shortly. A durable reset intent is replayed
+before nest loading after an interrupted reset; old split transitions cannot
+restore the cleared counts. Back up the app before upgrading or resetting state.
 
 ## Stateful egg tracking (0.1.46+)
 

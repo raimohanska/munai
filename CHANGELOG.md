@@ -9,6 +9,16 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.47
+
+- Add a Settings page with a confirmation-protected Reset state button. Clear
+  live nest/egg tracking, pending visits, latest-event state and today's production
+  totals, including split carry; preserve references, photos and archived history.
+- Republish reset totals and unknown live state to MQTT. Retain a fresh-baseline
+  marker across restarts so eggs already present are not counted as new production.
+- Serialize resets with processing, reject stale-day actions and replay interrupted
+  resets safely before loading state. Keep this control behind HA Ingress only.
+
 ## 0.1.46
 
 - Remember individual eggs across frames and restarts. Retain known eggs from
