@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chicken egg tracking</title>
+<style>
+:root{--ink:#292b38;--paper:#fff9ed;--yolk:#ffca45;--pink:#efada8;--green:#d2dfbb}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Arial,Helvetica,sans-serif}main{max-width:1600px;margin:auto}
+section{min-height:calc(100vh - 64px);padding:5vh 6vw;display:flex;flex-direction:column;justify-content:center;gap:26px;position:relative}section[hidden]{display:none}
+h1,h2,p,figure{margin:0}h1{font-size:clamp(46px,6.5vw,100px);line-height:1.03;letter-spacing:-.06em;max-width:1100px}h2{font-size:clamp(36px,4.5vw,68px);line-height:1.06;letter-spacing:-.045em}p,li{font-size:clamp(21px,2.1vw,32px);line-height:1.4}ul,ol{margin:0;padding-left:1.3em}li+li{margin-top:12px}strong{background:var(--yolk);padding:0 .12em}em{font-style:normal;text-decoration:underline;text-decoration-color:#d87565;text-decoration-thickness:5px;text-underline-offset:8px}
+.kicker{font-size:15px;font-weight:bold;letter-spacing:.13em;text-transform:uppercase}.big{font-size:clamp(36px,5vw,76px);line-height:1.13;letter-spacing:-.04em}.small{font-size:clamp(17px,1.6vw,24px)}.yellow{background:var(--yolk)}.pink{background:var(--pink)}.green{background:var(--green)}.split{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.card{padding:28px;background:#fffdf7;border:2px solid var(--ink);border-radius:20px;box-shadow:6px 6px 0 var(--ink)}.card:nth-child(2){transform:rotate(1deg)}.number{display:block;font-size:56px;font-weight:bold;color:#b14b32;margin-bottom:20px}.demo{font-size:clamp(60px,12vw,170px);font-weight:bold;letter-spacing:-.07em;color:#a94335}.photo{display:block;width:100%;max-height:64vh;object-fit:contain;border:7px solid white;box-shadow:0 4px 16px #292b3820}.cards .photo{max-height:30vh;border-width:4px}figcaption{font-size:20px;font-weight:bold;margin-top:12px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:28px}.egg{width:140px;height:180px;background:#fffdf7;border:3px solid var(--ink);border-radius:50% 50% 46% 46% / 64% 64% 36% 36%;transform:rotate(12deg);box-shadow:8px 8px 0 #292b38}.egg:after{content:'';display:block;width:52px;height:52px;border-radius:50%;background:var(--yolk);margin:80px auto 0}.egg-row{display:flex;gap:25px;justify-content:center}.egg-row .egg:nth-child(2){transform:rotate(-12deg) translateY(-20px)}.timeline{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}.timeline .card{padding:22px 16px}.timeline p{font-size:23px}.timeline .number{font-size:38px}.callout{border-left:7px solid #b14b32;padding-left:20px}.wide{max-width:1050px}.comparison .photo{max-height:54vh}.comparison figure{min-width:0}
+footer{height:64px;display:flex;gap:15px;align-items:center;justify-content:center;border-top:2px solid var(--ink);background:var(--paper)}button{font:inherit;background:transparent;border:2px solid var(--ink);border-radius:50%;width:40px;height:40px;cursor:pointer}button:disabled{opacity:.25;cursor:default}button:focus-visible{outline:3px solid #b14b32;outline-offset:3px}#count{font:14px monospace;min-width:70px;text-align:center}#print{width:auto;border-radius:22px;padding:0 18px}progress{position:fixed;bottom:0;left:0;width:100%;height:4px;border:0;appearance:none}progress::-webkit-progress-bar{background:transparent}progress::-webkit-progress-value{background:#b14b32}progress::-moz-progress-bar{background:#b14b32}
+@media(max-width:760px){section{padding:32px 6vw}.split,.cards,.pair,.timeline{grid-template-columns:1fr}.egg-row{display:none}.photo{max-height:48vh}.card:nth-child(2){transform:none}.timeline .number{margin-bottom:8px}.timeline .card{box-shadow:3px 3px 0 var(--ink)}}
+@media print{@page{size:landscape;margin:0}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}section,section[hidden]{display:flex!important;min-height:0;height:210mm;padding:12mm 16mm;gap:6mm;break-after:page}section:last-child{break-after:auto}footer,progress{display:none}h1{font-size:65px}h2{font-size:44px}p,li{font-size:23px}.big{font-size:48px}.photo{max-height:145mm}.cards .photo{max-height:65mm}.comparison .photo{max-height:120mm}.demo{font-size:110px}}
+.captured-layout{display:grid;grid-template-columns:.8fr 1.5fr;gap:40px;align-items:center}.photo-pile{position:relative;height:55vh;min-height:350px;margin:15px 20px}.photo-pile img{position:absolute;width:43%;height:40%;object-fit:contain;background:white;padding:7px 7px 20px;box-shadow:3px 7px 14px #292b3840;left:var(--x);top:var(--y);transform:rotate(var(--r));transition:transform .18s}.photo-pile img:hover{z-index:10;transform:rotate(0deg) scale(1.12)}
+@media(max-width:760px){.captured-layout{grid-template-columns:1fr;gap:10px}.photo-pile{height:420px;min-height:0;margin:10px}.photo-pile img{padding:4px 4px 12px}}
+@media(prefers-reduced-motion:reduce){.photo-pile img{transition:none}}
+@media print{.captured-layout{grid-template-columns:.8fr 1.5fr;gap:25px}.photo-pile{height:125mm;min-height:0;margin:10px}.photo-pile img{padding:5px 5px 15px}}
+.nest-camera{display:grid;grid-template-columns:1fr 3fr;gap:30px;align-items:center}.camera-product{display:block;width:100%;max-height:60vh;object-fit:contain;transform:rotate(-5deg)}
+@media(max-width:760px){.nest-camera{grid-template-columns:1fr}.camera-product{max-height:25vh}}
+@media print{.nest-camera{grid-template-columns:1fr 3fr}.camera-product{max-height:130mm}}
+</style>
+</head>
+<body>
+<main>
+<section class="yellow"><p class="kicker">The problem</p><h1>How many eggs did each chicken lay each day?</h1><div class="split"><p class="big">How would <em>you</em><br>track that?</p><div class="egg-row" aria-hidden="true"><span class="egg"></span><span class="egg"></span></div></div></section>
+<section><h2>Enter nest cam</h2><div class="nest-camera"><img class="camera-product" src="presentation-images/tapo-c100-transparent.png" alt="Tapo C100 camera"><img class="photo" src="presentation-images/20261111T112249_557549Z_583e241fd720410d8de1bbe17af85316.jpg" alt="Nest camera view with a chicken in the left nest"></div></section>
+<section class="pink"><p class="kicker">How to track eggs now?</p><h1>How would<br><em>you</em> do it?</h1></section>
+<section><h2>Top-level architecture</h2><div class="cards"><div class="card"><span class="number">01</span><p>Recognize chickens and eggs</p></div><div class="card"><span class="number">02</span><p>Keep track of state</p></div><div class="card"><span class="number">03</span><p>Infer egg events</p></div></div></section>
+<section><h2>Example</h2><div class="timeline"><div class="card"><span class="number">0</span><p>Empty nest</p></div><div class="card"><span class="number">1</span><p>First chicken in picture</p></div><div class="card"><span class="number">2</span><p>No chicken,<br><strong>1 egg</strong></p></div><div class="card"><span class="number">3</span><p>Second chicken in picture</p></div><div class="card"><span class="number">4</span><p>No chicken,<br><strong>2 eggs</strong></p></div></div></section>
+<section><h2>Data collection</h2><p class="wide">Before writing software or training AI models, you need <strong>training data.</strong></p><p>I set up a capturing loop.</p><ul><li>Tapo C100 camera (€25 from Prisma)</li><li>It provides an RTSP stream over WLAN</li><li>My application takes a snapshot every minute</li><li>Drop pictures that are “very similar”</li></ul></section>
+<section class="pink"><h2>Let’s have a look at captures</h2><p class="demo">(demo)</p></section>
+<section><p class="kicker">Lesson 1</p><h1>Observability</h1><p class="wide">Observability is key. With AI coding tools, it’s trivial to build a Web UI instead of doing something stupid like transferring images over SCP and viewing them on your laptop.</p><p class="callout">Which I did at first.</p></section>
+<section><h2>Captured data</h2><div class="captured-layout"><ul><li>Different chickens</li><li>Empty nest <em>(straws change place!)</em></li><li>1–2 eggs (+ AI-edited images of more eggs)</li></ul><div class="photo-pile" role="group" aria-label="Captured data photos">
+<img src="presentation-images/20261111T180149_319590Z_c8409498f7144104ac366c344ad66b48.jpg" alt="Empty nests" style="--x:2%;--y:2%;--r:-13deg">
+<img src="presentation-images/20261111T112249_557549Z_583e241fd720410d8de1bbe17af85316.jpg" alt="Chicken in the nest" style="--x:49%;--y:0%;--r:11deg">
+<img src="presentation-images/20261111T173749_268697Z.jpg" alt="Additional captured data example 1" style="--x:27%;--y:12%;--r:-5deg">
+<img src="presentation-images/20261110T093910_082391Z_89e58b20f1cd4590877d1c9fe94422f2.jpg" alt="Egg partly covered by straw" style="--x:0%;--y:33%;--r:8deg">
+<img src="presentation-images/20261027T101601_846343Z.jpg" alt="Additional captured data example 2" style="--x:54%;--y:31%;--r:-9deg">
+<img src="presentation-images/20261111T112949_597798Z_06eaa6cf0c4842ed9e7562f598d616a4.jpg" alt="Visible egg in the nest" style="--x:8%;--y:60%;--r:-8deg">
+<img src="presentation-images/20261103T145349_052143Z-right.jpg" alt="Additional captured data example 3" style="--x:48%;--y:59%;--r:12deg">
+<img src="presentation-images/20261110T143825_321132Z.jpg" alt="Additional captured data example 4" style="--x:29%;--y:42%;--r:-3deg">
+</div></div></section>
+<section><h2>Machine learning datasets</h2><div class="pair"><div class="card"><p><strong>Training data</strong></p><p>The data you use to train your “AI”</p></div><div class="card"><p><strong>Test data</strong></p><p>Separate data you use to test if the AI works</p></div></div><p class="big">Must be separate sets!</p><p>(why?)</p></section>
+<section><h2>Frame analysis</h2><p class="small">I assumed I’d be training YOLO object detection models, but so far I’ve just used “traditional machine vision” in the form of OpenCV.</p><div class="cards"><figure><img class="photo" src="presentation-images/20261111T112249_557549Z_583e241fd720410d8de1bbe17af85316.jpg" alt="Chicken in the left nest"><figcaption>Is there a chicken? (which)</figcaption></figure><figure><img class="photo" src="presentation-images/20261111T180149_319590Z_c8409498f7144104ac366c344ad66b48.jpg" alt="Empty nests"><figcaption>Empty nest</figcaption></figure><figure><img class="photo" src="presentation-images/20261111T112949_597798Z_06eaa6cf0c4842ed9e7562f598d616a4.jpg" alt="One visible egg in the left nest"><figcaption>If not, how many eggs?</figcaption></figure></div><p class="small callout">Gotcha: if a chicken is there, there’s no way to know how many eggs are under it.</p></section>
+<section><h2>Event journal</h2><p class="big">If a chicken left the coop and the egg count increased, attribute the egg to the chicken.</p><p class="demo" style="font-size:48px">(demo)</p><p class="small callout">Gotcha: analysis is unreliable; eggs may be partly obscured.</p></section>
+<section class="pink"><h2>Iteration</h2><p class="big">It always works quite well until something <em>new</em> happens.</p><div class="callout"><p>Lesson 1: build tools for easy inspection and improvement.</p><p>Lesson 2: apply statistics to ignore random errors.</p></div><p class="demo" style="font-size:48px">(demo)</p></section>
+<section class="comparison"><h2>Stateful egg tracking</h2><div class="pair"><figure><img class="photo" src="presentation-images/20261111T112949_597798Z_06eaa6cf0c4842ed9e7562f598d616a4.jpg" alt="Fully visible egg"><figcaption>Fully shown egg</figcaption></figure><figure><img class="photo" src="presentation-images/20261110T093910_082391Z_89e58b20f1cd4590877d1c9fe94422f2.jpg" alt="Egg partly obscured by straw"><figcaption>Partly obscured egg</figcaption></figure></div></section>
+<section class="green"><h2>Home Assistant entities</h2><p class="big">Nest status, daily egg counts exposed as MQTT entities.</p><p class="demo" style="font-size:60px">(demo)</p></section>
+<section class="yellow"><h2>Grafana</h2><p class="big">My own script ships them to InfluxDB.</p><p class="demo">(demo)</p></section>
+<section class="green"><h2>Lessons learnt</h2><ul><li>Webcams are cheap and work without their cloud service</li><li>Classic machine vision rocks</li><li>Data tools are quick to build with LLM agents</li><li>Young chickens visit the box too</li></ul></section>
+</main>
+<footer><button id="previous" aria-label="Previous slide">←</button><span id="count" aria-live="polite"></span><button id="next" aria-label="Next slide">→</button><button id="print">Print / PDF</button></footer>
+<progress id="progress" aria-label="Presentation progress"></progress>
+<script>
+(function(){
+  'use strict';
+  var slides=Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  var previous=document.getElementById('previous'),next=document.getElementById('next');
+  var count=document.getElementById('count'),progress=document.getElementById('progress'),index=0;
+  function show(value){
+    index=Math.max(0,Math.min(slides.length-1,value));
+    slides.forEach(function(slide,i){slide.hidden=i!==index;});
+    previous.disabled=index===0;next.disabled=index===slides.length-1;
+    count.textContent=(index+1)+' / '+slides.length;
+    progress.max=slides.length;progress.value=index+1;
+    if(location.hash!=='#'+(index+1)){history.replaceState(null,'','#'+(index+1));}
+    window.scrollTo(0,0);
+  }
+  function fromHash(){var value=parseInt(location.hash.slice(1),10);show(isNaN(value)?0:value-1);}
+  previous.addEventListener('click',function(){show(index-1);});
+  next.addEventListener('click',function(){show(index+1);});
+  document.getElementById('print').addEventListener('click',function(){window.print();});
+  document.addEventListener('keydown',function(event){
+    if(event.altKey||event.ctrlKey||event.metaKey||/INPUT|TEXTAREA|BUTTON|SELECT/.test(event.target.tagName)){return;}
+    if(['ArrowRight','PageDown',' ','ArrowLeft','PageUp','Home','End'].indexOf(event.key)===-1){return;}
+    event.preventDefault();
+    if(event.key==='Home'){show(0);}else if(event.key==='End'){show(slides.length-1);}else{show(index+(['ArrowLeft','PageUp'].indexOf(event.key)>=0?-1:1));}
+  });
+  window.addEventListener('hashchange',fromHash);fromHash();
+}());
+</script>
+</body>
+</html>
