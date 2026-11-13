@@ -39,6 +39,14 @@ def occupant(prediction):
     return 'empty' if label == 'no_chicken' else 'unknown' if label == 'unknown' else label.capitalize()
 
 
+def presence(state, identities):
+    """Binary confirmed presence, using exact reference keys and no positions."""
+    occupants = {item['occupant'] for item in state.get('zones', {'whole': state}).values()}
+    return {identity: int(identity.capitalize() in occupants)
+            for identity in sorted(set(identities))
+            if LABEL.fullmatch(identity) and identity not in RESERVED}
+
+
 def zone_discovery(options, zone, sensor):
     config = discovery(options, sensor)
     config.update(name=zone.capitalize() + ' ' + config['name'].lower(),
@@ -142,7 +150,7 @@ class MQTT:
         except Exception:
             raise AppError('MQTT publish failed or timed out; check broker connectivity and permissions.') from None
 
-    def publish(self, state):
+    def publish(self, state, identities=()):
         eggs = state['egg_count']
         if eggs is not None and (type(eggs) is not int or eggs < 0):
             raise AppError('Invalid egg count; no observation published.')
@@ -155,6 +163,7 @@ class MQTT:
             payload['zones'] = state['zones']
             payload['layout'] = state['layout']
         self.send(self.base + '/state', json.dumps(payload), False)
+        self.send(self.base + '/presence', json.dumps(presence(state, identities)), False)
         self.send(self.base + '/availability', 'online', True)
 
     def publish_event(self, text):

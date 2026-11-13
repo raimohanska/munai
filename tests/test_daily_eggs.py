@@ -257,7 +257,7 @@ class DailyEggTests(unittest.TestCase):
         (self.root / 'results').mkdir()
         runtime.observe('synthetic', {'label': 'no_chicken', 'egg_count': 0,
                                       'distance': None, 'margin': None})
-        publisher.publish.assert_called_once_with(self.nest.snapshot())
+        publisher.publish.assert_called_once_with(self.nest.snapshot(), identities=[])
 
 
 if __name__ == '__main__':

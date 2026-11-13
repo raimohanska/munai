@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.49
+
+- Publish MQTT-only per-hen binary presence at `munai/<device_id>/presence`,
+  using exact active reference identity keys and confirmed occupants across all
+  regions. Send non-retained QoS 1 snapshots without adding HA entities or UI.
+
 ## 0.1.48
 
 - Use an egg icon for MunAI in the Home Assistant sidebar.

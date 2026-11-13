@@ -393,6 +393,7 @@ class NestTests(unittest.TestCase):
         publisher = Mock()
         (self.root / 'results').mkdir()
         runtime = Runtime(validate({}), Mock(root=self.root), publisher)
+        runtime.reference_identities = Mock(return_value=['hen_a', 'hen_b'])
         for index, label in enumerate(['no_chicken'] * 3 + ['hen_a'] * 3 +
                                       ['unknown', 'no_chicken', 'hen_a']):
             prediction = {'label': label, 'egg_count': 2 if label == 'no_chicken' else 0,
@@ -400,7 +401,7 @@ class NestTests(unittest.TestCase):
             stamp = 'synthetic-{}'.format(index)
             runtime.observe(stamp, prediction)
             snapshot = runtime.nest.snapshot()
-            publisher.publish.assert_called_with(snapshot)
+            publisher.publish.assert_called_with(snapshot, identities=['hen_a', 'hen_b'])
             for key, value in snapshot.items():
                 self.assertEqual(runtime.last_observation[key], value)
             self.assertEqual(runtime.last_occupant, snapshot['occupant'])

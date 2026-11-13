@@ -141,7 +141,7 @@ class Runtime:
         if not self.publisher:
             return False
         try:
-            self.publisher.publish(self.nest.snapshot())
+            self.publisher.publish(self.nest.snapshot(), identities=self.reference_identities())
             self.events.recovered('state_mqtt', 'Reset state publication recovered.')
             return False
         except AppError:
@@ -372,17 +372,21 @@ class Runtime:
         if self.publisher:
             self.publish_daily()
             latest = self.latest_display_event()
-            self.publisher.publish(dict(state, latest_event=None if latest == 'No events yet' else latest))
+            self.publisher.publish(dict(state, latest_event=None if latest == 'No events yet' else latest),
+                                   identities=self.reference_identities())
             self.events.recovered('state_mqtt', 'Reset state publication recovered.')
 
-    def update_daily(self):
+    def reference_identities(self):
         # Only reviewed identity directories, never predictions or nest positions.
         with self.store.lock:
             root = self.store.reference_root()
             identities = [] if root is None else [path.name for path in root.iterdir()
                 if valid_hen(path.name) and path.name not in RESERVED
                 and safe_path(root, path.name).is_dir()]
-        self.nest.update_day(identities)
+        return identities
+
+    def update_daily(self):
+        self.nest.update_day(self.reference_identities())
 
     def publish_daily(self):
         if self.publisher:

@@ -396,7 +396,7 @@ class JournalTests(unittest.TestCase):
             runtime.observe('synthetic-' + str(index), prediction, frame)
         self.assertEqual(self.entries()[0]['text'], runtime.nest.state['latest_event'])
         self.assertEqual(len(set(frame_ids(self.entries()[0]))), 3)
-        runtime.publisher.publish.assert_called_with(runtime.nest.snapshot())
+        runtime.publisher.publish.assert_called_with(runtime.nest.snapshot(), identities=[])
 
     def test_retention_option_validation_and_ingress_metadata(self):
         self.assertEqual(self.options['journal_retention_days'], 365)

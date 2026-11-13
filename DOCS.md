@@ -954,6 +954,7 @@ homeassistant/sensor/<device_id>/egg_count/config
 homeassistant/sensor/<device_id>/daily_eggs/config
 homeassistant/sensor/<device_id>/daily_eggs_<identity>/config
 munai/<device_id>/state
+munai/<device_id>/presence
 munai/<device_id>/availability
 munai/<device_id>/daily_eggs
 ```
@@ -961,6 +962,30 @@ munai/<device_id>/daily_eggs
 and subscribing to `homeassistant/status`. The non-retained state JSON contains
 both `occupant` and integer `egg_count` (or `null` until established). Eggs remain ignored when identifying
 occupants; egg counting does not influence hen identity.
+
+### Chicken presence for Grafana
+
+`munai/<device_id>/presence` publishes a **non-retained, QoS 1 JSON snapshot**
+alongside each live state update, with no additional HA entities or UI:
+
+```json
+{"hen_a":1,"hen_b":0}
+```
+
+Each active reviewed reference identity has its exact folder name as a key.
+`1` means that hen is a confirmed occupant in the whole box or any split region,
+including center; `0` means not currently identified as present, not proof of
+physical absence. Unknown hens have no separate key. Existing confirmation rules
+apply, so short uncertain observations can preserve the last confirmed identity.
+Removed reference identities disappear from subsequent snapshots; historical
+daily-egg identities are not included merely because they have counts.
+
+Send values to InfluxDB as numeric gauges and graph the latest value per chicken
+in Grafana. Treat data older than `expire_after` seconds or device availability
+`offline` as unavailable, not absent. No fresh presence is sent on failed capture,
+while capture is disabled, or merely on reconnect. Reset state sends all zeros
+because confirmed identities have been cleared. The bridge must track receipt
+time and avoid filling gaps indefinitely with old values.
 
 ### Daily production counts and InfluxDB
 

@@ -577,7 +577,9 @@ class SchedulingAndMQTTTests(unittest.TestCase):
         self.assertEqual(sent[0][1:], ('No events yet', True))
         self.assertEqual(json.loads(sent[1][1]), {'occupant': 'Hen_a', 'egg_count': 2})
         self.assertFalse(sent[1][2])
-        self.assertEqual(sent[2][1:], ('online', True))
+        self.assertEqual(sent[2][0], 'munai/synthetic/presence')
+        self.assertEqual(sent[2][1:], ('{}', False))
+        self.assertEqual(sent[3][1:], ('online', True))
 
     def test_confirmed_egg_states_including_occupied_and_unestablished(self):
         publisher = MQTT.__new__(MQTT)
