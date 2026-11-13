@@ -2,7 +2,7 @@
   const script = document.currentScript;
   document.querySelectorAll('.reference-remove').forEach(button => {
     button.addEventListener('click', async () => {
-      if (!window.confirm('Remove reference ' + button.dataset.path + '? This cannot be undone.')) return;
+      if (!window.confirm('Remove reference ' + button.dataset.path.split('/').pop() + '? This cannot be undone.')) return;
       button.disabled = true;
       try {
         const response = await fetch(script.dataset.api, {

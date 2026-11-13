@@ -64,13 +64,13 @@ def render(store, base='', confirmations=None, token=None):
         source = base + 'references/' + revision + '/' + item['path']
         remove = ('<button type="button" class="reference-remove" data-path="{}" '
                   'aria-label="Remove reference {}" title="Remove reference">×</button>'.format(
-                      escape(item['path'], quote=True), escape(item['path'], quote=True))
+                      escape(item['path'], quote=True), escape(name, quote=True))
                   if token is not None else '')
         parts.append('<figure><div class="frame"><a href="{0}" target="_blank" rel="noopener">'
                       '<img src="{0}" loading="lazy" alt="{1}"></a>{3}</div>'
                       '<figcaption><code>{2}</code></figcaption></figure>'.format(
                          escape(source, quote=True), escape(label + ': ' + name, quote=True),
-                         escape(item['path']), remove))
+                         escape(name), remove))
     if previous is not None:
         parts.append('</div></article>')
     parts.append('</main>' + end())

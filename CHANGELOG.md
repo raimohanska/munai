@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.53
+
+- Show filenames without identity folder prefixes in reference captions, removal
+  labels and removal confirmation dialogs. Preserve full paths for deletion.
+
 ## 0.1.52
 
 - Restyle all Ingress pages with the presentation's Arial/Helvetica typography,

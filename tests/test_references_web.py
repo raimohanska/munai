@@ -66,7 +66,8 @@ class ReferenceGalleryTests(unittest.TestCase):
         self.assertIn(b'1 full-frame empty calibration photos', page)
         self.assertIn(b'Empty-nest background calibration', page)
         self.assertIn(b'<strong>vertical</strong>', page)
-        self.assertIn(b'hen_a/' + NAME.encode(), page)
+        self.assertIn(b'<figcaption><code>' + NAME.encode() + b'</code>', page)
+        self.assertNotIn(b'<code>hen_a/', page)
         self.assertIn(b'loading="lazy"', page)
         self.assertNotIn(b'src="/', page)
         self.assertLess(page.index(b'<h2>Hen_a'), page.index(b'<h2>Empty-nest'))
@@ -98,7 +99,9 @@ class ReferenceGalleryTests(unittest.TestCase):
         self.assertIn(b'href="../journal">Journal', page)
         self.assertIn(('../references/' + revision + '/hen_a/').encode(), page)
         self.assertIn(b'src="../references.js" data-api="../references/remove"', page)
-        self.assertIn(b'aria-label="Remove reference hen_a/', page)
+        self.assertIn(b'aria-label="Remove reference ' + NAME.encode() + b'"', page)
+        self.assertNotIn(b'aria-label="Remove reference hen_a/', page)
+        self.assertIn(b'data-path="hen_a/' + NAME.encode() + b'"', page)
         self.assertIn(b'class="reference-remove"', page)
 
     def test_only_current_folder_no_staging_or_predictions(self):
