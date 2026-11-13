@@ -190,7 +190,7 @@ class ConfirmationTests(unittest.TestCase):
         with self.assertRaises(AppError):
             self.confirmations.button('latest/' + STAMP + '.jpg', {'label': 'x' * MAX_REQUEST_BYTES})
 
-    def test_all_image_pages_have_scoped_confirmations_and_relative_script_urls(self):
+    def test_prediction_pages_have_scoped_confirmations_but_references_do_not(self):
         captures = captures_page(self.store, base='../', confirmations=self.confirmations)
         self.assertEqual(self.requests(captures)[0]['snapshot']['interpretation'], self.raw)
         self.assertIn(b'src="../confirm.js" data-confirm-api="../confirm"', captures)
@@ -215,10 +215,7 @@ class ConfirmationTests(unittest.TestCase):
         relative = 'hen_a/' + STAMP + '.jpg'
         self.store.upload(relative, self.image, digest(self.image), self.store.revision, False, lambda path: None)
         references = references_page(self.store, confirmations=self.confirmations)
-        reference = self.requests(references)[0]
-        self.assertEqual(reference['snapshot']['interpretation'], {'label': 'hen_a'})
-        self.assertEqual(reference['snapshot']['region'], 'crop')
-        self.confirmations.save(reference)
+        self.assertFalse(self.requests(references))
 
     def post(self, request, address='172.30.32.2', **headers):
         handler = JournalHandler.__new__(JournalHandler)

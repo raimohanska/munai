@@ -79,6 +79,17 @@ class ReferenceGalleryTests(unittest.TestCase):
         handler.send_header.assert_any_call('Content-Type', 'image/jpeg')
         handler.send_header.assert_any_call('Cache-Control', 'no-store')
 
+    def test_reference_cards_hide_confirmation_size_and_full_size_link(self):
+        self.upload()
+        self.upload('empty/20000101T120000_000002Z.jpg')
+        confirmations = Mock()
+        page = render(self.store, confirmations=confirmations, token='test-token')
+        confirmations.button.assert_not_called()
+        for hidden in (b'Confirm', b'KiB', b'Full-size photo'):
+            self.assertNotIn(hidden, page)
+        self.assertEqual(page.count(b'target="_blank"'), 2)
+        self.assertEqual(page.count(b'class="reference-remove"'), 2)
+
     def test_trailing_slash_keeps_ingress_relative_links(self):
         revision = self.upload()
         status, page, _ = self.request('/references/')

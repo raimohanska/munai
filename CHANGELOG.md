@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.51
+
+- Hide Confirm buttons, image sizes and full-size photo links on References.
+  Keep photos clickable and retain reference removal controls.
+
 ## 0.1.49
 
 - Publish MQTT-only per-hen binary presence at `munai/<device_id>/presence`,

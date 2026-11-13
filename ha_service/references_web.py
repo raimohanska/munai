@@ -62,21 +62,15 @@ def render(store, base='', confirmations=None, token=None):
             parts.append('<div class="photos">')
             previous = label
         source = base + 'references/' + revision + '/' + item['path']
-        confirm = (confirmations.button('references/' + revision + '/' + item['path'],
-                                       {'label': label}, layout,
-                                       'whole' if label == 'empty' or layout == 'none' else 'crop',
-                                       'reference') if confirmations is not None else '')
         remove = ('<button type="button" class="reference-remove" data-path="{}" '
                   'aria-label="Remove reference {}" title="Remove reference">×</button>'.format(
                       escape(item['path'], quote=True), escape(item['path'], quote=True))
                   if token is not None else '')
         parts.append('<figure><div class="frame"><a href="{0}" target="_blank" rel="noopener">'
-                      '<img src="{0}" loading="lazy" alt="{1}"></a>{5}</div>'
-                     '<figcaption><code>{2}</code><br>{3:.1f} KiB · '
-                     '<a href="{0}" target="_blank" rel="noopener">Full-size photo</a>'
-                      ' {4}</figcaption></figure>'.format(
+                      '<img src="{0}" loading="lazy" alt="{1}"></a>{3}</div>'
+                      '<figcaption><code>{2}</code></figcaption></figure>'.format(
                          escape(source, quote=True), escape(label + ': ' + name, quote=True),
-                           escape(item['path']), item['bytes'] / 1024.0, confirm, remove))
+                         escape(item['path']), remove))
     if previous is not None:
         parts.append('</div></article>')
     parts.append('</main>' + end())
