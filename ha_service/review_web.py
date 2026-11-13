@@ -30,12 +30,12 @@ def dialog(base=''):
 CSS = '''
 .review-photo { position: relative; }
 .review-button { position: absolute; top: 8px; right: 8px; min-width: 36px; min-height: 36px;
- border: 1px solid #788b7980; border-radius: 50%; background: light-dark(white,#1c2723);
- color: inherit; cursor: pointer; box-shadow: 0 2px 6px #0003; }
-.review-button[data-reviewed] { border-color: #4eaf73; }
+ border: 1px solid var(--ink); border-radius: 50%; background: var(--shell);
+ color: inherit; cursor: pointer; }
+.review-button[data-reviewed] { background: var(--success); }
 #review-dialog { width: min(640px,90vw); max-height: 90vh; box-sizing: border-box; overflow: auto;
- border: 1px solid #788b7980; border-radius: 18px; padding: 20px;
- background: light-dark(white,#1c2723); color: inherit; }
+ border: 1px solid var(--ink); border-radius: 18px; padding: 20px;
+ background: var(--shell); color: var(--ink); }
 #review-dialog::backdrop { background: #0009; }
 .review-heading,.review-fields,.review-actions { display: flex; gap: 16px; justify-content: space-between; }
 .review-heading { align-items: center; margin-bottom: 12px; }
@@ -50,5 +50,5 @@ CSS = '''
 #review-message { min-height: 1.5em; }
 #review-feedback { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
  z-index: 5; max-width: 80vw; padding: 12px 20px; border-radius: 12px;
- background: light-dark(#235e45,#a0d6b3); color: light-dark(white,#131a18); }
+ border: 1px solid var(--ink); background: var(--success); color: var(--ink); }
 '''

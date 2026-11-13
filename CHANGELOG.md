@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.52
+
+- Restyle all Ingress pages with the presentation's Arial/Helvetica typography,
+  warm cream surfaces, yolk-yellow accents and a small outlined egg brand mark.
+  Keep decoration minimal, with matching controls, review dialogs and dark mode.
+
 ## 0.1.51
 
 - Hide Confirm buttons, image sizes and full-size photo links on References.

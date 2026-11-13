@@ -12,7 +12,8 @@ def start(title, active, base='', script=False, reviews=False):
         parts.append('<script src="{}journal.js" defer></script>'.format(base))
     if reviews:
         parts.append('<script src="{}review.js" defer></script>'.format(base))
-    parts.append('</head><body><aside class="sidebar"><div class="brand">MunAI</div>'
+    parts.append('</head><body><aside class="sidebar"><div class="brand">'
+                 '<span class="brand-egg" aria-hidden="true"></span>MunAI</div>'
                  '<nav aria-label="Main navigation">')
     for label, path in (('Status', './'), ('Journal', 'journal'),
                         ('Captures', 'captures'), ('References', 'references'), ('Settings', 'settings')):

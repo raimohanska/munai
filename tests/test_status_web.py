@@ -53,7 +53,7 @@ class StatusWebTests(unittest.TestCase):
             status, page, _ = self.request(path)
             self.assertEqual(status, 200)
             self.assertIn(b'Waiting for a capture', page)
-            self.assertIn(b'class="brand">MunAI', page)
+            self.assertIn(b'class="brand-egg" aria-hidden="true"></span>MunAI', page)
             self.assertIn(b'aria-current="page">Status', page)
             self.assertNotIn(b'src="/', page)
         for path, active in (('/journal', b'Journal'), ('/references', b'References')):
@@ -63,6 +63,23 @@ class StatusWebTests(unittest.TestCase):
         page = self.request('/status/')[1]
         self.assertIn(b'href="../journal"', page)
         self.assertIn(b'href="../references"', page)
+
+    def test_theme_is_shared_by_every_page_and_served_locally(self):
+        for path in ('/', '/journal', '/captures', '/references', '/settings'):
+            status, page, _ = self.request(path)
+            self.assertEqual(status, 200)
+            self.assertIn(b'href="journal.css"', page)
+            self.assertEqual(page.count(b'class="brand-egg"'), 1)
+        status, css, handler = self.request('/journal.css')
+        self.assertEqual(status, 200)
+        handler.send_header.assert_any_call('Content-Type', 'text/css; charset=utf-8')
+        self.assertIn(b'Arial, Helvetica, sans-serif', css)
+        self.assertIn(b'--paper: #fff9ed', css)
+        self.assertIn(b'--yolk: #ffca45', css)
+        self.assertIn(b'prefers-color-scheme: dark', css)
+        self.assertIn(b':focus-visible', css)
+        self.assertNotIn(b'@import', css)
+        self.assertNotIn(b'url(', css)
 
     def test_image_is_paired_pinned_bounded_and_independent_of_archives(self):
         first = self.observe()
