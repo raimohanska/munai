@@ -9,6 +9,10 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.48
+
+- Use an egg icon for MunAI in the Home Assistant sidebar.
+
 ## 0.1.47
 
 - Add a Settings page with a confirmation-protected Reset state button. Clear
