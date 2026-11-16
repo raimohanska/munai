@@ -9,6 +9,15 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.54
+
+- Require a confirmed nest-count increase as well as new egg tracks before
+  recording production. A moved egg acquiring a replacement tracking ID no
+  longer creates another laying event or increments the daily total.
+- Cover movement after a hen's revisit, restart persistence, actual collection
+  and a moved egg alongside a genuinely additional egg with synthetic regressions.
+  Existing journal entries and historical totals are not rewritten.
+
 ## 0.1.53
 
 - Show filenames without identity folder prefixes in reference captions, removal

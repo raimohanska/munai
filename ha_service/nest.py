@@ -212,6 +212,12 @@ class NestState:
         new_tracks = ([track for track in tracking['tracks']
                        if track['hits'] == egg_tracker.CONFIRM and not track['counted']]
                       if tracking is not None else [])
+        # A new spatial ID can replace an egg moved underneath a hen. Only a
+        # rise above the settled nest count establishes additional production;
+        # track acquisition alone cannot distinguish movement from a new egg.
+        increase = (min(len(new_tracks), max(0, eggs - (state['eggs'] or 0)))
+                    if tracking is not None and count_allowed and label == 'no_chicken'
+                    else 0)
         hen = state['hen']
         # Unknown frames establish presence, but never erase a known identity.
         target = hen if label == 'unknown' and hen is not None else label
@@ -237,7 +243,7 @@ class NestState:
             if target == 'no_chicken' and hen is not None:
                 name = hen.capitalize() if hen != 'unknown' else 'Unknown'
                 laid = (count_allowed and egg_streak >= EGG_FRAMES and state['baseline'] is not None
-                        and (bool(new_tracks) if tracking is not None else
+                        and (increase > 0 if tracking is not None else
                              eggs > state['baseline'] and eggs > (state['egg_high_water'] or 0)))
                 if laid:
                     laying_hen = hen
@@ -274,10 +280,11 @@ class NestState:
                 events.append(arrival_event)
 
         if count_allowed and label == 'no_chicken' and state['hen'] is None and egg_streak >= EGG_FRAMES:
-            # Spatial memory counts acquired IDs, not visibility rebounds.
+            # Spatial memory retains hidden eggs; replacement IDs must also
+            # increase the settled count before they count as production.
             # Count-only legacy observations retain their conservative high-water
             # rule: partial decreases cannot establish removal without pixels.
-            increase = (len(new_tracks) if tracking is not None else
+            increase = (increase if tracking is not None else
                         eggs - (state['egg_high_water'] or 0))
             if self.state['eggs'] is None and (not self.count_initial_eggs or
                     (tracking is not None and tracking.get('baseline_pending', False))):

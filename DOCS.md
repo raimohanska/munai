@@ -117,8 +117,11 @@ Tracking follows four rules:
    Relaxed shell fragments may retain an existing egg, never create a new one.
 2. Associate detections one-to-one with nearby, similarly sized remembered eggs.
    Modest rolling preserves the track ID; visible/obstructed rebounds do not
-   increment production. Confirmed new IDs count once, even if another egg was
-   removed and the total count did not change.
+   increment production. Since 0.1.54, confirmed new IDs count only up to the
+   increase over the last settled nest count. A hen can move an existing egg
+   beyond the matching distance: replacing its ID with an unchanged nest count
+   is not evidence of another laying. Removal and replacement without an
+   observed count decrease cannot establish new production either.
 3. Retain an egg while a small smooth, similarly bright shell remnant remains.
    Intermediate evidence is uncertain, with no expiry timeout. Retirement needs
    three clear observations of almost entirely textured replacement bedding in

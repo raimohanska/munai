@@ -186,17 +186,57 @@ class NestTrackerTests(TrackerImages, unittest.TestCase):
         self.assertEqual(self.state.state['version'], 6)
         self.assertIsNone(self.state.state['egg_tracking'])
 
-    def test_distinct_new_egg_is_counted_even_when_total_stays_the_same(self):
+    def test_replacement_track_without_count_increase_is_not_production(self):
         self.shots(nest())
         self.shots(nest([(180, 180)]))
         self.assertEqual(self.state.daily_snapshot()['counts']['unknown'], 1)
-        # Removal and a genuinely different egg appear together. A count-only
-        # high-water mark cannot see this replacement; track IDs can.
+        # A new location does not prove removal plus a different egg. Without
+        # an observed count increase this is movement, not new production.
         self.shots(nest([(340, 220)]), 5)
         self.assertEqual(self.state.state['eggs'], 1)
-        self.assertEqual(self.state.daily_snapshot()['counts']['unknown'], 2)
+        self.assertEqual(self.state.daily_snapshot()['counts']['unknown'], 1)
         self.shots(nest([(350, 224)]), 5)
-        self.assertEqual(self.state.daily_snapshot()['counts']['unknown'], 2)
+        self.assertEqual(self.state.daily_snapshot()['counts']['unknown'], 1)
+
+    def test_moved_egg_after_revisit_does_not_emit_second_laying(self):
+        self.shots(nest())
+        for unused in range(3):
+            self.state.observe('hen_a', 0)
+        self.assertEqual(self.shots(nest([(180, 180)])), ['Hen_a laid an Egg'])
+        original = self.state.state['egg_tracking']['tracks'][0]['id']
+        for unused in range(3):
+            self.state.observe('hen_a', 0)
+        # The egg moves beyond the association gate while hidden by the hen.
+        # On departure its old track retires as the replacement confirms.
+        events = self.shots(nest([(340, 220)]))
+        self.assertEqual(events, ['Hen_a left'])
+        self.assertEqual(self.state.state['eggs'], 1)
+        self.assertNotEqual(self.state.state['egg_tracking']['tracks'][0]['id'], original)
+        self.assertTrue(self.state.state['egg_tracking']['tracks'][0]['counted'])
+        self.assertEqual(self.state.daily_snapshot()['counts'], {'unknown': 0, 'hen_a': 1})
+        self.assertEqual(self.shots(nest([(340, 220)]), 10), [])
+        self.state = NestState(self.root)
+        self.assertEqual(self.shots(nest([(340, 220)])), [])
+        self.assertEqual(self.state.daily_snapshot()['counts']['hen_a'], 1)
+        self.assertEqual(self.shots(nest()), ['1 egg collected'])
+        # A real collection followed by a fresh laying still counts.
+        for unused in range(3):
+            self.state.observe('hen_a', 0)
+        self.assertEqual(self.shots(nest([(340, 220)])), ['Hen_a laid an Egg'])
+        self.assertEqual(self.state.daily_snapshot()['counts']['hen_a'], 2)
+
+    def test_moved_old_egg_and_additional_egg_count_only_the_increase(self):
+        self.shots(nest())
+        for unused in range(3):
+            self.state.observe('hen_a', 0)
+        self.shots(nest([(180, 180)]))
+        for unused in range(3):
+            self.state.observe('hen_b', 0)
+        self.assertEqual(self.shots(nest([(340, 220), (470, 150)])),
+                         ['Hen_b laid an Egg'])
+        self.assertEqual(self.state.state['eggs'], 2)
+        self.assertEqual(self.state.daily_snapshot()['counts'],
+                         {'unknown': 0, 'hen_a': 1, 'hen_b': 1})
 
     def test_journal_counts_describe_retained_egg_not_broken_raw_outline(self):
         self.shots(nest([(180, 180)]))
@@ -283,6 +323,35 @@ class RuntimeTrackerTests(unittest.TestCase):
 
 
 class SplitTrackerTests(unittest.TestCase):
+    def test_moved_egg_after_revisit_is_not_new_production_in_either_layout(self):
+        for layout, sides in (('vertical', ('left', 'right')),
+                              ('horizontal', ('top', 'bottom'))):
+            with self.subTest(layout=layout), tempfile.TemporaryDirectory(dir='/tmp/opencode') as folder:
+                state = SplitNest(Path(folder), layout)
+                first, second = sides
+
+                def shots(image, label='no_chicken', n=5):
+                    detections = detect_eggs(image) if label == 'no_chicken' else []
+                    zones = {first: {'label': label, 'egg_count': len(detections),
+                                     'egg_detections': detections},
+                             second: {'label': 'no_chicken', 'egg_count': 0},
+                             'center': {'label': 'no_chicken', 'egg_count': None}}
+                    events = []
+                    for unused in range(n):
+                        events += state.observe_zones(zones, egg_images={first: image})
+                    return events
+
+                shots(nest())
+                shots(nest(), 'hen_a', 3)
+                self.assertEqual(shots(nest([(180, 180)])),
+                                 [first.capitalize() + ': Hen_a laid an Egg'])
+                shots(nest(), 'hen_a', 3)
+                self.assertEqual(shots(nest([(340, 220)])),
+                                 [first.capitalize() + ': Hen_a left'])
+                self.assertEqual(state.daily_snapshot()['counts']['hen_a'], 1)
+                self.assertEqual(state.snapshot()['zones'][first]['egg_count'], 1)
+                self.assertIsNone(state.snapshot()['zones']['center']['egg_count'])
+
     def test_small_body_and_occupied_divider_break_absence_streaks(self):
         with tempfile.TemporaryDirectory(dir='/tmp/opencode') as folder:
             state = SplitNest(Path(folder), 'vertical')
