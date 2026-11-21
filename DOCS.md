@@ -132,6 +132,11 @@ Tracking follows four rules:
    divider. Center remains presence-only. Failures, hidden regions and restarts
    break acquisition/removal streaks without losing confirmed egg memory.
 
+With a valid before-visit baseline and a new egg visible in every clear frame
+after departure, a laying event takes five observations: the track is acquired
+on frame three, the count settles over frames three through five, and departure
+is confirmed on frame five. Interruptions can make this take longer.
+
 Memory (up to 32 tracks per egg-counting region) is committed in the same atomic
 nest state/split transaction as events and daily totals. New result JSON includes
 `egg_tracking` for diagnostics. Status/gallery raw predictions stay frame-only;
@@ -443,6 +448,9 @@ including edge fragments, are **obscured**, not identity/visitor observations.
 An obscured shot neither advances nor resets the three/five-shot confirmation
 counters. Small fragments are skipped without changing the visit baseline;
 genuine hidden/ambiguous nests still invalidate unsafe laying attribution.
+From 0.1.55, a small change found only by the reviewed-empty background comparison
+is reported as `presence_diagnostic: small_body` without blocking an otherwise
+clear side. Detected body fragments remain obscured (`body_fragment`).
 
 From 0.1.25, egg detection runs independently for each **clear, hen-free side**
 when the divider is clear. A hen or local obstruction freezes only that side;

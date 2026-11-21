@@ -176,7 +176,7 @@ class SplitNest:
                 # Small edge/body fragments are skipped completely. Genuine
                 # hidden/ambiguous nests still invalidate attribution, without
                 # consuming or erasing a confirmation shot or the clean count.
-                if item.get('obscured_reason') != 'small_body':
+                if item.get('obscured_reason') != 'body_fragment':
                     nest.obscure(pause=True)
                 continue
             # Only the observed side and divider gate its count. A separate hen

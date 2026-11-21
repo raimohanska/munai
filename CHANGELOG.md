@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.55
+
+- Keep small background changes as diagnostics without blocking egg counting in
+  otherwise clear split nests. Detected body fragments, large background changes
+  and an occupied divider still block counting. Confirmation thresholds are unchanged.
+
 ## 0.1.54
 
 - Require a confirmed nest-count increase as well as new egg tracks before

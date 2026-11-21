@@ -324,7 +324,7 @@ class SplitJournalTests(unittest.TestCase):
     def test_small_fragment_only_pauses_visit_and_keeps_clean_count(self):
         self.shots()
         self.shots(left=observation('hen_a'))
-        small = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='small_body')
+        small = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='body_fragment')
         self.shots(n=6, left=small)
         self.assertEqual(self.nest.regions['left'].state['baseline'], 0)
         self.assertEqual(self.nest.regions['left'].state['eggs'], 0)
@@ -336,7 +336,7 @@ class SplitJournalTests(unittest.TestCase):
     def test_obscured_shots_do_not_enter_egg_count_confirmation_evidence(self):
         self.shots()
         clean = self.shots(n=2, left=observation(eggs=1))
-        small = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='small_body')
+        small = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='body_fragment')
         skipped = self.shots(n=4, left=small)
         self.assertEqual(self.nest.regions['left'].egg_streak, 2)
         self.assertEqual(self.nest.regions['left'].state['eggs'], 0)

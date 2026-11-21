@@ -330,10 +330,10 @@ class SplitTrackerTests(unittest.TestCase):
                 state = SplitNest(Path(folder), layout)
                 first, second = sides
 
-                def shots(image, label='no_chicken', n=5):
+                def shots(image, label='no_chicken', n=5, diagnostic=None):
                     detections = detect_eggs(image) if label == 'no_chicken' else []
                     zones = {first: {'label': label, 'egg_count': len(detections),
-                                     'egg_detections': detections},
+                                      'egg_detections': detections, 'presence_diagnostic': diagnostic},
                              second: {'label': 'no_chicken', 'egg_count': 0},
                              'center': {'label': 'no_chicken', 'egg_count': None}}
                     events = []
@@ -343,7 +343,9 @@ class SplitTrackerTests(unittest.TestCase):
 
                 shots(nest())
                 shots(nest(), 'hen_a', 3)
-                self.assertEqual(shots(nest([(180, 180)])),
+                egg = nest([(180, 180)])
+                self.assertEqual(shots(egg, n=4, diagnostic='small_body'), [])
+                self.assertEqual(shots(egg, n=1, diagnostic='small_body'),
                                  [first.capitalize() + ': Hen_a laid an Egg'])
                 shots(nest(), 'hen_a', 3)
                 self.assertEqual(shots(nest([(340, 220)])),
@@ -352,7 +354,7 @@ class SplitTrackerTests(unittest.TestCase):
                 self.assertEqual(state.snapshot()['zones'][first]['egg_count'], 1)
                 self.assertIsNone(state.snapshot()['zones']['center']['egg_count'])
 
-    def test_small_body_and_occupied_divider_break_absence_streaks(self):
+    def test_body_fragment_and_occupied_divider_break_absence_streaks(self):
         with tempfile.TemporaryDirectory(dir='/tmp/opencode') as folder:
             state = SplitNest(Path(folder), 'vertical')
             image = nest([(180, 180)])[:, :320]
@@ -362,7 +364,7 @@ class SplitTrackerTests(unittest.TestCase):
                 detections = detect_eggs(view, size=(320, 360)) if view is not None else []
                 zones = {'left': {'label': 'no_chicken', 'egg_count': len(detections),
                                   'egg_detections': detections, 'obscured': obscured,
-                                  'obscured_reason': 'small_body' if obscured else None},
+                                  'obscured_reason': 'body_fragment' if obscured else None},
                          'right': {'label': 'no_chicken', 'egg_count': 0},
                          'center': {'label': center_label, 'egg_count': None}}
                 return state.observe_zones(zones, egg_images={'left': view} if view is not None else {})

@@ -146,6 +146,30 @@ class SplitRecognitionTests(unittest.TestCase):
             self.assertEqual(detector.call_args[1]['fragment_area'], area)
             self.assertEqual(detector.call_args[1]['minimum_fragment_change'], self.options['chicken_area'])
 
+    def test_background_change_below_body_floor_is_diagnostic_only(self):
+        presence = {'ambiguous': False, 'center_present': False, 'bodies': []}
+        floor = max(self.options['chicken_area'], 10 * self.options['egg_max_area'])
+        for area in (floor - 1, floor):
+            clear = area < floor
+            with self.subTest(area=area), \
+                    patch('ha_service.split_recognition.detect', return_value=presence), \
+                    patch('ha_service.split_recognition.changed_textured_body', side_effect=[area, 0]), \
+                    patch('ha_service.split_recognition.detect_eggs', side_effect=[[{}], []] if clear else [[]]) as eggs:
+                result = split.predict(self.fixtures / 'synthetic_empty_1.jpg', self.refs, self.options)
+                left = result['zones']['left']
+                if clear:
+                    self.assertEqual(left['presence_diagnostic'], 'small_body')
+                    self.assertEqual(left['label'], 'no_chicken')
+                    self.assertFalse(left['obscured'])
+                    self.assertEqual(left['egg_count'], 1)
+                    self.assertEqual(result['egg_count'], 1)
+                    self.assertEqual(eggs.call_count, 2)
+                else:
+                    self.assertEqual(left['obscured_reason'], 'background_change')
+                    self.assertTrue(left['obscured'])
+                    self.assertIsNone(left['egg_count'])
+                    eggs.assert_called_once()
+
     def test_small_border_fragment_is_not_identified_or_counted(self):
         presence = {'ambiguous': False, 'center_present': False, 'bodies': [],
                     'uncertain_zones': ['left'], 'fragments': [{'zone': 'left', 'pixels': 6000}]}
@@ -155,7 +179,7 @@ class SplitRecognitionTests(unittest.TestCase):
             result = split.predict(self.fixtures / 'synthetic_empty_1.jpg', self.refs, self.options)
         identity.assert_not_called()
         eggs.assert_called_once()  # The other side remains observable.
-        self.assertEqual(result['zones']['left']['obscured_reason'], 'small_body')
+        self.assertEqual(result['zones']['left']['obscured_reason'], 'body_fragment')
         self.assertTrue(result['zones']['left']['obscured'])
         self.assertIsNone(result['egg_count'])
 

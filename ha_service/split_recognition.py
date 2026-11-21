@@ -191,7 +191,7 @@ def predict(path, references, options):
     for zone in sides + ('center',):
         reason = ('ambiguous_presence' if presence['ambiguous'] else
                   'center_occupied' if presence['center_present'] and zone != 'center' else
-                  'small_body' if zone in presence.get('uncertain_zones', ()) else None)
+                   'body_fragment' if zone in presence.get('uncertain_zones', ()) else None)
         obscured = reason is not None
         # Use the same full-frame normalization and split grid as calibration,
         # including when a source image has odd dimensions.
@@ -204,10 +204,11 @@ def predict(path, references, options):
             empty_views = [crop(frame, zone, split) for frame in references.background_frames]
             changed_area = changed_textured_body(view, empty_views,
                                                  crop(references.full_background_mask, zone, split), options)
-            obscured = bool(changed_area)
-            if obscured:
-                item.update(label='unknown', obscured=True,
-                            obscured_reason='background_change' if changed_area >= minimum_body else 'small_body')
+            if changed_area >= minimum_body:
+                item.update(label='unknown', obscured=True, obscured_reason='background_change')
+            elif changed_area:
+                # Bedding or a few feathers can change without blocking the view.
+                item['presence_diagnostic'] = 'small_body'
         # Center presence is decided on the whole frame, never on a central crop
         # that could include feathers from two separate side occupants.
         if not obscured and detected:
