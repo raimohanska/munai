@@ -9,6 +9,13 @@
   use only `local-data/production/references/` for production corrections.
   No HA runtime behavior or app release version changes.
 
+## 0.1.56
+
+- Let a brief ambiguous split-nest view preserve laying attribution when the
+  first clear view shows an egg-count increase less than five minutes after the
+  same visitor's last positive recognition. Unknown frames don't refresh the
+  timer, and ordinary egg and departure confirmation still applies.
+
 ## 0.1.55
 
 - Keep small background changes as diagnostics without blocking egg counting in

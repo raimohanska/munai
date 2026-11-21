@@ -452,6 +452,13 @@ From 0.1.55, a small change found only by the reviewed-empty background comparis
 is reported as `presence_diagnostic: small_body` without blocking an otherwise
 clear side. Detected body fragments remain obscured (`body_fragment`).
 
+From 0.1.56, an ambiguous view can bridge the same side visit if the first clear
+view shows an egg-count increase less than five minutes after that visitor was
+last positively recognized. Unknown observations don't refresh the timer. A
+confirmed replacement in that nest, an occupied divider, a restart or a capture
+failure ends the grace period. Hidden frames do not count as egg or departure
+evidence; the usual confirmations still apply.
+
 From 0.1.25, egg detection runs independently for each **clear, hen-free side**
 when the divider is clear. A hen or local obstruction freezes only that side;
 divider occupancy or ambiguous whole-frame presence blocks both sides. The center

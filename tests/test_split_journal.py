@@ -1,5 +1,5 @@
 """Synthetic split decisions/journal evidence; no camera or real hen data."""
-from datetime import date
+from datetime import date, datetime, timedelta
 import copy
 import json
 from pathlib import Path
@@ -36,11 +36,11 @@ class SplitJournalTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def shot(self, left=None, right=None, center=None, flush=True):
+    def shot(self, left=None, right=None, center=None, flush=True, observed_at=None):
         zones = {'left': left or observation(), 'right': right or observation(),
                  'center': center or observation()}
         frame = self.journal.save_frame(self.source, {'label': 'unknown', 'egg_count': None})
-        events = self.nest.observe_zones(zones, frame)
+        events = self.nest.observe_zones(zones, frame, observed_at=observed_at)
         if flush:
             self.journal.flush(self.nest)
             self.journal.cleanup_pending(self.nest)
@@ -332,6 +332,44 @@ class SplitJournalTests(unittest.TestCase):
         self.shots(n=5, left=observation(eggs=1))
         self.assertIn('Left: Hen_a laid an Egg', {e['text'] for e in self.entries()})
         self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 1)
+
+    def test_brief_ambiguity_preserves_recent_visit_and_baseline_evidence(self):
+        baseline = self.shots()
+        start = datetime(2000, 1, 1, 10)
+        self.shot(left=observation('hen_a'), observed_at=start)
+        for minute in (1, 2):
+            self.shot(left=observation('unknown'), observed_at=start + timedelta(minutes=minute))
+        hidden = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='ambiguous_presence')
+        self.shot(left=hidden, observed_at=start + timedelta(minutes=3))
+        self.assertIsNone(self.nest.regions['left'].state['baseline'])
+        for minute in range(4, 9):
+            self.shot(left=observation(eggs=1), observed_at=start + timedelta(minutes=minute))
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 1)
+        entry = next(e for e in self.entries() if e['text'] == 'Left: Hen_a laid an Egg')
+        self.assertEqual(set(frame_ids(entry['evidence'][0])), {f['id'] for f in baseline})
+
+    def test_ambiguity_grace_expires_without_positive_reidentification(self):
+        self.shots()
+        start = datetime(2000, 1, 1, 10)
+        self.shots(left=observation('hen_a'), observed_at=start)
+        self.shot(left=observation('unknown'), observed_at=start + timedelta(minutes=3))
+        hidden = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='ambiguous_presence')
+        self.shot(left=hidden, observed_at=start + timedelta(minutes=4))
+        for minute in range(5, 10):
+            self.shot(left=observation(eggs=1), observed_at=start + timedelta(minutes=minute))
+        self.assertEqual(self.nest.daily_snapshot()['counts']['hen_a'], 0)
+        self.assertEqual(self.nest.daily_snapshot()['counts']['unknown'], 1)
+
+    def test_confirmed_competing_visitor_cannot_inherit_grace(self):
+        self.shots()
+        start = datetime(2000, 1, 1, 10)
+        self.shots(left=observation('hen_a'), observed_at=start)
+        hidden = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='ambiguous_presence')
+        self.shot(left=hidden, observed_at=start + timedelta(minutes=1))
+        self.shots(left=observation('hen_b'), observed_at=start + timedelta(minutes=2))
+        for minute in range(3, 8):
+            self.shot(left=observation(eggs=1), observed_at=start + timedelta(minutes=minute))
+        self.assertEqual(self.nest.daily_snapshot()['counts'], {'unknown': 1, 'hen_a': 0, 'hen_b': 0})
 
     def test_obscured_shots_do_not_enter_egg_count_confirmation_evidence(self):
         self.shots()

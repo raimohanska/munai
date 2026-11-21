@@ -334,8 +334,9 @@ class Runtime:
                                 split_recognition.crop(gray, zone, self.options['box_split']))
                           for zone, item in items.items() if 'egg_detections' in item}
         events = (self.nest.observe_zones(prediction['zones'], evidence,
-                                         zone_evidence=zone_evidence, egg_images=egg_images,
-                                         texture_threshold=self.options['texture_threshold'])
+                                          zone_evidence=zone_evidence, egg_images=egg_images,
+                                          texture_threshold=self.options['texture_threshold'],
+                                          observed_at=datetime.strptime(stamp, '%Y%m%dT%H%M%S_%fZ'))
                   if 'zones' in prediction else
                    self.nest.observe(prediction['label'], prediction['egg_count'], evidence,
                                      egg_image=egg_images.get('whole'),

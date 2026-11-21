@@ -1,6 +1,6 @@
 """Independent durable side/divider decisions sharing one journal archive."""
 import copy
-from datetime import date
+from datetime import date, datetime, timedelta
 import json
 
 from .journal import ID, valid_entry
@@ -8,6 +8,14 @@ from .nest import ARRIVAL_FRAMES, NestState, valid_daily, valid_state
 from .options import AppError
 from .storage import atomic_json, safe_path, sync_directory
 from . import egg_tracker
+
+ATTRIBUTION_GRACE = timedelta(minutes=5)
+
+
+def recent_recognition(nest, when):
+    return (when is not None and nest.last_recognized is not None
+            and nest.last_recognized[0] == nest.state['hen']
+            and timedelta(0) <= when - nest.last_recognized[1] < ATTRIBUTION_GRACE)
 
 
 class SplitNest:
@@ -106,7 +114,7 @@ class SplitNest:
         sync_directory(self.root)
 
     def observe_zones(self, observations, evidence=None, zone_evidence=None,
-                      egg_images=None, texture_threshold=8):
+                      egg_images=None, texture_threshold=8, observed_at=None):
         if set(observations) != set(self.regions):
             raise AppError('Split observation has incorrect zones.')
         self._recover_transition()
@@ -153,6 +161,7 @@ class SplitNest:
                 releases.update(origins)
         for origin in releases:
             source = regions[origin]
+            source.last_recognized = source.obscured_visit = None
             source.state.update(hen=None, confirmed=False, baseline=None,
                                 pending_hen=None, pending_baseline=None, pending_settled=False)
             for key in ('visit', 'pending', 'baseline'):
@@ -170,19 +179,39 @@ class SplitNest:
         center_clear = not center.get('obscured') and center['label'] == 'no_chicken'
         for zone, nest in regions.items():
             item = observations[zone]
+            label = item['label']
+            if nest.obscured_visit is not None and not recent_recognition(nest, observed_at):
+                nest.obscured_visit = None
+                nest.obscure(pause=True)
+            if nest.obscured_visit is not None and center['label'] not in ('unknown', 'no_chicken'):
+                nest.obscured_visit = None
+                nest.obscure(pause=True)
             if item.get('obscured'):
                 blocked.add(zone)
                 nest.state['egg_tracking'] = egg_tracker.pause(nest.state.get('egg_tracking'))
-                # Small edge/body fragments are skipped completely. Genuine
-                # hidden/ambiguous nests still invalidate attribution, without
-                # consuming or erasing a confirmation shot or the clean count.
-                if item.get('obscured_reason') != 'body_fragment':
+                reason = item.get('obscured_reason')
+                # Only a briefly ambiguous view can bridge the same visit.
+                # Never count the hidden frame or carry eligibility across a restart.
+                if reason == 'ambiguous_presence' and zone in self.sides and recent_recognition(nest, observed_at):
+                    if nest.state['baseline'] is not None:
+                        nest.obscured_visit = nest.state['baseline']
+                    nest.obscure(pause=True, retain_visit_evidence=nest.obscured_visit is not None)
+                elif reason != 'body_fragment':
+                    nest.obscured_visit = None
                     nest.obscure(pause=True)
                 continue
             # Only the observed side and divider gate its count. A separate hen
             # in the other nest does not hide this nest. Center is presence-only.
             count_allowed = (zone in self.sides and center_clear and item['label'] == 'no_chicken')
             eggs = item['egg_count'] if count_allowed else None
+            if nest.obscured_visit is not None and count_allowed:
+                # The first clear view must show an increase within the grace
+                # window. Normal tracking/departure confirmation still applies.
+                if eggs > nest.obscured_visit:
+                    nest.state['baseline'] = nest.obscured_visit
+                else:
+                    nest.obscure(pause=True)
+                nest.obscured_visit = None
             source_frame = zone_evidence.get(zone) if zone_evidence is not None else evidence
             frame = None if source_frame is None else dict(source_frame, zone=zone, label=item['label'],
                          egg_count=eggs if item['label'] == 'no_chicken' else None)
@@ -192,6 +221,17 @@ class SplitNest:
                                       egg_detections=item.get('egg_detections'),
                                       texture_threshold=texture_threshold):
                 events.append(event if ' moved to ' in event else zone.capitalize() + ': ' + event)
+            hen = nest.state['hen']
+            if nest.obscured_visit is not None and not recent_recognition(nest, observed_at):
+                nest.obscured_visit = None
+            if observed_at is not None and label not in ('unknown', 'no_chicken') and (
+                    label == hen or (hen in (None, 'unknown') and nest.candidate == label)):
+                # A retry round may use an earlier frame for this identity.
+                recognized_at = (datetime.strptime(source_frame['id'][:23], '%Y%m%dT%H%M%S_%fZ')
+                                 if zone_evidence is not None and source_frame is not None else observed_at)
+                nest.last_recognized = (label, recognized_at)
+            elif nest.last_recognized is not None and nest.last_recognized[0] not in (hen, nest.candidate):
+                nest.last_recognized = None
         states = {zone: nest.state for zone, nest in regions.items()}
         if not all(valid_state(state) for state in states.values()):
             raise AppError('Invalid split nest decision; no state committed.')

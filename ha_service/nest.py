@@ -127,6 +127,8 @@ class NestState:
         self.streak = 0
         self.egg_candidate = None
         self.egg_streak = 0
+        self.last_recognized = None
+        self.obscured_visit = None
         self.state['journal']['presence'] = []
         self.state['journal']['count'] = []
         if 'egg_tracking' in self.state:
@@ -169,7 +171,7 @@ class NestState:
         daily = self.state['daily_eggs']
         return {'date': daily['date'], 'counts': dict(daily['counts'])}
 
-    def obscure(self, pause=False):
+    def obscure(self, pause=False, retain_visit_evidence=False):
         """No empty observation is implied by a hidden/ambiguous nest."""
         if not pause:
             self.reset_confirmation()
@@ -178,9 +180,10 @@ class NestState:
         state.update(baseline=None, pending_hen=None, pending_baseline=None, pending_settled=False)
         state['journal']['baseline'] = []
         state['journal']['pending'] = []
-        for group in state['journal']['visit']:
-            if group['role'] == 'Before visit / previous count':
-                group['frames'] = []
+        if not retain_visit_evidence:
+            for group in state['journal']['visit']:
+                if group['role'] == 'Before visit / previous count':
+                    group['frames'] = []
         if state != self.state:
             self._commit(state)
 
