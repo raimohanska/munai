@@ -128,6 +128,16 @@ Tracking follows four rules:
    is not evidence of another laying. Removal and replacement without an
    observed count decrease cannot establish new production either.
 3. Retain an egg while a small smooth, similarly bright shell remnant remains.
+   From 0.1.58, if the old spot shows absence, search the entire clear side
+   for a moved shell without crossing the divider. In unsplit mode, search up
+   to two egg lengths away (at most 112 normalized pixels). A
+   substantial partial shell can retain one existing track but cannot create a
+   track or move its remembered position. A compatible strict detection can
+   re-anchor that track. Evidence is not shared between eggs. A compact profile
+   of brightness variation and fine texture, learned only on a strict detection,
+   helps distinguish the egg from similar-looking bedding. Existing tracks learn
+   the profile on the next strict match before using the wider partial search.
+   Restore a pre-upgrade state backup if downgrading after profiles are saved.
    Intermediate evidence is uncertain, with no expiry timeout. Retirement needs
    three clear observations of almost entirely textured replacement bedding in
    the remembered shell interior, followed by the usual three-frame count

@@ -205,7 +205,8 @@ class NestState:
         state.update(version=6, egg_tracking=state.get('egg_tracking'))
         if label == 'no_chicken' and count_allowed and egg_image is not None and egg_detections is not None:
             state['egg_tracking'], eggs = egg_tracker.advance(
-                state['egg_tracking'], egg_image, egg_detections, state['eggs'], texture_threshold)
+                state['egg_tracking'], egg_image, egg_detections, state['eggs'], texture_threshold,
+                whole_partition=self.zone in ('left', 'right', 'top', 'bottom'))
         elif state['egg_tracking'] is not None:
             state['egg_tracking'] = egg_tracker.pause(state['egg_tracking'])
             # A count-only caller cannot prove a remembered egg was removed.

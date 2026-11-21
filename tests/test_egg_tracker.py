@@ -61,6 +61,54 @@ class TrackerTests(TrackerImages, unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(result['tracks'][0]['id'], value['tracks'][0]['id'])
 
+    def test_wider_search_retains_a_partly_covered_moved_egg_without_acquiring(self):
+        value = self.known()
+        image = nest([(180, 95)])
+        image[78:95, 140:220] = nest()[78:95, 140:220]
+        self.assertEqual(self.detect(image), [])
+        self.assertEqual(self.advance(None, image, 5)[1], 0)
+        result, count = self.advance(value, image, 8)
+        self.assertEqual(count, 1)
+        self.assertEqual(result['tracks'][0]['status'], 'obstructed')
+        self.assertEqual(result['tracks'][0]['ellipse'], value['tracks'][0]['ellipse'])
+        result, count = self.advance(result, nest([(180, 95)]), 5)
+        self.assertEqual(count, 1)
+        self.assertEqual(result['tracks'][0]['id'], value['tracks'][0]['id'])
+        self.assertEqual(self.advance(result, nest(), 3)[1], 0)
+
+    def test_wider_search_does_not_reuse_another_tracks_shell(self):
+        value = self.known(((180, 180), (180, 95)))
+        for covered in (False, True):
+            with self.subTest(covered=covered):
+                image = nest([(180, 95)])
+                if covered:
+                    image[78:95, 140:220] = nest()[78:95, 140:220]
+                result, count = self.advance(value, image, 3)
+                self.assertEqual(count, 1)
+                self.assertLess(result['tracks'][0]['ellipse'][0][1], 110)
+
+    def test_wider_search_rejects_a_bright_patch_with_different_appearance(self):
+        known = self.known()
+        track = known['tracks'][0]
+        image = nest()
+        shape = np.zeros_like(image)
+        cv2.ellipse(shape, (180, 95), (20, 25), 0, 0, 360, 1, -1)
+        y, x = np.nonzero(shape)
+        image[y, x] = np.clip(track['brightness'] + (x - 180) * 1.7, 0, 255)
+        # The distractor would pass the geometry and brightness prefilter alone.
+        with patch('ha_service.egg_tracker.matches_shell', return_value=True):
+            self.assertEqual(self.advance(known, image, 3, detections=[])[1], 1)
+        self.assertEqual(self.advance(known, image, 3, detections=[])[1], 0)
+        self.assertEqual(self.advance(None, image, 5, detections=[])[1], 0)
+
+    def test_legacy_track_learns_shell_profile_on_a_strict_match(self):
+        known = self.known()
+        del known['tracks'][0]['shell_profile']
+        self.assertTrue(egg_tracker.valid_tracker(known))
+        result, count = self.advance(known, nest([(180, 180)]))
+        self.assertEqual(count, 1)
+        self.assertIn('shell_profile', result['tracks'][0])
+
     def test_one_detection_cannot_match_two_eggs(self):
         value = self.known(((180, 180), (230, 180)))
         image = nest([(205, 180)])
@@ -115,7 +163,8 @@ class TrackerTests(TrackerImages, unittest.TestCase):
 
     def test_invalid_memory_is_rejected(self):
         value = self.known()
-        for field, bad in (('brightness', float('nan')), ('hits', 4), ('absent', 3),
+        for field, bad in (('brightness', float('nan')), ('shell_profile', [float('nan'), 3]),
+                           ('hits', 4), ('absent', 3),
                            ('ellipse', [[1, 2], [0, 30], 0]), ('status', 'invented')):
             invalid = copy.deepcopy(value)
             invalid['tracks'][0][field] = bad
@@ -153,6 +202,17 @@ class NestTrackerTests(TrackerImages, unittest.TestCase):
         self.assertEqual(self.state.daily_snapshot()['counts']['hen_a'], 1)
         self.assertEqual(self.state.daily_snapshot()['counts']['unknown'], 0)
         self.assertEqual(self.shots(nest(), 5), ['1 egg collected'])
+
+    def test_covered_relocation_does_not_collect_or_recount(self):
+        self.shots(nest([(180, 180)]))
+        partial = nest([(180, 95)])
+        partial[78:95, 140:220] = nest()[78:95, 140:220]
+        self.assertEqual(self.detect(partial), [])
+        self.assertEqual(self.shots(partial, 8), [])
+        self.assertEqual(self.state.state['eggs'], 1)
+        self.assertEqual(self.shots(nest([(180, 95)])), [])
+        self.assertEqual(self.state.daily_snapshot()['counts']['unknown'], 1)
+        self.assertEqual(self.shots(nest()), ['1 egg collected'])
 
     def test_restart_preserves_egg_memory(self):
         self.shots(nest([(180, 180)]))
@@ -323,6 +383,34 @@ class RuntimeTrackerTests(unittest.TestCase):
 
 
 class SplitTrackerTests(unittest.TestCase):
+    def test_relocation_search_covers_the_full_side_but_not_its_neighbor(self):
+        with tempfile.TemporaryDirectory(dir='/tmp/opencode') as folder:
+            state = SplitNest(Path(folder), 'vertical')
+
+            def shots(image, n=5):
+                views = {'left': image[:, :320], 'right': image[:, 320:]}
+                zones = {'center': {'label': 'no_chicken', 'egg_count': None}}
+                for zone, view in views.items():
+                    eggs = detect_eggs(view, size=(320, 360))
+                    zones[zone] = {'label': 'no_chicken', 'egg_count': len(eggs), 'egg_detections': eggs}
+                return [event for unused in range(n)
+                        for event in state.observe_zones(zones, egg_images=views)]
+
+            shots(nest())
+            shots(nest([(65, 280)]))
+            left = state.regions['left']
+            original = left.state['egg_tracking']['tracks'][0]['id']
+            partial = nest([(250, 80)])
+            partial[63:80, 210:290] = nest()[63:80, 210:290]
+            self.assertEqual(detect_eggs(partial[:, :320], size=(320, 360)), [])
+            self.assertEqual(shots(partial), [])
+            self.assertEqual(state.snapshot()['zones']['left']['egg_count'], 1)
+            self.assertEqual(shots(nest([(250, 80)])), [])
+            self.assertEqual(state.regions['left'].state['egg_tracking']['tracks'][0]['id'], original)
+            self.assertEqual(shots(nest([(390, 80)])), ['Left: 1 egg collected'])
+            self.assertEqual(state.snapshot()['zones']['left']['egg_count'], 0)
+            self.assertEqual(state.snapshot()['zones']['right']['egg_count'], 1)
+
     def test_moved_egg_after_revisit_is_not_new_production_in_either_layout(self):
         for layout, sides in (('vertical', ('left', 'right')),
                               ('horizontal', ('top', 'bottom'))):

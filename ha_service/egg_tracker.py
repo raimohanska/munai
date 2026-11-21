@@ -33,10 +33,15 @@ def valid_tracker(value):
             or not isinstance(value['tracks'], list) or len(value['tracks']) > MAX_TRACKS):
         return False
     ids = set()
+    fields = {'id', 'ellipse', 'brightness', 'hits', 'absent', 'status', 'counted'}
     for track in value['tracks']:
-        if (not isinstance(track, dict) or set(track) !=
-                {'id', 'ellipse', 'brightness', 'hits', 'absent', 'status', 'counted'}):
+        if not isinstance(track, dict) or set(track) not in (fields, fields | {'shell_profile'}):
             return False
+        if 'shell_profile' in track:
+            profile = track['shell_profile']
+            if (not isinstance(profile, (list, tuple)) or len(profile) != 2
+                    or not all(finite(v, 0, 255) for v in profile)):
+                return False
         ellipse = track['ellipse']
         if (type(track['id']) is not int or not 1 <= track['id'] < value['next_id']
                 or track['id'] in ids or not isinstance(ellipse, (list, tuple)) or len(ellipse) != 3
@@ -73,11 +78,29 @@ def surface(image, ellipse):
     return mask != 0
 
 
-def statistics(image, threshold):
+def texture(image):
     pixels = image.astype(np.float32)
     mean = cv2.blur(pixels, (7, 7))
-    std = np.sqrt(np.maximum(0, cv2.blur(pixels * pixels, (7, 7)) - mean * mean))
-    return std < threshold
+    return np.sqrt(np.maximum(0, cv2.blur(pixels * pixels, (7, 7)) - mean * mean))
+
+
+def statistics(image, threshold):
+    return texture(image) < threshold
+
+
+def shell_appearance(pixels, deviations):
+    low, median, high = np.percentile(pixels, (10, 50, 90))
+    return float(median), [float(high - low), float(np.percentile(deviations, 75))]
+
+
+def matches_shell(track, brightness, profile, relaxed=False):
+    known = track.get('shell_profile')
+    if known is None:
+        # Old state can learn on the next strict match. Brightness alone is
+        # not enough to claim a distant partial patch of bedding as this egg.
+        return not relaxed and abs(brightness - track['brightness']) <= 35
+    return (abs(brightness - track['brightness']) <= (22 if relaxed else 35)
+            and profile[0] <= known[0] + 12 and profile[1] <= known[1] + 3)
 
 
 def probe(image, smooth, track):
@@ -103,12 +126,59 @@ def probe(image, smooth, track):
     return 'uncertain'
 
 
-def advance(value, image, detections, previous_count=None, threshold=8):
+def relocation_radius(track):
+    return min(112, 2 * max(track['ellipse'][1]))
+
+
+def relocated_shell(image, deviations, smooth, track, reserved, whole_partition):
+    """Find substantial shell-like support, not just a smooth straw sliver."""
+    if 'shell_profile' not in track:
+        return False
+    (x, y), axes, unused = track['ellipse']
+    bottom, right = image.shape
+    left = top = 0
+    radius = math.inf if whole_partition else relocation_radius(track)
+    if not whole_partition:
+        # Include enough room for the shell outline around candidate centers.
+        margin = radius + max(axes)
+        left, top = max(0, int(x - margin)), max(0, int(y - margin))
+        right, bottom = min(right, math.ceil(x + margin)), min(bottom, math.ceil(y + margin))
+    if left >= right or top >= bottom:
+        return False
+    window = np.s_[top:bottom, left:right]
+    quality = smooth[window] & (np.abs(image[window].astype(np.float32) - track['brightness']) <= 35)
+    mask = (quality & ~reserved[window]).astype(np.uint8)
+    n, labels, stats, centers = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    expected = math.pi * axes[0] * axes[1] / 4
+    candidates = []
+    for i in range(1, n):
+        a, b, w, h, area = stats[i]
+        cx, cy = centers[i] + (left, top)
+        distance = math.hypot(cx - x, cy - y)
+        if (distance <= radius and .25 * expected <= area <= 1.35 * expected
+                and max(w, h) <= 1.5 * max(axes) and area >= .35 * w * h):
+            candidates.append((distance, i))
+    for unused, i in sorted(candidates):
+        a, b, w, h, unused = stats[i]
+        component = labels[b:b+h, a:a+w] == i
+        # Padding prevents the transform from overestimating support at an edge.
+        thick = cv2.distanceTransform(np.pad(component.astype(np.uint8), 1), cv2.DIST_L2, 5)
+        if float(thick.max()) >= max(4, .18 * min(axes)):
+            patch = np.s_[top+b:top+b+h, left+a:left+a+w]
+            if matches_shell(track, *shell_appearance(image[patch][component], deviations[patch][component]),
+                             relaxed=True):
+                reserved[patch] = True
+                return True
+    return False
+
+
+def advance(value, image, detections, previous_count=None, threshold=8, whole_partition=False):
     """Pure staged update; caller persists memory with nest decisions atomically."""
     value = copy.deepcopy(value) if value is not None else empty_tracker()
     if previous_count is not None and not value['tracks'] and value['next_id'] == 1:
         value['unlocated'] = max(value['unlocated'], previous_count)
-    smooth = statistics(image, threshold)
+    deviations = texture(image)
+    smooth = deviations < threshold
     tracks = value['tracks']
     # Global nearest-first, one-to-one associations. An egg can roll modestly;
     # one detection must never keep two remembered eggs visible.
@@ -127,6 +197,45 @@ def advance(value, image, detections, previous_count=None, threshold=8):
         if i not in matched and j not in used:
             matched[i] = j
             used.add(j)
+    # Only confirmed tracks with actual absence evidence get a wider search.
+    # Match strict detections first; a relaxed search never creates or re-anchors
+    # a track. Neither path lets another egg's evidence be reused.
+    statuses = {i: probe(image, smooth, t) for i, t in enumerate(tracks)
+                if i not in matched and t['hits'] == CONFIRM}
+    missing = [i for i, status in statuses.items() if status == 'absent']
+    distant = []
+    if missing:
+        for j, detection in enumerate(detections):
+            if j in used:
+                continue
+            shell = surface(image, detection['ellipse']) & smooth
+            if not shell.any():
+                continue
+            brightness, profile = shell_appearance(image[shell], deviations[shell])
+            center, axes, unused = detection['ellipse']
+            for i in missing:
+                track = tracks[i]
+                prior, prior_axes, unused = track['ellipse']
+                distance = math.hypot(center[0] - prior[0], center[1] - prior[1])
+                ratio = (axes[0] * axes[1]) / (prior_axes[0] * prior_axes[1])
+                if ((whole_partition or distance <= relocation_radius(track)) and .65 <= ratio <= 1.55
+                        and matches_shell(track, brightness, profile)):
+                    distant.append((distance, i, j))
+        for unused, i, j in sorted(distant):
+            if i not in matched and j not in used:
+                matched[i] = j
+                used.add(j)
+
+        if any(i not in matched for i in missing):
+            reserved = np.zeros(image.shape, dtype=bool)
+            for detection in detections:
+                reserved |= surface(image, detection['ellipse'])
+            for i, track in enumerate(tracks):
+                if i not in matched and statuses.get(i) != 'absent':
+                    reserved |= surface(image, track['ellipse'])
+            for i in missing:
+                if i not in matched and relocated_shell(image, deviations, smooth, tracks[i], reserved, whole_partition):
+                    statuses[i] = 'obstructed'
     kept = []
     for i, track in enumerate(tracks):
         if i in matched:
@@ -136,11 +245,11 @@ def advance(value, image, detections, previous_count=None, threshold=8):
             # Refresh only on strict full detections, never learn covering straw.
             mask = surface(image, track['ellipse']) & smooth
             if mask.any():
-                track['brightness'] = float(np.median(image[mask]))
+                track['brightness'], track['shell_profile'] = shell_appearance(image[mask], deviations[mask])
         elif track['hits'] < CONFIRM:
             continue
         else:
-            track['status'] = probe(image, smooth, track)
+            track['status'] = statuses[i]
             track['absent'] = track['absent'] + 1 if track['status'] == 'absent' else 0
             if track['absent'] >= CONFIRM:
                 continue
@@ -152,8 +261,9 @@ def advance(value, image, detections, previous_count=None, threshold=8):
         if not mask.any():
             continue
         anchored = bool(value['unlocated'])
+        brightness, profile = shell_appearance(image[mask], deviations[mask])
         kept.append({'id': value['next_id'], 'ellipse': detection['ellipse'],
-                     'brightness': float(np.median(image[mask])), 'hits': CONFIRM if anchored else 1,
+                     'brightness': brightness, 'shell_profile': profile, 'hits': CONFIRM if anchored else 1,
                      'absent': 0, 'status': 'visible', 'counted': anchored})
         value['next_id'] += 1
         # Anchor an older count without announcing it as another new egg.

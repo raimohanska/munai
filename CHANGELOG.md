@@ -9,6 +9,14 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.58
+
+- Before retiring a confirmed egg, search its entire clear partition for a
+  relocated shell (nearby only in unsplit mode). A brightness and texture
+  profile learned from strict detections filters out dissimilar bedding.
+  Partial evidence can prevent false collection but cannot acquire or count
+  a new egg.
+
 ## 0.1.57
 
 - Show daily egg totals, per-hen counts and unattributed eggs on Status using
