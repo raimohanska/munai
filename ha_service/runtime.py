@@ -244,6 +244,7 @@ class Runtime:
                          'Failed' if 'round' in self.events.failures else 'Active')
         return {'observation': observation, 'has_image': has_image,
                 'latest_event': self.latest_display_event(),
+                'daily_eggs': self.nest.daily_snapshot(),
                 'capture_state': capture_state,
                 'mqtt_state': ('Disabled' if not self.options['mqtt_enabled'] else
                                'Connected' if self.publisher and self.publisher.connected.is_set() else 'Disconnected'),

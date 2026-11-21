@@ -198,7 +198,8 @@ class ConfirmationTests(unittest.TestCase):
         self.assertFalse(self.requests(captures_page(self.store, confirmations=self.confirmations)))
         snapshot = dict(observation=dict(timestamp=STAMP, raw_prediction=self.raw,
                         occupant='hen_b', latest_event=None), has_image=True,
-                        capture_state='Active', mqtt_state='Disabled', stale_after=180)
+                        capture_state='Active', mqtt_state='Disabled', stale_after=180,
+                        daily_eggs={'date': None, 'counts': {'unknown': 0}})
         status = status_page(snapshot, confirmations=self.confirmations)
         request = self.requests(status)[0]
         self.assertEqual(request['snapshot']['interpretation']['zones'], self.raw['zones'])

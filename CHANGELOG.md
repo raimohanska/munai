@@ -7,7 +7,12 @@
   Keep HA's shared capture/recognition modules and split-specific diagnostics.
 - Document the old root-level references folder as a non-production archive;
   use only `local-data/production/references/` for production corrections.
-  No HA runtime behavior or app release version changes.
+  The cleanup itself changes no HA runtime behavior.
+
+## 0.1.57
+
+- Show daily egg totals, per-hen counts and unattributed eggs on Status using
+  the same dated local snapshot as MQTT, even when the broker is offline.
 
 ## 0.1.56
 

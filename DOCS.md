@@ -25,6 +25,11 @@ larger of `expire_after` and twice `capture_interval`.
 This is not a live stream or a new on-demand camera request. Failed recognition
 keeps the previous successful observation visible with its original timestamp.
 
+**Daily egg counts** shows the local snapshot date, total eggs laid, the per-hen
+breakdown and eggs without a confirmed attribution. These are the same counts
+MunAI publishes over MQTT, available even when MQTT is disabled or disconnected.
+They are separate from the number of eggs currently visible in the nest.
+
 From 0.1.31, all UI times and day boundaries use Home Assistant's local timezone.
 Stored filenames and result timestamps stay UTC. The latest-event display and
 MQTT sensor retain the latest event across nights and app restarts, showing

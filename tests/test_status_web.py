@@ -1,4 +1,5 @@
 """Synthetic status/Ingress tests; never connect to or exercise camera capture."""
+from datetime import date
 import io
 import json
 from pathlib import Path
@@ -53,6 +54,7 @@ class StatusWebTests(unittest.TestCase):
             status, page, _ = self.request(path)
             self.assertEqual(status, 200)
             self.assertIn(b'Waiting for a capture', page)
+            self.assertIn(b'No daily counts yet.', page)
             self.assertIn(b'class="brand-egg" aria-hidden="true"></span>MunAI', page)
             self.assertIn(b'aria-current="page">Status', page)
             self.assertNotIn(b'src="/', page)
@@ -63,6 +65,26 @@ class StatusWebTests(unittest.TestCase):
         page = self.request('/status/')[1]
         self.assertIn(b'href="../journal"', page)
         self.assertIn(b'href="../references"', page)
+
+    def test_daily_counts_use_local_snapshot_without_capture_or_broker(self):
+        self.options.update(capture_enabled=False, mqtt_enabled=True)
+        self.runtime.nest.state['daily_eggs'] = {
+            'date': '2026-11-20', 'counts': {'unknown': 2, 'hen_b': 0, 'hen_a': 3}}
+        snapshot = self.runtime.web_status()
+        self.assertEqual(snapshot['daily_eggs'], self.runtime.status()['daily_eggs'])
+        snapshot['daily_eggs']['counts']['hen_a'] = 99
+        page = self.request('/status')[1]
+        self.assertIn(b'MQTT: Disconnected', page)
+        self.assertIn(b'Waiting for a capture', page)
+        self.assertIn(b'<time datetime="2026-11-20">2026-11-20</time>', page)
+        for label, count in ((b'Total', b'5'), (b'Hen_a', b'3'), (b'Hen_b', b'0'), (b'Unattributed', b'2')):
+            self.assertIn(b'<dt>' + label + b'</dt><dd>' + count + b'</dd>', page)
+
+        self.runtime.nest.today = lambda: date(2026, 11, 21)
+        self.runtime.update_daily()
+        page = self.request('/status')[1]
+        self.assertIn(b'<time datetime="2026-11-21">2026-11-21</time>', page)
+        self.assertIn(b'<dt>Total</dt><dd>0</dd>', page)
 
     def test_theme_is_shared_by_every_page_and_served_locally(self):
         for path in ('/', '/journal', '/captures', '/references', '/settings'):
@@ -144,7 +166,7 @@ class StatusWebTests(unittest.TestCase):
             snapshot = self.runtime.web_status()
             for state in (snapshot['observation'], snapshot['observation']['raw_prediction']):
                 state['zones'] = {name: {'occupant': 'empty', 'label': 'empty'} for name in names}
-            page = render(snapshot)
+            page = render(snapshot).split(b'<h2>Latest processed capture</h2>', 1)[1]
             headings = [part.split(b'</dt>', 1)[0] for part in page.split(b'<dt>')[1:]]
             self.assertEqual(headings, [name.encode() for name in expected] * 2)
 

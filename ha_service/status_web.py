@@ -39,6 +39,21 @@ def state_html(state, raw=False):
     return ''.join(parts)
 
 
+def daily_eggs_html(daily):
+    heading = '<article><h2>Daily egg counts</h2>'
+    if daily['date'] is None:
+        return heading + '<p>No daily counts yet.</p></article>'
+    counts = daily['counts']
+    rows = [('Total', sum(counts.values()))]
+    rows.extend((hen.capitalize(), counts[hen]) for hen in sorted(counts) if hen != 'unknown')
+    rows.append(('Unattributed', counts['unknown']))
+    day = escape(daily['date'])
+    return (heading + '<p><time datetime="{0}">{0}</time></p><dl class="states">'.format(day)
+            + ''.join('<div><dt>{}</dt><dd>{}</dd></div>'.format(escape(name), count)
+                      for name, count in rows)
+            + '</dl></article>')
+
+
 def render(snapshot, base='', confirmations=None):
     observation = snapshot.get('observation')
     parts = [start('Status', 'Status', base, script=True), '<header><h1>Status</h1>',
@@ -49,7 +64,7 @@ def render(snapshot, base='', confirmations=None):
              '<p><a href="">Refresh</a></p>']
     for message in snapshot.get('errors', []):
         parts.append('<p class="notice">{}</p>'.format(escape(message)))
-    parts.append('</header><main>')
+    parts.extend(['</header><main>', daily_eggs_html(snapshot['daily_eggs'])])
     if observation is None:
         parts.append('<article><h2>Waiting for a capture</h2><p>No successfully processed image '
                      'is available since this app started. Enable capture and check the app logs '
