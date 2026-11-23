@@ -1160,7 +1160,12 @@ INFO logs show startup modes, the public certificate fingerprint, reference relo
 occupant changes, actionable failures, and recovery. Identical failures repeat at
 most every 15 minutes. There are no per-request access logs, per-frame success logs,
 credential dumps, raw FFmpeg diagnostics, or raw exception tracebacks. `log_level:
-debug` adds round timing only; it does not expose secrets.
+debug` logs elapsed seconds and CPU-seconds for each scheduled round, excluding
+the sleep until the next round. CPU time is split between all app threads and
+completed child processes (including FFmpeg). Waiting for camera data adds to
+elapsed time without consuming CPU; parallel work can use more CPU-seconds
+than elapsed seconds. Divide total CPU-seconds by elapsed seconds to get the
+average number of cores used during the round.
 
 - **Cannot reach HTTPS:** check app status, HA Network mapping and LAN/VPN access.
 - **Fingerprint mismatch:** stop and verify the new public fingerprint in HA logs.
