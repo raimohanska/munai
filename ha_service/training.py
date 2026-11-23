@@ -47,7 +47,7 @@ class TrainingArchive:
         if annotation.exists():
             return 'annotations/' + annotation.name
         image_valid(data)
-        if len(list((self.root / 'annotations').glob('*.json'))) >= MAX_ANNOTATIONS:
+        if sum(1 for _ in (self.root / 'annotations').glob('*.json')) >= MAX_ANNOTATIONS:
             raise AppError('Training archive limit reached. Back up and manage training storage.')
         checksum = digest(data)
         image = safe_path(self.root / 'images', checksum + '.jpg')

@@ -37,6 +37,38 @@ class TrackerImages:
 
 
 class TrackerTests(TrackerImages, unittest.TestCase):
+    def test_empty_nest_skips_texture_but_keeps_unlocated_baseline(self):
+        with patch('ha_service.egg_tracker.texture') as texture:
+            state, count = egg_tracker.advance(None, nest(), [], previous_count=1)
+        texture.assert_not_called()
+        self.assertEqual(count, 1)
+        self.assertEqual(state['unlocated'], 1)
+
+    def test_static_match_only_computes_texture_around_the_shell(self):
+        value = self.known()
+        image = nest([(180, 180)])
+        with patch('ha_service.egg_tracker.texture', wraps=egg_tracker.texture) as texture, \
+                patch('ha_service.egg_tracker.relocated_shell') as search:
+            result, count = self.advance(value, image)
+        search.assert_not_called()
+        texture.assert_called_once()
+        self.assertLess(texture.call_args[0][0].size, image.size // 10)
+        self.assertEqual(count, 1)
+        self.assertEqual(result, value)
+
+    def test_cropped_shell_sampling_matches_full_frame_at_edges(self):
+        image = np.random.RandomState(42).randint(120, 151, (120, 160)).astype(np.uint8)
+        deviations = egg_tracker.texture(image)
+        threshold = 8
+        for cx, cy in ((0.75, 0.25), (159.25, 119.5), (82.5, 0.75), (0.75, 67.5), (83.25, 60.75)):
+            with self.subTest(center=(cx, cy)):
+                ellipse = ((cx, cy), (34.75, 51.25), 32.0)
+                local = egg_tracker.detected_appearance(image, ellipse, threshold)
+                full = egg_tracker.detected_appearance(image, ellipse, threshold, deviations,
+                                                       deviations < threshold)
+                self.assertIsNotNone(local)
+                self.assertEqual(local, full)
+
     def test_straw_crossing_a_known_egg_retains_identity_without_strict_outline(self):
         value = self.known()
         image = nest([(180, 180)])

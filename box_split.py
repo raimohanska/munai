@@ -71,10 +71,11 @@ def assign_regions(masks, split, fragment_gap=24):
         # Feather texture can split one body into several connected components.
         # Attach only fragments near a detected center body, never merge the two
         # side occupants merely because their combined centroid is central.
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
-                                          (fragment_gap * 2 + 1, fragment_gap * 2 + 1))
-        for index in sorted(remaining):
+        if remaining:
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                              (fragment_gap * 2 + 1, fragment_gap * 2 + 1))
             near = cv2.dilate(masks[anchor].astype(np.uint8), kernel) != 0
+        for index in sorted(remaining):
             if np.any(near & masks[index]):
                 merged |= masks[index]
                 remaining.remove(index)
@@ -107,7 +108,7 @@ def assign_regions(masks, split, fragment_gap=24):
 
 def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
            novelty_mask=None, texture_mask=None, fragment_area=None,
-            minimum_fragment_change=None, feather_mask=None):
+            minimum_fragment_change=None, feather_mask=None, frame_stats=None):
     """Find every accepted presence component, then assign spatial occupancy.
 
     Reviewed full-frame empty calibration is required. No identity reference or
@@ -115,7 +116,7 @@ def detect(path, split, background_mask, chicken_area=4500, texture_threshold=8,
     """
     if background_mask is None:
         raise ValueError('Reviewed full-frame empty references are required')
-    gray, unused_pixels, std = image_statistics(path)
+    gray, unused_pixels, std = image_statistics(path) if frame_stats is None else frame_stats
     if background_mask.shape != gray.shape:
         raise ValueError('Background mask has the wrong measurement dimensions')
     valid = (~background_mask).astype(np.uint8) * 255

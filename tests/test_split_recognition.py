@@ -57,14 +57,16 @@ class SplitRecognitionTests(unittest.TestCase):
                 high[1::3, 1::3] = 255 - high[1::3, 1::3]
                 cv2.imwrite(str(path), high)
             refs = split.load(root, self.options)
-            for path, frame in zip(sorted((root / 'empty').glob('*.jpg')), refs.background_frames):
-                self.assertTrue(np.array_equal(frame, image_statistics(path)[0]))
+            for i, path in enumerate(sorted((root / 'empty').glob('*.jpg'))):
+                for side in ('left', 'right'):
+                    view = split.crop(image_statistics(path)[0], side, 'vertical')
+                    self.assertTrue(np.array_equal(refs.empty_comparisons[side][i], cv2.GaussianBlur(view, (3, 3), 0)))
 
     def test_fine_background_texture_change_is_not_a_body(self):
         gray = np.tile(np.array([80, 160], dtype=np.uint8), (360, 160))
         empty = 240 - gray
         exclusions = np.zeros(gray.shape, dtype=bool)
-        self.assertFalse(split.changed_textured_body(gray, [empty], exclusions, self.options))
+        self.assertFalse(split.changed_textured_body(gray, [cv2.GaussianBlur(empty, (3, 3), 0)], exclusions, self.options))
 
     def test_small_changed_ring_does_not_count_unchanged_contour_interior(self):
         empty = np.full((360, 320), 130, dtype=np.uint8)
@@ -99,9 +101,11 @@ class SplitRecognitionTests(unittest.TestCase):
             normalized = image_statistics(path)[0]
             for layout, zones in (('vertical', ('left', 'right')), ('horizontal', ('top', 'bottom'))):
                 options = dict(self.options, box_split=layout)
+                refs = copy.copy(self.refs)
+                refs.empty_comparisons = split.reference_comparisons([normalized], layout)
                 with patch('ha_service.split_recognition.detect', return_value=presence), \
                         patch('ha_service.split_recognition.changed_textured_body', return_value=False) as check:
-                    split.predict(path, self.refs, options)
+                    split.predict(path, refs, options)
                 self.assertEqual(check.call_count, 2)
                 for call, zone in zip(check.call_args_list, zones):
                     self.assertTrue(np.array_equal(call[0][0], split.crop(normalized, zone, layout)))
@@ -112,14 +116,14 @@ class SplitRecognitionTests(unittest.TestCase):
         gray, unused_pixels, std = image_statistics(background)
         refs = copy.copy(self.refs)
         refs.full_background_mask = np.zeros(gray.shape, dtype=bool)
-        refs.background_frames = [gray]
-        refs.feather_detector = FeatherTexture(refs.background_frames)
+        refs.feather_detector = FeatherTexture([gray])
         blurred = cv2.GaussianBlur(gray, (21, 21), 0).astype(np.int16)
         refs.background_low = refs.background_high = blurred
         refs.background_texture_low = cv2.GaussianBlur(std, (21, 21), 0)
         for layout, zone, box in (('vertical', 'left', (20, 30, 220, 330)),
                                   ('horizontal', 'top', (160, 10, 480, 160))):
             image = background.copy()
+            refs.empty_comparisons = split.reference_comparisons([gray], layout)
             x1, y1, x2, y2 = box
             image[y1:y2, x1:x2] = patterned[y1:y2, x1:x2]
             refs.background_mask = np.zeros((360, 320) if layout == 'vertical' else (180, 640), dtype=bool)

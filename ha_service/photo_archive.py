@@ -51,12 +51,13 @@ class PhotoArchive:
             return False
         now = self.clock()
         current_signature = signature(prediction)
-        try:
-            pixels = comparison_pixels(source)
-        except Exception:
-            pixels = None
-            LOG.warning('Photo comparison unavailable; retaining this photo.')
-        if (self.store.options['capture_deduplicate'] and pixels is not None
+        pixels = None
+        if self.store.options['capture_deduplicate']:
+            try:
+                pixels = comparison_pixels(source)
+            except Exception:
+                LOG.warning('Photo comparison unavailable; retaining this photo.')
+        if (pixels is not None
                 and self.previous is not None and current_signature == self.previous_signature
                 and self.destination is not None and self.destination.is_file()
                 and now - self.saved_at < self.store.options['capture_heartbeat_seconds']

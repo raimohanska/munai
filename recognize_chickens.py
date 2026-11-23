@@ -143,10 +143,11 @@ def identify(measurement, references, max_distance=1.25, min_margin=0.25,
         return {'label': 'unknown', 'nearest': '', 'distance': None,
                 'margin': None, 'reference': ''}
     scores = {}
+    features = np.asarray(measurement['features'])
     for label, path, reference in references:
         if path == exclude:
             continue
-        delta = (np.array(measurement['features']) - reference['features']) / SCALES
+        delta = (features - reference['features']) / SCALES
         distance = float(np.sqrt(np.mean(delta * delta)))
         if label not in scores or distance < scores[label][0]:
             scores[label] = (distance, path)

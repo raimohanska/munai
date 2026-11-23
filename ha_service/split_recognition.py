@@ -81,14 +81,14 @@ def load(root, options):
     refs.full_background_mask = full
     # Compare the same area-averaged pixels as live image_statistics(), not
     # linearly sampled straw texture (which aliases when shrinking a full frame).
-    refs.background_frames = []
+    frames = []
     # A broad loss of background texture can reveal a feathered body with the
     # same mean brightness as straw. Use the lowest reviewed texture, not one
     # selected side/identity, so ordinary reviewed smooth areas remain allowed.
     refs.background_texture_low = None
     for path in capture_files(Path(root) / 'empty'):
         frame, unused_pixels, std = image_statistics(path)
-        refs.background_frames.append(frame)
+        frames.append(frame)
         texture = cv2.GaussianBlur(std, (21, 21), 0)
         blurred = cv2.GaussianBlur(frame, (21, 21), 0).astype(np.int16)
         if refs.background_texture_low is None:
@@ -99,7 +99,10 @@ def load(root, options):
             np.minimum(refs.background_texture_low, texture, out=refs.background_texture_low)
             np.minimum(refs.background_low, blurred, out=refs.background_low)
             np.maximum(refs.background_high, blurred, out=refs.background_high)
-    refs.feather_detector = FeatherTexture(refs.background_frames)
+    refs.feather_detector = FeatherTexture(frames)
+    # Keep only the comparison-ready side views, not a second raw frame cache.
+    refs.empty_comparisons = reference_comparisons(frames, options['box_split'])
+    del frames
     for folder in sorted(Path(root).iterdir()):
         if not folder.is_dir() or folder.is_symlink() or folder.name in RESERVED or folder.name.startswith('.'):
             continue
@@ -124,7 +127,13 @@ def measure_reference(path, root, options):
                    measurement_size(options['box_split']), feather_detector=FeatherTexture(frames))
 
 
-def changed_textured_body(view, empty_views, exclusions, options):
+def reference_comparisons(frames, split):
+    sides = ('left', 'right') if split == 'vertical' else ('top', 'bottom')
+    return {side: [cv2.GaussianBlur(crop(frame, side, split), (3, 3), 0) for frame in frames]
+            for side in sides}
+
+
+def changed_textured_body(view, empty_comparisons, exclusions, options):
     """Changed textured area (or zero), not an identity or a second visitor."""
     size = measurement_size(options['box_split'])
     gray, unused_pixels, std = image_statistics(view, size)
@@ -132,9 +141,8 @@ def changed_textured_body(view, empty_views, exclusions, options):
     # texture changes in BOTH operands, retaining original texture for the
     # feather test below. Never smooth/stretch a half view to full-frame scale.
     comparison = cv2.GaussianBlur(gray, (3, 3), 0)
-    empty_comparisons = [cv2.GaussianBlur(empty, (3, 3), 0) for empty in empty_views]
     nearest = min(empty_comparisons,
-                  key=lambda empty: float(np.mean(cv2.absdiff(comparison, empty))))
+                  key=lambda empty: cv2.norm(comparison, empty, cv2.NORM_L1))
     changed = (cv2.absdiff(comparison, nearest) > 30).astype(np.float32)
     mask = ((cv2.GaussianBlur(changed, (13, 13), 0) > 0.25) & (~exclusions)).astype(np.uint8) * 255
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
@@ -162,7 +170,9 @@ def predict(path, references, options):
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise AppError('Split image cannot be decoded.')
-    frame, unused_pixels, std = image_statistics(image)
+    frame_stats = image_statistics(image)
+    frame, unused_pixels, std = frame_stats
+    del image
     blurred = cv2.GaussianBlur(frame, (21, 21), 0).astype(np.int16)
     novelty = (blurred < references.background_low - 25) | (blurred > references.background_high + 25)
     texture_change = cv2.GaussianBlur(std, (21, 21), 0) < references.background_texture_low * 0.5
@@ -171,7 +181,7 @@ def predict(path, references, options):
                       minimum_body, options['texture_threshold'],
                       novelty_mask=novelty, texture_mask=texture_change,
                       fragment_area=options['egg_max_area'],
-                      minimum_fragment_change=options['chicken_area'])
+                      minimum_fragment_change=options['chicken_area'], frame_stats=frame_stats)
     sides = ('left', 'right') if split == 'vertical' else ('top', 'bottom')
     covered = {body['zone'] for body in presence['bodies']}
     detector = getattr(references, 'feather_detector', None)
@@ -185,7 +195,7 @@ def predict(path, references, options):
                               novelty_mask=novelty, texture_mask=texture_change,
                               fragment_area=options['egg_max_area'],
                               minimum_fragment_change=options['chicken_area'],
-                              feather_mask=feather_mask)
+                               feather_mask=feather_mask, frame_stats=frame_stats)
     zones = {}
     upgraded = set()
     for zone in sides + ('center',):
@@ -201,8 +211,7 @@ def predict(path, references, options):
                 'obscured_reason': reason}
         detected = any(body['zone'] == zone for body in presence['bodies'])
         if not obscured and not detected and zone != 'center':
-            empty_views = [crop(frame, zone, split) for frame in references.background_frames]
-            changed_area = changed_textured_body(view, empty_views,
+            changed_area = changed_textured_body(view, references.empty_comparisons[zone],
                                                  crop(references.full_background_mask, zone, split), options)
             if changed_area >= minimum_body:
                 item.update(label='unknown', obscured=True, obscured_reason='background_change')

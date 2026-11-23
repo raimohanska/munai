@@ -122,7 +122,6 @@ class FeatherTextureTests(unittest.TestCase):
             image = background(14)
             cv2.ellipse(image, (320, 180), (95, 145), 0, 0, 360, shade, -1)
             refs.append((label, Path(label), measure(image)))
-        refs.background_frames = self.frames
         refs.feather_detector = self.detector
         refs.full_background_mask = np.zeros((360, 640), dtype=bool)
         options = validate({'box_split': 'vertical'})
@@ -130,6 +129,7 @@ class FeatherTextureTests(unittest.TestCase):
                 ('vertical', (320, 180), (100, 150), 'center'),
                 ('horizontal', (320, 85), (190, 70), 'top')):
             image = patterned(background(18), center, axes)
+            refs.empty_comparisons = split.reference_comparisons(self.frames, layout)
             refs.background_mask = np.zeros(split.measurement_size(layout)[::-1], dtype=bool)
             stats = [image_statistics(frame) for frame in self.frames]
             blurred = [cv2.GaussianBlur(item[0], (21, 21), 0).astype(np.int16) for item in stats]

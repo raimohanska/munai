@@ -169,7 +169,7 @@ class Reviews:
                 if previous['label'] == label:
                     return context
                 raise Conflict('Undo the existing review for this region before changing it.')
-            if context['revision'] == 'none' and len(list(self.root.glob('*.json'))) >= MAX_REVIEWS:
+            if context['revision'] == 'none' and sum(1 for _ in self.root.glob('*.json')) >= MAX_REVIEWS:
                 raise AppError('Review limit reached. Back up and manage review storage first.')
             data, layout = self.source(request['source'])
             promote = (request.get('add_reference', False) and label != 'obscured' and layout == self.store.options['box_split']

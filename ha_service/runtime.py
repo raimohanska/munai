@@ -22,6 +22,7 @@ from .journal import Journal
 from .identity_retry import IdentityRetry, MAX_EXTRA_SHOTS
 from .options import AppError
 from .photo_archive import PhotoArchive
+from .references_web import inventory as reference_inventory
 from .split_nest import SplitNest
 from . import split_recognition
 from .storage import Conflict, MAX_FILE_BYTES, atomic_json, image_valid, safe_path
@@ -211,7 +212,7 @@ class Runtime:
 
     def status(self):
         with self.store.lock:
-            references = self.store.files('references')
+            _, references = reference_inventory(self.store)
             identities = len({item['path'].split('/')[0] for item in references
                               if item['path'].split('/')[0] not in RESERVED})
             empty_count = sum(item['path'].startswith('empty/') for item in references)

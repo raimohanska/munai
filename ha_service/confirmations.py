@@ -94,7 +94,7 @@ class Confirmations:
             after, unused = self.image(snapshot['source'])
             if fingerprint != snapshot['fingerprint'] or after != fingerprint:
                 raise Conflict('Image changed. Refresh the page.')
-            if len(list((self.root / 'annotations').glob('*.json'))) >= MAX_CONFIRMATIONS:
+            if sum(1 for _ in (self.root / 'annotations').glob('*.json')) >= MAX_CONFIRMATIONS:
                 raise AppError('Training archive limit reached. Back up and manage training storage.')
             record = dict(snapshot)
             record.pop('fingerprint')

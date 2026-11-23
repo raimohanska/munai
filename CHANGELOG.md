@@ -9,6 +9,15 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.60
+
+- Skip egg-tracking image analysis when there are no detections or tracks.
+  For normally matched tracks, compute shell texture on small crops instead
+  of allocating working arrays for the whole nest. Missing-egg checks are unchanged.
+- Reuse decoded frame statistics in split detection and prepare empty-reference
+  comparisons once per reference load. Skip photo comparison when deduplication
+  is disabled and use metadata rather than hashing reference JPEGs for status.
+
 ## 0.1.59
 
 - Require a newly appeared shell-like patch before retaining a missing egg
