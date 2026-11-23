@@ -363,8 +363,8 @@ class Runtime:
             app_cpu = (cpu_end.user - cpu_start.user) + (cpu_end.system - cpu_start.system)
             child_cpu = ((cpu_end.children_user - cpu_start.children_user) +
                          (cpu_end.children_system - cpu_start.children_system))
-            LOG.debug('Scheduled round: %.2f s elapsed, %.2f CPU-s total (%.2f app, %.2f child processes).',
-                      time.monotonic() - started, app_cpu + child_cpu, app_cpu, child_cpu)
+            LOG.info('Round finished: %.2f s elapsed, %.2f CPU-s total (%.2f app, %.2f child processes).',
+                     time.monotonic() - started, app_cpu + child_cpu, app_cpu, child_cpu)
             deadline = next_deadline(deadline, time.monotonic(), self.options['capture_interval'])
             stop.wait(max(0, deadline - time.monotonic()))
 

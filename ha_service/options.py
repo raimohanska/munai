@@ -8,7 +8,7 @@ OPTIONAL_DEFAULTS = {'transfer_token_sha256': '', 'transfer_tokens': []}
 # Ignore retired settings on upgrade; never read a local camera profile.
 RETIRED_MASK_OPTIONS = frozenset(('horizontal_bounds', 'horizontal_left', 'horizontal_right',
                                   'excluded_rectangles'))
-RETIRED_OPTIONS = RETIRED_MASK_OPTIONS | frozenset(('capture_pause_start', 'capture_pause_end'))
+RETIRED_OPTIONS = RETIRED_MASK_OPTIONS | frozenset(('capture_pause_start', 'capture_pause_end', 'log_level'))
 
 
 class AppError(Exception):
@@ -73,8 +73,6 @@ def validate(raw):
         raise AppError('Set mqtt_user when providing an MQTT password.')
     if not isinstance(options['device_id'], str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,48}', options['device_id']):
         raise AppError('device_id must contain 1-48 letters, digits, underscores or hyphens.')
-    if options['log_level'] not in ('info', 'debug'):
-        raise AppError('log_level must be info or debug.')
     tokens = options['transfer_tokens']
     if not isinstance(tokens, list) or len(tokens) > 16:
         raise AppError('Provide at most 16 transfer tokens.')

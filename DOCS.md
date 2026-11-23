@@ -1159,8 +1159,8 @@ token needs to be exposed or regenerated just to change the form.
 INFO logs show startup modes, the public certificate fingerprint, reference reloads,
 occupant changes, actionable failures, and recovery. Identical failures repeat at
 most every 15 minutes. There are no per-request access logs, per-frame success logs,
-credential dumps, raw FFmpeg diagnostics, or raw exception tracebacks. `log_level:
-debug` logs elapsed seconds and CPU-seconds for each scheduled round, excluding
+credential dumps, raw FFmpeg diagnostics, or raw exception tracebacks. Each
+end-of-round message reports elapsed seconds and CPU-seconds, excluding
 the sleep until the next round. CPU time is split between all app threads and
 completed child processes (including FFmpeg). Waiting for camera data adds to
 elapsed time without consuming CPU; parallel work can use more CPU-seconds

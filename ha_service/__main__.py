@@ -29,7 +29,6 @@ def main():
     lock = None
     try:
         options = read_options()
-        LOG.setLevel(logging.DEBUG if options['log_level'] == 'debug' else logging.INFO)
         import cv2
         cv2.setNumThreads(1)
         root = Path('/data')

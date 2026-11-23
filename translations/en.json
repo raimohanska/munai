@@ -32,8 +32,7 @@
     "egg_min_area": {"name": "Minimum egg area", "description": "Minimum candidate and fitted ellipse area in the 640×360 processing frame. Calibrate against reviewed egg-free and egg-containing images."},
     "egg_max_area": {"name": "Maximum egg area", "description": "Maximum candidate and fitted ellipse area in the 640×360 processing frame. Must be at least the minimum egg area."},
     "max_distance": {"name": "Maximum identity distance", "description": "A larger distance produces unknown, not a forced identity. Scores are not probabilities."},
-    "min_margin": {"name": "Minimum identity separation", "description": "Require this gap between the two nearest identities; ambiguous observations remain unknown."},
-    "log_level": {"name": "Log level", "description": "Info logs changes and actionable failures; debug adds round timing, never credentials."}
+    "min_margin": {"name": "Minimum identity separation", "description": "Require this gap between the two nearest identities; ambiguous observations remain unknown."}
   },
   "network": {
     "8443/tcp": "Pinned HTTPS reference-transfer API; map a host port to enable LAN/VPN access"

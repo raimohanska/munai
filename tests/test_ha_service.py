@@ -73,7 +73,7 @@ class OptionsTests(unittest.TestCase):
     def test_invalid_options_do_not_expose_values(self):
         for extra in ({'camera_url': 'secret-invalid', 'capture_enabled': True},
                       {'mqtt_port': 'secret-invalid'}, {'device_id': 'secret-invalid/'},
-                      {'log_level': 'secret-invalid'}, {'capture_timeout': True},
+                      {'capture_timeout': True},
                       {'capture_interval': 180},
                       {'transfer_tokens': [{'name': 'test', 'sha256': 'secret-invalid', 'scope': 'write'}]}):
             with self.assertRaises(AppError) as caught:

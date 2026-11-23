@@ -9,6 +9,10 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.66
+
+- Include elapsed and CPU time in every end-of-round log message. Remove the log-level setting.
+
 ## 0.1.65
 
 - Show elapsed time and CPU time for each scheduled round in debug logs, including CPU time spent in FFmpeg.

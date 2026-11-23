@@ -1,6 +1,6 @@
 {
   "name": "Munai",
-  "version": "0.1.65",
+  "version": "0.1.66",
   "slug": "munai",
   "description": "Recognize nest occupants and publish an MQTT device",
   "arch": ["aarch64", "amd64"],
@@ -47,8 +47,7 @@
     "egg_min_area": 950,
     "egg_max_area": 3500,
     "max_distance": 1.25,
-    "min_margin": 0.25,
-    "log_level": "info"
+    "min_margin": 0.25
   },
   "schema": {
     "capture_enabled": "bool",
@@ -83,7 +82,6 @@
     "egg_min_area": "int(100,10000)",
     "egg_max_area": "int(100,10000)",
     "max_distance": "float(0.01,10)",
-    "min_margin": "float(0,10)",
-    "log_level": "list(info|debug)"
+    "min_margin": "float(0,10)"
   }
 }
