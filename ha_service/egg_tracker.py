@@ -3,6 +3,8 @@
 All coordinates are in the detector's normalized side/whole view. No hen
 identity decision uses these locations. A missing ellipse is not a removal.
 """
+import base64
+import binascii
 import copy
 import math
 
@@ -11,6 +13,7 @@ import numpy as np
 
 MAX_TRACKS = 32
 CONFIRM = 3
+BASELINE_SIZE = (80, 90)
 
 
 def empty_tracker():
@@ -25,12 +28,15 @@ def finite(value, low, high):
 def valid_tracker(value):
     if value is None:
         return True  # Pre-tracker baseline, not evidence of no eggs.
-    if (not isinstance(value, dict) or set(value) not in (
-            {'tracks', 'unlocated', 'next_id'}, {'tracks', 'unlocated', 'next_id', 'baseline_pending'})
+    required = {'tracks', 'unlocated', 'next_id'}
+    if (not isinstance(value, dict) or not required <= value.keys()
+            or not value.keys() <= required | {'baseline_pending', 'relocation_baseline'}
             or ('baseline_pending' in value and type(value['baseline_pending']) is not bool)
             or type(value['unlocated']) is not int or not 0 <= value['unlocated'] <= 1000000
             or type(value['next_id']) is not int or not 1 <= value['next_id'] <= 1000000000
             or not isinstance(value['tracks'], list) or len(value['tracks']) > MAX_TRACKS):
+        return False
+    if 'relocation_baseline' in value and decode_baseline(value['relocation_baseline']) is None:
         return False
     ids = set()
     fields = {'id', 'ellipse', 'brightness', 'hits', 'absent', 'status', 'counted'}
@@ -130,7 +136,24 @@ def relocation_radius(track):
     return min(112, 2 * max(track['ellipse'][1]))
 
 
-def relocated_shell(image, deviations, smooth, track, reserved, whole_partition):
+def baseline_pixels(image):
+    return cv2.resize(image, BASELINE_SIZE, interpolation=cv2.INTER_AREA)
+
+
+def decode_baseline(encoded):
+    size = math.prod(BASELINE_SIZE)
+    if not isinstance(encoded, str) or len(encoded) != 4 * ((size + 2) // 3):
+        return None
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    if len(data) != size:
+        return None
+    return np.frombuffer(data, dtype=np.uint8).reshape(BASELINE_SIZE[::-1])
+
+
+def relocated_shell(image, deviations, smooth, track, reserved, whole_partition, changed):
     """Find substantial shell-like support, not just a smooth straw sliver."""
     if 'shell_profile' not in track:
         return False
@@ -165,6 +188,10 @@ def relocated_shell(image, deviations, smooth, track, reserved, whole_partition)
         thick = cv2.distanceTransform(np.pad(component.astype(np.uint8), 1), cv2.DIST_L2, 5)
         if float(thick.max()) >= max(4, .18 * min(axes)):
             patch = np.s_[top+b:top+b+h, left+a:left+a+w]
+            # A material part of the proposed shell must be new, not merely
+            # a static patch that happens to cross the appearance thresholds.
+            if np.count_nonzero(changed[patch] & component) < .35 * int(component.sum()):
+                continue
             if matches_shell(track, *shell_appearance(image[patch][component], deviations[patch][component]),
                              relaxed=True):
                 reserved[patch] = True
@@ -226,7 +253,10 @@ def advance(value, image, detections, previous_count=None, threshold=8, whole_pa
                 matched[i] = j
                 used.add(j)
 
-        if any(i not in matched for i in missing):
+        baseline = decode_baseline(value.get('relocation_baseline'))
+        if baseline is not None and any(i not in matched for i in missing):
+            delta = cv2.absdiff(baseline_pixels(image), baseline)
+            changed = cv2.resize(delta, image.shape[::-1], interpolation=cv2.INTER_LINEAR) >= 15
             reserved = np.zeros(image.shape, dtype=bool)
             for detection in detections:
                 reserved |= surface(image, detection['ellipse'])
@@ -234,7 +264,8 @@ def advance(value, image, detections, previous_count=None, threshold=8, whole_pa
                 if i not in matched and statuses.get(i) != 'absent':
                     reserved |= surface(image, track['ellipse'])
             for i in missing:
-                if i not in matched and relocated_shell(image, deviations, smooth, tracks[i], reserved, whole_partition):
+                if i not in matched and relocated_shell(image, deviations, smooth, tracks[i], reserved,
+                                                        whole_partition, changed):
                     statuses[i] = 'obstructed'
     kept = []
     for i, track in enumerate(tracks):
@@ -270,4 +301,11 @@ def advance(value, image, detections, previous_count=None, threshold=8, whole_pa
         if value['unlocated']:
             value['unlocated'] -= 1
     value['tracks'] = kept
+    confirmed = [t for t in kept if t['hits'] == CONFIRM]
+    if not confirmed:
+        value.pop('relocation_baseline', None)
+    elif all(t['status'] == 'visible' for t in confirmed):
+        # Freeze while any confirmed shell is missing. Otherwise a relocated
+        # shell could become the background before it is strictly detected.
+        value['relocation_baseline'] = base64.b64encode(baseline_pixels(image).tobytes()).decode('ascii')
     return value, sum(t['hits'] == CONFIRM for t in kept) + value['unlocated']

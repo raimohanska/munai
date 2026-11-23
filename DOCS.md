@@ -138,6 +138,11 @@ Tracking follows four rules:
    helps distinguish the egg from similar-looking bedding. Existing tracks learn
    the profile on the next strict match before using the wider partial search.
    Restore a pre-upgrade state backup if downgrading after profiles are saved.
+   From 0.1.59, a partial relocation match must also differ from a small
+   grayscale snapshot saved when the confirmed eggs were last clearly visible.
+   The snapshot is private to nest state and is not exported in result JSON.
+   With no snapshot yet (such as immediately after upgrade), only strict
+   detections can re-anchor a moved egg. Back up state before upgrading.
    Intermediate evidence is uncertain, with no expiry timeout. Retirement needs
    three clear observations of almost entirely textured replacement bedding in
    the remembered shell interior, followed by the usual three-frame count

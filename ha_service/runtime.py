@@ -352,9 +352,13 @@ class Runtime:
                            distance=prediction['distance'], margin=prediction['margin'],
                             raw_prediction={'occupant': occupant(prediction),
                                              'egg_count': prediction['egg_count']})
-        observation['egg_tracking'] = ({zone: nest.state.get('egg_tracking')
+        def public_tracking(nest):
+            tracking = nest.state.get('egg_tracking')
+            return None if tracking is None else {k: v for k, v in tracking.items() if k != 'relocation_baseline'}
+
+        observation['egg_tracking'] = ({zone: public_tracking(nest)
                                         for zone, nest in self.nest.regions.items() if zone != 'center'}
-                                       if 'zones' in prediction else self.nest.state.get('egg_tracking'))
+                                       if 'zones' in prediction else public_tracking(self.nest))
         if 'zones' in prediction:
             observation['raw_prediction']['zones'] = prediction['zones']
             observation['raw_prediction']['ambiguous'] = prediction['ambiguous']

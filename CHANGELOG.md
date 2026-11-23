@@ -9,6 +9,12 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.59
+
+- Require a newly appeared shell-like patch before retaining a missing egg
+  through a partial relocation match. Static bedding no longer prevents
+  collection just because it resembles the shell.
+
 ## 0.1.58
 
 - Before retiring a confirmed egg, search its entire clear partition for a

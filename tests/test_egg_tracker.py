@@ -109,6 +109,40 @@ class TrackerTests(TrackerImages, unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertIn('shell_profile', result['tracks'][0])
 
+    def test_static_shell_like_patch_does_not_prevent_collection(self):
+        background = nest([(180, 95)])
+        background[78:95, 140:220] = nest()[78:95, 140:220]
+        before = background.copy()
+        before[145:215, 145:215] = nest([(180, 180)])[145:215, 145:215]
+        self.assertEqual(self.detect(background), [])
+        known, count = self.advance(None, before, 3)
+        self.assertEqual(count, 1)
+        track = known['tracks'][0]
+        texture = egg_tracker.texture(background)
+        # Without the change restriction the patch has enough shell-like support.
+        self.assertTrue(egg_tracker.relocated_shell(background, texture, texture < 8, track,
+                                                     np.zeros_like(background, dtype=bool), True,
+                                                     np.ones_like(background, dtype=bool)))
+        restored = egg_tracker.pause(json.loads(json.dumps(known)))
+        pending, count = self.advance(restored, background, 2)
+        self.assertEqual(count, 1)
+        self.assertEqual(pending['tracks'][0]['absent'], 2)
+        self.assertEqual(pending['relocation_baseline'], known['relocation_baseline'])
+        self.assertEqual(self.advance(pending, background)[1], 0)
+
+    def test_legacy_track_without_relocation_baseline_can_still_be_collected(self):
+        known = self.known()
+        del known['relocation_baseline']
+        self.assertTrue(egg_tracker.valid_tracker(known))
+        partial = nest([(180, 95)])
+        partial[78:95, 140:220] = nest()[78:95, 140:220]
+        self.assertEqual(self.advance(known, partial, 3, detections=[])[1], 0)
+
+    def test_invalid_relocation_baseline_is_rejected(self):
+        known = self.known()
+        for invalid in (None, 'AAAA', '?' * len(known['relocation_baseline'])):
+            self.assertFalse(egg_tracker.valid_tracker(dict(known, relocation_baseline=invalid)))
+
     def test_one_detection_cannot_match_two_eggs(self):
         value = self.known(((180, 180), (230, 180)))
         image = nest([(205, 180)])
@@ -377,6 +411,8 @@ class RuntimeTrackerTests(unittest.TestCase):
                     runtime.observe('20000101T00000{}_000000Z'.format(i), invisible, image=encoded)
                 self.assertEqual(runtime.last_observation['egg_count'], 1)
                 self.assertEqual(runtime.last_observation['raw_prediction']['egg_count'], 0)
+                tracking = runtime.last_observation['egg_tracking']
+                self.assertNotIn('relocation_baseline', tracking if layout == 'none' else tracking[first])
                 if layout != 'none':
                     self.assertIsNone(runtime.last_observation['zones']['center']['egg_count'])
                     self.assertNotIn('center', runtime.last_observation['egg_tracking'])
