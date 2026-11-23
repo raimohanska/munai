@@ -3,6 +3,9 @@
 ## Workflow
 
 - Commit completed work when it is ready, after running applicable checks.
+- Prefix every commit subject with `v<version>: `, using the app version in
+  that commit’s `config.json`. This applies to documentation and maintenance
+  commits too, even when the version does not change.
 - Include only files related to the task; do not commit unrelated user changes,
   secrets, or generated captures. Do not push unless explicitly requested.
 - For every completed batch of deployable Home Assistant app changes, bump the
