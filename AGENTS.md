@@ -2,6 +2,7 @@
 
 ## Workflow
 
+- Work and commit directly on `main`. Do not create other branches.
 - Commit completed work when it is ready, after running applicable checks.
 - Prefix the commit subject with `v<new version>: ` only when the commit
   changes the app version in `config.json`.
