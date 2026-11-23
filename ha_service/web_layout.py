@@ -22,7 +22,7 @@ def start(title, active, base='', script=False, reviews=False):
             base, path, ' aria-current="page"' if active == label else '', label))
     # Supervisor uses the installed app slug with underscores changed to hyphens.
     slug = gethostname().replace('-', '_')
-    parts.append('<a href="/config/app/{}/config" target="_top">Settings</a>'.format(escape(slug)))
+    parts.append('<a href="/config/app/{}/info" target="_top">Settings</a>'.format(escape(slug)))
     parts.append('</nav></aside><div class="content">')
     return ''.join(parts)
 

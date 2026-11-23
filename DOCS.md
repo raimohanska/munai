@@ -13,7 +13,7 @@ in usage; do not retire them until the HA pilot works.
 ## Status page (0.1.12+)
 
 **Open Web UI** opens Status by default. The **MunAI** sidebar links **Status**,
-**Journal**, **Captures**, **References** and **Settings**. **Settings** opens Munai’s configuration in Home Assistant.
+**Journal**, **Captures**, **References** and **Settings**. **Settings** opens Munai’s **Info** page in Home Assistant, where available updates appear.
 Status refreshes every 15 seconds and shows the latest
 successfully processed image with its timestamp, age and image-specific prediction,
 separately from the confirmed state at that capture. Confirmation may lag the raw

@@ -9,6 +9,10 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.64
+
+- Point the Settings sidebar link to Munai’s Info page in Home Assistant, where available updates appear.
+
 ## 0.1.63
 
 - Open Munai’s Home Assistant configuration directly from the Settings sidebar link.
