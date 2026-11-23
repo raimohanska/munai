@@ -1,5 +1,6 @@
 """Shared Ingress-relative page shell and navigation."""
 from html import escape
+from socket import gethostname
 
 
 def start(title, active, base='', script=False, reviews=False):
@@ -16,9 +17,12 @@ def start(title, active, base='', script=False, reviews=False):
                  '<span class="brand-egg" aria-hidden="true"></span>MunAI</div>'
                  '<nav aria-label="Main navigation">')
     for label, path in (('Status', './'), ('Journal', 'journal'),
-                        ('Captures', 'captures'), ('References', 'references'), ('Settings', 'settings')):
+                        ('Captures', 'captures'), ('References', 'references')):
         parts.append('<a href="{}{}"{}>{}</a>'.format(
             base, path, ' aria-current="page"' if active == label else '', label))
+    # Supervisor uses the installed app slug with underscores changed to hyphens.
+    slug = gethostname().replace('-', '_')
+    parts.append('<a href="/config/app/{}/config" target="_top">Settings</a>'.format(escape(slug)))
     parts.append('</nav></aside><div class="content">')
     return ''.join(parts)
 

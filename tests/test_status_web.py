@@ -86,11 +86,14 @@ class StatusWebTests(unittest.TestCase):
         self.assertIn(b'<time datetime="2026-11-21">2026-11-21</time>', page)
         self.assertIn(b'<dt>Total</dt><dd>0</dd>', page)
 
-    def test_theme_is_shared_by_every_page_and_served_locally(self):
-        for path in ('/', '/journal', '/captures', '/references', '/settings'):
+    @patch('ha_service.web_layout.gethostname', return_value='local-munai')
+    def test_theme_is_shared_by_every_page_and_served_locally(self, _hostname):
+        self.assertEqual(self.request('/settings')[0], 404)
+        for path in ('/', '/journal', '/captures', '/references'):
             status, page, _ = self.request(path)
             self.assertEqual(status, 200)
             self.assertIn(b'href="journal.css"', page)
+            self.assertIn(b'href="/config/app/local_munai/config" target="_top">Settings</a>', page)
             self.assertEqual(page.count(b'class="brand-egg"'), 1)
         status, css, handler = self.request('/journal.css')
         self.assertEqual(status, 200)

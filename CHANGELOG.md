@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.63
+
+- Open Munai’s Home Assistant configuration directly from the Settings sidebar link.
+  Remove the in-app Settings page and its state-reset action.
+
 ## 0.1.62
 
 - Serve up to six web connections concurrently so a slow photo download or

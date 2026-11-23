@@ -6,7 +6,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import shutil
 import re
 import json
-import os
 import hmac
 import threading
 from pathlib import Path
@@ -21,7 +20,6 @@ from .web_layout import start, end
 from .review_web import button, dialog, CSS as REVIEW_CSS
 from .reviews import Reviews
 from .confirmations import Confirmations, MAX_REQUEST_BYTES
-from .settings_web import render as render_settings
 from .options import AppError
 from .storage import Conflict
 from .web_time import local_time, time_html, event_text
@@ -67,8 +65,6 @@ button:disabled { opacity: .55; cursor: default; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--link); }
 :focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
 #review-save { background: var(--yolk); color: #292b38; font-weight: 700; }
-#reset-state { color: var(--danger); border-color: var(--danger); }
-#reset-state:hover:not(:disabled) { background: var(--danger); color: var(--shell); }
 .photos { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; }
 figure { margin: 0; } img { width: 100%; height: auto; border-radius: 8px; }
 .frame { position: relative; } .frame img { display: block; }
@@ -212,8 +208,6 @@ class JournalServer(HTTPServer):
         self.runtime = runtime
         self.reviews = Reviews(journal, runtime.validate_reference if runtime else self.no_validator)
         self.confirmations = Confirmations(journal, runtime)
-        self.settings_token = os.urandom(32).hex()
-        self.reset_lock = threading.Lock()
         super().__init__(address, JournalHandler)
         self.workers = ThreadPoolExecutor(max_workers=self.max_workers)
         self.slots = threading.BoundedSemaphore(self.max_workers)
@@ -304,15 +298,6 @@ class JournalHandler(BaseHTTPRequestHandler):
             elif parsed.path == '/references.js' and not parsed.query:
                 self.response(200, Path(__file__).with_name('references.js').read_bytes(),
                                'text/javascript; charset=utf-8')
-            elif parsed.path == '/settings.js' and not parsed.query:
-                self.response(200, Path(__file__).with_name('settings.js').read_bytes(),
-                              'text/javascript; charset=utf-8')
-            elif parsed.path in ('/settings', '/settings/') and not parsed.query:
-                if self.server.runtime is None:
-                    raise AppError('Settings are unavailable.')
-                data = render_settings(self.server.runtime.settings_snapshot(), self.server.settings_token,
-                                       base='../' if parsed.path.endswith('/') else '')
-                self.response(200, data, 'text/html; charset=utf-8')
             elif parsed.path in ('/captures', '/captures/'):
                 query = parse_qs(parsed.query, strict_parsing=True, keep_blank_values=True) if parsed.query else {}
                 if set(query) - {'date'} or len(query.get('date', [''])) != 1:
@@ -409,16 +394,10 @@ class JournalHandler(BaseHTTPRequestHandler):
             self.response(403, b'Home Assistant Ingress required.', 'text/plain')
             return
         try:
-            if self.path not in ('/review', '/confirm', '/references/remove', '/settings/reset'):
+            if self.path not in ('/review', '/confirm', '/references/remove'):
                 raise AppError('Invalid review endpoint.')
             confirming = self.path == '/confirm'
-            resetting = self.path == '/settings/reset'
-            if resetting:
-                tokens = self.headers.get_all('X-Munai-Settings', [])
-                if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.settings_token):
-                    self.response(403, b'{"error":"Refresh Settings to authorize this reset."}', 'application/json')
-                    return
-            elif not confirming:
+            if not confirming:
                 tokens = self.headers.get_all('X-Munai-Review', [])
                 if len(tokens) != 1 or not hmac.compare_digest(tokens[0], self.server.reviews.token):
                     self.response(403, b'{"error":"Reopen review to authorize this action."}', 'application/json')
@@ -432,18 +411,9 @@ class JournalHandler(BaseHTTPRequestHandler):
             if len(data) != int(lengths[0]):
                 raise AppError('Incomplete review request.')
             request = json.loads(data.decode('utf-8'))
-            if not isinstance(request, dict) or (not confirming and not resetting and not isinstance(request.get('source'), str)):
+            if not isinstance(request, dict) or (not confirming and not isinstance(request.get('source'), str)):
                 raise AppError('Invalid review request.')
-            if resetting:
-                if (set(request) != {'confirm', 'date'} or request['confirm'] is not True
-                        or not isinstance(request['date'], str) or self.server.runtime is None):
-                    raise AppError('Confirm the reset from Settings.')
-                with self.server.reset_lock:
-                    if not hmac.compare_digest(tokens[0], self.server.settings_token):
-                        raise Conflict('Refresh Settings to authorize this reset.')
-                    value = self.server.runtime.reset_state(request['date'])
-                    self.server.settings_token = os.urandom(32).hex()
-            elif self.path == '/references/remove':
+            if self.path == '/references/remove':
                 value = self.server.reviews.remove_reference(request)
             else:
                 value = (self.server.confirmations.save(request) if confirming else self.server.reviews.save(request))
@@ -456,8 +426,7 @@ class JournalHandler(BaseHTTPRequestHandler):
             text = str(error) if isinstance(error, AppError) else 'Invalid review request.'
             self.response(400, json.dumps({'error': text}).encode('utf-8'), 'application/json')
         except Exception:
-            text = ('State reset could not finish. Retry the reset or restart the app.' if self.path == '/settings/reset' else
-                    'Reference could not be removed. Refresh and try again.' if self.path == '/references/remove' else
+            text = ('Reference could not be removed. Refresh and try again.' if self.path == '/references/remove' else
                     'Confirmation could not be saved. Refresh and try again.' if self.path == '/confirm' else
                     'Review could not be completed. Reopen the popup to check its status.')
             self.response(500, json.dumps({'error': text}).encode('utf-8'), 'application/json')

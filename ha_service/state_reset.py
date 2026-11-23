@@ -2,7 +2,7 @@
 import json
 
 from .egg_tracker import empty_tracker
-from .nest import initial_state, valid_daily, valid_hen
+from .nest import initial_state, valid_daily
 from .options import AppError
 from .storage import atomic_json, safe_path, sync_directory
 
@@ -43,12 +43,3 @@ def recover(root, layout):
     path.unlink()
     sync_directory(root)
     return True
-
-
-def begin(root, layout, daily):
-    if (not valid_daily(daily) or daily['date'] is None
-            or not all(valid_hen(name) for name in daily['counts'])):
-        raise AppError('Invalid state reset totals.')
-    zeros = {'date': daily['date'], 'counts': {name: 0 for name in daily['counts']}}
-    atomic_json(safe_path(root, 'state-reset.json'), {'version': 1, 'layout': layout, 'daily': zeros})
-    recover(root, layout)

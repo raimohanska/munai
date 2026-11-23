@@ -25,7 +25,7 @@ from .photo_archive import PhotoArchive
 from .references_web import inventory as reference_inventory
 from .split_nest import SplitNest
 from . import split_recognition
-from .storage import Conflict, MAX_FILE_BYTES, atomic_json, image_valid, safe_path
+from .storage import MAX_FILE_BYTES, atomic_json, image_valid, safe_path
 from . import state_reset
 from .web_time import event_text
 
@@ -71,7 +71,6 @@ class Runtime:
         self.last_observation = None
         self.web_lock = threading.Lock()
         self.state_lock = threading.RLock()
-        self.reset_pending = False
         self.web_images = {}
         self.last_occupant = None
         # Prediction-only callers may omit storage; they never advance events.
@@ -84,70 +83,19 @@ class Runtime:
         self.events = EventLog()
         self.photos = PhotoArchive(store) if store is not None else None
 
-    def _load_nest(self, today=None):
+    def _load_nest(self):
         layout = self.options['box_split']
-        recovered = state_reset.recover(self.store.root, layout)
+        # Finish any reset interrupted before upgrading from an older release.
+        state_reset.recover(self.store.root, layout)
         if layout == 'none':
             if safe_path(self.store.root, 'nest-layout.json').exists():
                 raise AppError('Split state exists; restore a matching whole-box backup before disabling split mode.')
-            nest = NestState(self.store.root, today=today)
+            nest = NestState(self.store.root)
         else:
-            legacy = NestState(self.store.root, today=today)
+            legacy = NestState(self.store.root)
             self.journal.flush(legacy)
-            nest = SplitNest(self.store.root, layout, carry=legacy.daily_snapshot(), today=today)
+            nest = SplitNest(self.store.root, layout, carry=legacy.daily_snapshot())
         self.nest = nest
-        self.reset_pending = False
-        if recovered:
-            with self.web_lock:
-                self.last_observation = None
-                self.web_images = {}
-            self.last_occupant = None
-
-    def settings_snapshot(self):
-        with self.state_lock:
-            if self.reset_pending:
-                raise AppError('State reset is incomplete. Retry the reset or restart the app.')
-            self.update_daily()
-            return self.nest.daily_snapshot()
-
-    def reset_state(self, expected_day):
-        if not self.state_lock.acquire(blocking=False):
-            raise Conflict('Capture processing is busy. Try again shortly.')
-        try:
-            if self.reset_pending:
-                self._load_nest(today=self.nest.today)
-            if isinstance(self.nest, SplitNest):
-                self.nest._recover_transition()
-            self.update_daily()
-            daily = self.nest.daily_snapshot()
-            if expected_day != daily['date']:
-                raise Conflict('The day changed. Refresh Settings before resetting.')
-            self.journal.flush(self.nest)
-            self.reset_pending = True
-            state_reset.begin(self.store.root, self.options['box_split'], daily)
-            self._load_nest(today=self.nest.today)
-            with self.web_lock:
-                self.last_observation = None
-                self.web_images = {}
-            self.last_occupant = None
-            self.publish_daily()
-            pending = 'daily_mqtt' in self.events.failures
-            pending = self._publish_reset_state() or pending
-            LOG.info('Live nest tracking and daily totals reset; archived data preserved.')
-            return {'reset': True, 'mqtt_pending': pending, 'daily_eggs': self.nest.daily_snapshot()}
-        finally:
-            self.state_lock.release()
-
-    def _publish_reset_state(self):
-        if not self.publisher:
-            return False
-        try:
-            self.publisher.publish(self.nest.snapshot(), identities=self.reference_identities())
-            self.events.recovered('state_mqtt', 'Reset state publication recovered.')
-            return False
-        except AppError:
-            self.events.failed('state_mqtt', 'Reset saved; MQTT state update pending. Check broker connectivity.')
-            return True
 
     def measurement(self, path, mask=None):
         return measure(path, self.options['chicken_area'], self.options['texture_threshold'],
@@ -381,7 +329,6 @@ class Runtime:
             latest = self.latest_display_event()
             self.publisher.publish(dict(state, latest_event=None if latest == 'No events yet' else latest),
                                    identities=self.reference_identities())
-            self.events.recovered('state_mqtt', 'Reset state publication recovered.')
 
     def reference_identities(self):
         # Only reviewed identity directories, never predictions or nest positions.
@@ -417,14 +364,10 @@ class Runtime:
     def _cycle(self):
         previous_observation = self.last_observation
         try:
-            if self.reset_pending:
-                self._load_nest(today=self.nest.today)
             self.store.retain()
             self.journal.retain(self.nest)
             self.update_daily()
             self.publish_daily()
-            if 'state_mqtt' in self.events.failures:
-                self._publish_reset_state()
             if self.publisher:
                 try:
                     self.publisher.publish_event(self.latest_display_event())
@@ -443,7 +386,7 @@ class Runtime:
         except Exception as error:
             self.events.failed('round', 'Round failed; check app logs.', exception_details(error))
         finally:
-            if not self.reset_pending and self.last_observation is previous_observation:
+            if self.last_observation is previous_observation:
                 self.nest.reset_confirmation()
             # Enforce the cap after this round too, not just before the next.
             try:
