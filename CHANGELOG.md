@@ -9,6 +9,10 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.61
+
+- Link directly from Munai’s Settings page to its configuration in Home Assistant.
+
 ## 0.1.60
 
 - Skip egg-tracking image analysis when there are no detections or tracks.

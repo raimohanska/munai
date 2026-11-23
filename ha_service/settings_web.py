@@ -1,13 +1,19 @@
 """Ingress-only live state reset controls."""
 from html import escape
+from socket import gethostname
 
 from .web_layout import start, end
 
 
 def render(daily, token, base=''):
+    # Supervisor uses the installed app slug with underscores changed to hyphens.
+    slug = gethostname().replace('-', '_')
     parts = [start('Settings', 'Settings', base),
              '<script src="{}settings.js" defer></script>'.format(base),
-             '<header><h1>Settings</h1></header><main><article><h2>State</h2>',
+             '<header><h1>Settings</h1></header><main><article>'
+             '<a href="/config/app/{}/config" target="_top">'
+             'Munai settings in Home Assistant</a></article>'.format(escape(slug, quote=True)),
+             '<article><h2>State</h2>',
              '<p>Today: {}</p><dl class="states">'.format(escape(daily['date']))]
     for identity, count in sorted(daily['counts'].items()):
         parts.append('<div><dt>{}</dt><dd>{}</dd></div>'.format(escape(identity), count))
