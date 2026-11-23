@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.62
+
+- Serve up to six web connections concurrently so a slow photo download or
+  idle browser connection doesn't hold up navigation.
+
 ## 0.1.61
 
 - Link directly from Munai’s Settings page to its configuration in Home Assistant.

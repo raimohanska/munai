@@ -35,7 +35,7 @@ class SettingsTests(unittest.TestCase):
             saved['daily_eggs'] = {'date': self.day, 'counts': {'unknown': 4, 'hen_a': 1}}
             state._commit(saved)
         self.server = Mock(runtime=self.runtime, journal=self.runtime.journal,
-                           settings_token='synthetic-settings-token')
+                           settings_token='synthetic-settings-token', reset_lock=threading.Lock())
 
     def tearDown(self):
         self.temp.cleanup()

@@ -1,4 +1,5 @@
 """HA Ingress pages and explicit human review, separate from the transfer API."""
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from html import escape
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -7,6 +8,7 @@ import re
 import json
 import os
 import hmac
+import threading
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -203,6 +205,7 @@ def render(journal, page, base='', confirmations=None):
 
 class JournalServer(HTTPServer):
     allow_reuse_address = True
+    max_workers = 6
 
     def __init__(self, address, journal, runtime=None):
         self.journal = journal
@@ -210,7 +213,37 @@ class JournalServer(HTTPServer):
         self.reviews = Reviews(journal, runtime.validate_reference if runtime else self.no_validator)
         self.confirmations = Confirmations(journal, runtime)
         self.settings_token = os.urandom(32).hex()
+        self.reset_lock = threading.Lock()
         super().__init__(address, JournalHandler)
+        self.workers = ThreadPoolExecutor(max_workers=self.max_workers)
+        self.slots = threading.BoundedSemaphore(self.max_workers)
+
+    def process_request(self, request, client_address):
+        # Leave bursts in the listen backlog rather than queueing open sockets
+        # and full-size photo responses without a bound on a small HA host.
+        self.slots.acquire()
+        try:
+            self.workers.submit(self.serve_connection, request, client_address)
+        except RuntimeError:
+            self.slots.release()
+            raise
+
+    def serve_connection(self, request, client_address):
+        try:
+            self.finish_request(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            try:
+                self.shutdown_request(request)
+            finally:
+                self.slots.release()
+
+    def server_close(self):
+        super().server_close()
+        # HTTPServer also calls server_close if binding the port failed.
+        if hasattr(self, 'workers'):
+            self.workers.shutdown(wait=True)
 
     @staticmethod
     def no_validator(path):
@@ -405,8 +438,11 @@ class JournalHandler(BaseHTTPRequestHandler):
                 if (set(request) != {'confirm', 'date'} or request['confirm'] is not True
                         or not isinstance(request['date'], str) or self.server.runtime is None):
                     raise AppError('Confirm the reset from Settings.')
-                value = self.server.runtime.reset_state(request['date'])
-                self.server.settings_token = os.urandom(32).hex()
+                with self.server.reset_lock:
+                    if not hmac.compare_digest(tokens[0], self.server.settings_token):
+                        raise Conflict('Refresh Settings to authorize this reset.')
+                    value = self.server.runtime.reset_state(request['date'])
+                    self.server.settings_token = os.urandom(32).hex()
             elif self.path == '/references/remove':
                 value = self.server.reviews.remove_reference(request)
             else:
