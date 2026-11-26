@@ -87,6 +87,15 @@ class TrackerTests(TrackerImages, unittest.TestCase):
         self.assertEqual(self.advance(None, image, 5)[1], 0)
         self.assertEqual(self.advance(self.known(), image, 20)[1], 1)
 
+    def test_disturbed_bedding_is_not_confirmation_of_collection(self):
+        value = egg_tracker.pause(self.known())  # A hen obscured the tracked shell.
+        covered = nest()
+        covered[95:270, 95:180] //= 2  # A different layer of textured bedding.
+        value, count = self.advance(value, covered, 8, detections=[])
+        self.assertEqual(count, 1)
+        self.assertEqual(value['tracks'][0]['status'], 'uncertain')
+        self.assertEqual(self.advance(value, nest(), 3)[1], 0)
+
     def test_slight_movement_reuses_id(self):
         value = self.known()
         result, count = self.advance(value, nest([(194, 187)]), 3)

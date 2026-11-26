@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 import json
 
 from .journal import ID, valid_entry
-from .nest import ARRIVAL_FRAMES, NestState, valid_daily, valid_state
+from .nest import ARRIVAL_FRAMES, EGG_FRAMES, NestState, valid_daily, valid_state
 from .options import AppError
 from .storage import atomic_json, safe_path, sync_directory
 from . import egg_tracker
@@ -205,13 +205,14 @@ class SplitNest:
             count_allowed = (zone in self.sides and center_clear and item['label'] == 'no_chicken')
             eggs = item['egg_count'] if count_allowed else None
             if nest.obscured_visit is not None and count_allowed:
-                # The first clear view must show an increase within the grace
-                # window. Normal tracking/departure confirmation still applies.
+                # A single zero just after departure is not a settled count.
+                # Keep the original grace deadline while the view settles.
                 if eggs > nest.obscured_visit:
                     nest.state['baseline'] = nest.obscured_visit
-                else:
+                    nest.obscured_visit = None
+                elif nest.egg_candidate == eggs and nest.egg_streak + 1 >= EGG_FRAMES:
                     nest.obscure(pause=True)
-                nest.obscured_visit = None
+                    nest.obscured_visit = None
             source_frame = zone_evidence.get(zone) if zone_evidence is not None else evidence
             frame = None if source_frame is None else dict(source_frame, zone=zone, label=item['label'],
                          egg_count=eggs if item['label'] == 'no_chicken' else None)

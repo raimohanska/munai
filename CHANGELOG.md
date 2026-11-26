@@ -9,6 +9,11 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.67
+
+- Preserve egg attribution when the first clear frame misses the egg after a briefly obscured visit.
+- Treat a missing egg as uncertain when the bedding around it has substantially changed, rather than reporting a collection.
+
 ## 0.1.66
 
 - Include elapsed and CPU time in every end-of-round log message. Remove the log-level setting.

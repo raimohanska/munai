@@ -42,7 +42,8 @@ def valid_tracker(value):
     ids = set()
     fields = {'id', 'ellipse', 'brightness', 'hits', 'absent', 'status', 'counted'}
     for track in value['tracks']:
-        if not isinstance(track, dict) or set(track) not in (fields, fields | {'shell_profile'}):
+        if (not isinstance(track, dict) or not fields <= track.keys() <= fields | {'shell_profile', 'check_bedding'}
+                or ('check_bedding' in track and type(track['check_bedding']) is not bool)):
             return False
         if 'shell_profile' in track:
             profile = track['shell_profile']
@@ -73,7 +74,7 @@ def pause(value):
     value = copy.deepcopy(value)
     value['tracks'] = [t for t in value['tracks'] if t['hits'] == CONFIRM]
     for track in value['tracks']:
-        track.update(absent=0, status='uncertain')
+        track.update(absent=0, status='uncertain', check_bedding=True)
     return value
 
 
@@ -173,6 +174,22 @@ def decode_baseline(encoded):
     if len(data) != size:
         return None
     return np.frombuffer(data, dtype=np.uint8).reshape(BASELINE_SIZE[::-1])
+
+
+def bedding_disturbed(before, after, shape, track):
+    """Compare bedding around (not inside) the old shell on the frozen thumbnail."""
+    (cx, cy), axes, unused = track['ellipse']
+    y, x = np.ogrid[:before.shape[0], :before.shape[1]]
+    distance = np.hypot((x + .5) * shape[1] / before.shape[1] - cx,
+                        (y + .5) * shape[0] / before.shape[0] - cy)
+    radius = max(axes)
+    ring = (distance > .65 * radius) & (distance < 1.6 * radius)
+    if np.count_nonzero(ring) < 16:
+        return False
+    delta = after[ring].astype(np.int16) - before[ring]
+    # Discount a uniform exposure shift. Widespread local changes make a
+    # textured shell location evidence of possible burial, not a pickup.
+    return np.mean(np.abs(delta - np.median(delta)) >= 15) >= .30
 
 
 def relocated_shell(image, deviations, smooth, track, reserved, whole_partition, changed):
@@ -280,7 +297,8 @@ def advance(value, image, detections, previous_count=None, threshold=8, whole_pa
 
         baseline = decode_baseline(value.get('relocation_baseline'))
         if baseline is not None and any(i not in matched for i in missing):
-            delta = cv2.absdiff(baseline_pixels(image), baseline)
+            current = baseline_pixels(image)
+            delta = cv2.absdiff(current, baseline)
             changed = cv2.resize(delta, image.shape[::-1], interpolation=cv2.INTER_LINEAR) >= 15
             reserved = np.zeros(image.shape, dtype=bool)
             for detection in detections:
@@ -292,10 +310,14 @@ def advance(value, image, detections, previous_count=None, threshold=8, whole_pa
                 if i not in matched and relocated_shell(image, deviations, smooth, tracks[i], reserved,
                                                         whole_partition, changed):
                     statuses[i] = 'obstructed'
+                elif (i not in matched and tracks[i].get('check_bedding') and
+                      bedding_disturbed(baseline, current, image.shape, tracks[i])):
+                    statuses[i] = 'uncertain'
     kept = []
     for i, track in enumerate(tracks):
         if i in matched:
             detection = detections[matched[i]]
+            track.pop('check_bedding', None)
             track.update(ellipse=detection['ellipse'], hits=min(CONFIRM, track['hits'] + 1),
                          absent=0, status='visible')
             # Refresh only on strict full detections, never learn covering straw.

@@ -348,6 +348,18 @@ class SplitJournalTests(unittest.TestCase):
         entry = next(e for e in self.entries() if e['text'] == 'Left: Hen_a laid an Egg')
         self.assertEqual(set(frame_ids(entry['evidence'][0])), {f['id'] for f in baseline})
 
+    def test_one_clear_zero_does_not_end_bridged_visit(self):
+        self.shots()
+        start = datetime(2000, 1, 1, 10)
+        self.shots(left=observation('hen_a'), observed_at=start)
+        hidden = dict(observation('unknown', eggs=None, obscured=True), obscured_reason='ambiguous_presence')
+        self.shot(left=hidden, observed_at=start + timedelta(minutes=1))
+        self.shot(left=observation('hen_a'), observed_at=start + timedelta(minutes=2))
+        self.shot(left=observation(eggs=0), observed_at=start + timedelta(minutes=3))
+        for minute in range(4, 10):
+            self.shot(left=observation(eggs=1), observed_at=start + timedelta(minutes=minute))
+        self.assertEqual(self.nest.daily_snapshot()['counts'], {'unknown': 0, 'hen_a': 1})
+
     def test_ambiguity_grace_expires_without_positive_reidentification(self):
         self.shots()
         start = datetime(2000, 1, 1, 10)
