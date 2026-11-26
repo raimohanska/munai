@@ -102,6 +102,19 @@ class TrackerTests(TrackerImages, unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(result['tracks'][0]['id'], value['tracks'][0]['id'])
 
+    def test_repeated_fragment_then_pickup_in_disturbed_bedding(self):
+        value = egg_tracker.pause(self.known())
+        bedding = nest()
+        bedding[95:270, 95:180] //= 2
+        covered = bedding.copy()
+        cv2.circle(covered, (170, 184), 5, 140, -1)
+        fleeting, _ = self.advance(value, covered, 1, detections=[])
+        self.assertEqual(self.advance(fleeting, bedding, 5, detections=[])[1], 1)
+        stable, count = self.advance(value, covered, 6, detections=[])
+        self.assertEqual(count, 1)
+        self.assertEqual(self.advance(stable, bedding, 2, detections=[])[1], 1)
+        self.assertEqual(self.advance(stable, bedding, 3, detections=[])[1], 0)
+
     def test_wider_search_retains_a_partly_covered_moved_egg_without_acquiring(self):
         value = self.known()
         image = nest([(180, 95)])

@@ -460,7 +460,9 @@ evidence; the usual confirmations still apply.
 
 For an egg missing after an interrupted view, the tracker compares nearby bedding with the
 last clear view. Substantially disturbed bedding can hide the shell. The track
-remains uncertain while that view persists, even across repeated observations.
+remains uncertain while that view persists. If a small shell fragment is visible
+at a consistent location for three clear observations, its subsequent disappearance
+can start the usual collection confirmation even while the bedding remains disturbed.
 
 From 0.1.25, egg detection runs independently for each **clear, hen-free side**
 when the divider is clear. A hen or local obstruction freezes only that side;

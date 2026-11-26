@@ -42,9 +42,15 @@ def valid_tracker(value):
     ids = set()
     fields = {'id', 'ellipse', 'brightness', 'hits', 'absent', 'status', 'counted'}
     for track in value['tracks']:
-        if (not isinstance(track, dict) or not fields <= track.keys() <= fields | {'shell_profile', 'check_bedding'}
+        if (not isinstance(track, dict) or not fields <= track.keys() <= fields | {'shell_profile', 'check_bedding', 'fragment'}
                 or ('check_bedding' in track and type(track['check_bedding']) is not bool)):
             return False
+        if 'fragment' in track:
+            fragment = track['fragment']
+            if (not track.get('check_bedding') or not isinstance(fragment, list) or len(fragment) != 3
+                    or not all(type(v) is int for v in fragment)
+                    or not all(0 <= v < 640 for v in fragment[:2]) or not 1 <= fragment[2] <= CONFIRM):
+                return False
         if 'shell_profile' in track:
             profile = track['shell_profile']
             if (not isinstance(profile, (list, tuple)) or len(profile) != 2
@@ -74,6 +80,7 @@ def pause(value):
     value = copy.deepcopy(value)
     value['tracks'] = [t for t in value['tracks'] if t['hits'] == CONFIRM]
     for track in value['tracks']:
+        track.pop('fragment', None)
         track.update(absent=0, status='uncertain', check_bedding=True)
     return value
 
@@ -190,6 +197,47 @@ def bedding_disturbed(before, after, shape, track):
     # Discount a uniform exposure shift. Widespread local changes make a
     # textured shell location evidence of possible burial, not a pickup.
     return np.mean(np.abs(delta - np.median(delta)) >= 15) >= .30
+
+
+def fragment_status(image, track, reserved):
+    """Fine-scale shell support after bedding has shifted over a confirmed egg."""
+    (cx, cy), axes, unused = track['ellipse']
+    radius = .8 * max(axes)
+    h, w = image.shape
+    left, top = max(0, int(cx-radius)), max(0, int(cy-radius))
+    right, bottom = min(w, math.ceil(cx+radius+1)), min(h, math.ceil(cy+radius+1))
+    if left >= right or top >= bottom:
+        return 'uncertain'
+    patch = np.s_[top:bottom, left:right]
+    pixels = image[patch].astype(np.float32)
+    mean = cv2.blur(pixels, (3, 3))
+    variance = cv2.blur(pixels * pixels, (3, 3)) - mean * mean
+    y, x = np.ogrid[top:bottom, left:right]
+    mask = ((variance < 16) & (np.abs(pixels - track['brightness']) < 30) & ~reserved[patch]
+            & ((x-cx)**2 + (y-cy)**2 <= radius**2))
+    n, labels, stats, centers = cv2.connectedComponentsWithStats(mask.astype(np.uint8))
+    previous = track.get('fragment')
+    candidates = []
+    for i in range(1, n):
+        a, b, width, height, area = stats[i]
+        if area < max(24, .01 * axes[0] * axes[1]):
+            continue
+        component = (labels[b:b+height, a:a+width] == i).astype(np.uint8)
+        if cv2.distanceTransform(np.pad(component, 1), cv2.DIST_L2, 5).max() < 2:
+            continue
+        px, py = (int(round(v)) for v in centers[i] + (left, top))
+        same = previous is not None and math.hypot(px-previous[0], py-previous[1]) <= 5
+        candidates.append((same, area, px, py))
+    if candidates:
+        same, unused, px, py = max(candidates)
+        track['fragment'] = [px, py, min(CONFIRM, previous[2]+1) if same else 1]
+        reserved[patch] |= mask
+        return 'obstructed'
+    # Only loss of a repeatedly localized fragment can override disturbed bedding.
+    if previous is not None and previous[2] == CONFIRM:
+        return 'absent'
+    track.pop('fragment', None)
+    return 'uncertain'
 
 
 def relocated_shell(image, deviations, smooth, track, reserved, whole_partition, changed):
@@ -312,12 +360,13 @@ def advance(value, image, detections, previous_count=None, threshold=8, whole_pa
                     statuses[i] = 'obstructed'
                 elif (i not in matched and tracks[i].get('check_bedding') and
                       bedding_disturbed(baseline, current, image.shape, tracks[i])):
-                    statuses[i] = 'uncertain'
+                    statuses[i] = fragment_status(image, tracks[i], reserved)
     kept = []
     for i, track in enumerate(tracks):
         if i in matched:
             detection = detections[matched[i]]
             track.pop('check_bedding', None)
+            track.pop('fragment', None)
             track.update(ellipse=detection['ellipse'], hits=min(CONFIRM, track['hits'] + 1),
                          absent=0, status='visible')
             # Refresh only on strict full detections, never learn covering straw.

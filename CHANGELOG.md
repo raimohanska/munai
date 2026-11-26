@@ -9,6 +9,10 @@
   use only `local-data/production/references/` for production corrections.
   The cleanup itself changes no HA runtime behavior.
 
+## 0.1.68
+
+- Track repeatedly visible shell fragments in disturbed bedding so their confirmed disappearance can register a pickup.
+
 ## 0.1.67
 
 - Preserve egg attribution when the first clear frame misses the egg after a briefly obscured visit.
